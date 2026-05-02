@@ -1,11 +1,17 @@
+import { getGameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { CoopSession, type CoopState } from "#app/multiplayer/network/coop-session";
+import Overrides from "#app/overrides";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
+import type { TitlePhase } from "#phases/title-phase";
 import { addTextObject, getTextColor } from "#ui/text";
+import type { TitleUiHandler } from "#ui/title-ui-handler";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
+import { randomString } from "#utils/common";
 import type Phaser from "phaser";
 
 export class CoopLobbyUiHandler extends UiHandler {
@@ -88,6 +94,10 @@ export class CoopLobbyUiHandler extends UiHandler {
       }
       return false;
     }
+    if (button === Button.ACTION && state.kind === "CONNECTED" && state.role === "host") {
+      void this.startCoopRun();
+      return true;
+    }
     if (button === Button.CANCEL) {
       switch (state.kind) {
         case "HOSTING":
@@ -103,6 +113,29 @@ export class CoopLobbyUiHandler extends UiHandler {
       }
     }
     return false;
+  }
+
+  private async startCoopRun(): Promise<void> {
+    const seed = Overrides.SEED_OVERRIDE || randomString(24);
+    globalScene.coopMode = "host";
+    await globalScene.coopSession.sendEnvelope({
+      type: "start-run",
+      seed,
+      startingWave: 1,
+    });
+    globalScene.gameMode = getGameMode(GameModes.CLASSIC);
+    globalScene.setSeed(seed);
+    globalScene.resetSeed();
+    (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = false;
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase.is("TitlePhase")) {
+      const titlePhase = phase as TitlePhase;
+      titlePhase.gameMode = GameModes.CLASSIC;
+      void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+        globalScene.ui.clearText();
+        titlePhase.end();
+      });
+    }
   }
 
   override clear(): void {
@@ -134,7 +167,11 @@ export class CoopLobbyUiHandler extends UiHandler {
       case "CONNECTED":
         this.statusText.setText(`Connected (${state.role})`);
         this.codeText.setText(state.code);
-        this.hintText.setText("CANCEL: disconnect");
+        if (state.role === "host") {
+          this.hintText.setText("ACTION: start run / CANCEL: disconnect");
+        } else {
+          this.hintText.setText("Waiting for host... / CANCEL: disconnect");
+        }
         break;
       case "ERROR":
         this.statusText.setText("Error");

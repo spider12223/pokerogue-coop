@@ -42,6 +42,16 @@ export class GameOverPhase extends BattlePhase {
     this.isVictory = isVictory;
   }
 
+  override end(): void {
+    if (globalScene.coopMode !== "single") {
+      void globalScene.coopSession.sendEnvelope({
+        type: "run-end",
+        reason: this.isVictory ? "victory" : "defeat",
+      });
+    }
+    super.end();
+  }
+
   start() {
     super.start();
 

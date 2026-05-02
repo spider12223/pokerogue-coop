@@ -477,4 +477,57 @@ describe("CoopSession command envelope routing", () => {
     await session.sendEnvelope({ type: "ping", nonce: 1 }, "peer-J");
     expect(transport.sendEnvelope).toHaveBeenCalledWith({ type: "ping", nonce: 1 }, "peer-J");
   });
+
+  it("emits START_RUN_RECEIVED when a start-run envelope arrives", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.START_RUN_RECEIVED, handler);
+    const env = { type: "start-run" as const, seed: "abc-123", startingWave: 1 };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("emits RUN_END_RECEIVED when a run-end envelope arrives with reason", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.RUN_END_RECEIVED, handler);
+    const env = { type: "run-end" as const, reason: "victory" };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("emits RUN_END_RECEIVED when a run-end envelope arrives with null reason", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.RUN_END_RECEIVED, handler);
+    const env = { type: "run-end" as const, reason: null };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("multiple distinct envelope types trigger their respective events", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const startRun = vi.fn();
+    const runEnd = vi.fn();
+    const requestCmd = vi.fn();
+    session.on(CoopSession.START_RUN_RECEIVED, startRun);
+    session.on(CoopSession.RUN_END_RECEIVED, runEnd);
+    session.on(CoopSession.REQUEST_COMMAND_RECEIVED, requestCmd);
+    transport.triggerEnvelope({ type: "start-run", seed: "x", startingWave: 1 }, "peer-J");
+    transport.triggerEnvelope({ type: "run-end", reason: null }, "peer-J");
+    transport.triggerEnvelope(
+      {
+        type: "request-command",
+        requestId: "r-1",
+        fieldIndex: 1,
+        snapshotTurn: 0,
+        allowedCommands: ["FIGHT"],
+        forcedKind: null,
+      },
+      "peer-J",
+    );
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(runEnd).toHaveBeenCalledTimes(1);
+    expect(requestCmd).toHaveBeenCalledTimes(1);
+  });
 });

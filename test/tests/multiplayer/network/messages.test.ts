@@ -10,6 +10,7 @@ import {
   type PongMessage,
   parseEnvelope,
   type RequestCommandMessage,
+  type RunEndMessage,
   type StartRunMessage,
   type StateSnapshotMessage,
 } from "#app/multiplayer/network/messages";
@@ -191,6 +192,18 @@ describe("M2c envelope types", () => {
       const result = envelopeSchema.safeParse(msg);
       expect(result.success).toBe(true);
     });
+
+    it("parses a run-end message with reason", () => {
+      const msg: RunEndMessage = { type: "run-end", reason: "victory" };
+      const result = envelopeSchema.safeParse(msg);
+      expect(result.success).toBe(true);
+    });
+
+    it("parses a run-end message with null reason", () => {
+      const msg: RunEndMessage = { type: "run-end", reason: null };
+      const result = envelopeSchema.safeParse(msg);
+      expect(result.success).toBe(true);
+    });
   });
 
   describe("rejection", () => {
@@ -267,6 +280,11 @@ describe("M2c envelope types", () => {
 
     it("rejects start-run with empty seed", () => {
       const raw = { type: "start-run", seed: "", startingWave: 1 };
+      expect(envelopeSchema.safeParse(raw).success).toBe(false);
+    });
+
+    it("rejects run-end without reason field", () => {
+      const raw = { type: "run-end" };
       expect(envelopeSchema.safeParse(raw).success).toBe(false);
     });
 

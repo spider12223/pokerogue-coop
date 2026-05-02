@@ -34,6 +34,8 @@ export class CoopSession extends Phaser.Events.EventEmitter {
   public static readonly REQUEST_COMMAND_RECEIVED = "request-command-received";
   public static readonly CHOOSE_COMMAND_RECEIVED = "choose-command-received";
   public static readonly CANCEL_COMMAND_REQUEST_RECEIVED = "cancel-command-request-received";
+  public static readonly START_RUN_RECEIVED = "start-run-received";
+  public static readonly RUN_END_RECEIVED = "run-end-received";
 
   private readonly transportFactory: TransportFactory;
   private readonly joinTimeoutMs: number;
@@ -228,6 +230,14 @@ export class CoopSession extends Phaser.Events.EventEmitter {
     }
     if (envelope.type === "cancel-command-request") {
       this.emit(CoopSession.CANCEL_COMMAND_REQUEST_RECEIVED, envelope);
+      return;
+    }
+    if (envelope.type === "start-run") {
+      this.emit(CoopSession.START_RUN_RECEIVED, envelope);
+      return;
+    }
+    if (envelope.type === "run-end") {
+      this.emit(CoopSession.RUN_END_RECEIVED, envelope);
       return;
     }
   }

@@ -15,7 +15,7 @@ import { starterColors } from "#app/global-vars/starter-colors";
 import { InputsController } from "#app/inputs-controller";
 import { LoadingScene } from "#app/loading-scene";
 import { MessageLog } from "#app/multiplayer/message-log";
-import { CoopSession } from "#app/multiplayer/network/coop-session";
+import { CoopSession, type CoopState } from "#app/multiplayer/network/coop-session";
 import Overrides from "#app/overrides";
 import type { Phase } from "#app/phase";
 import { PhaseManager } from "#app/phase-manager";
@@ -430,6 +430,11 @@ export class BattleScene extends SceneBase {
     this.uiInputs = new UiInputs(this.inputController);
 
     this.turnCommandManager.initSinglePlayer();
+    this.coopSession.on(CoopSession.STATE_CHANGE, (state: CoopState) => {
+      if (state.kind === "IDLE" && this.coopMode === "host") {
+        this.phaseManager.queueMessage("Joiner disconnected, continuing solo.");
+      }
+    });
 
     this.gameData = new GameData();
 

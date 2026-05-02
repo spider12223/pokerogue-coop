@@ -3,6 +3,8 @@ import { loggedInUser } from "#app/account";
 import { GameMode, getGameMode } from "#app/game-mode";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { CoopSession, type CoopState } from "#app/multiplayer/network/coop-session";
+import type { RunEndMessage, StartRunMessage } from "#app/multiplayer/network/messages";
 import Overrides from "#app/overrides";
 import { Phase } from "#app/phase";
 import { bypassLogin } from "#constants/app-constants";
@@ -33,6 +35,10 @@ export class TitlePhase extends Phase {
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
 
+  private startRunListener: ((envelope: StartRunMessage) => void) | null = null;
+  private runEndListener: ((envelope: RunEndMessage) => void) | null = null;
+  private stateChangeListener: ((state: CoopState) => void) | null = null;
+
   async start(): Promise<void> {
     super.start();
 
@@ -46,8 +52,75 @@ export class TitlePhase extends Phase {
       globalScene.playBgm("title", true);
     }
 
+    if (Overrides.COOP_NETWORKED_OVERRIDE === "host") {
+      globalScene.coopMode = "host";
+      this.gameMode = GameModes.CLASSIC;
+      this.end();
+      return;
+    }
+    if (Overrides.COOP_NETWORKED_OVERRIDE === "joiner") {
+      globalScene.coopMode = "joiner";
+      this.subscribeCoopEvents();
+      void globalScene.ui.setMode(UiMode.COOP_COMMAND_PANEL);
+      return;
+    }
+
+    if (globalScene.coopSession.getState().kind === "CONNECTED") {
+      (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = true;
+      this.subscribeCoopEvents();
+      void globalScene.ui.setMode(UiMode.COOP_LOBBY);
+      return;
+    }
+
     const lastSlot = await this.checkLastSaveSlot();
     await this.showOptions(lastSlot);
+    this.subscribeCoopEvents();
+  }
+
+  private subscribeCoopEvents(): void {
+    this.startRunListener = (envelope: StartRunMessage) => {
+      if (globalScene.coopSession.isHost()) {
+        return;
+      }
+      globalScene.coopMode = "joiner";
+      globalScene.setSeed(envelope.seed);
+      void globalScene.ui.setMode(UiMode.COOP_COMMAND_PANEL);
+    };
+    this.runEndListener = (_envelope: RunEndMessage) => {
+      if (globalScene.coopSession.isHost()) {
+        return;
+      }
+      globalScene.coopMode = "single";
+      void globalScene.ui.setMode(UiMode.COOP_LOBBY);
+    };
+    this.stateChangeListener = (state: CoopState) => {
+      if (state.kind === "IDLE" && globalScene.coopMode === "joiner") {
+        globalScene.coopMode = "single";
+        void globalScene.ui.setMode(UiMode.MESSAGE).then(() => {
+          globalScene.ui.showText("Host disconnected.", null, () => {
+            globalScene.phaseManager.toTitleScreen();
+          });
+        });
+      }
+    };
+    globalScene.coopSession.on(CoopSession.START_RUN_RECEIVED, this.startRunListener);
+    globalScene.coopSession.on(CoopSession.RUN_END_RECEIVED, this.runEndListener);
+    globalScene.coopSession.on(CoopSession.STATE_CHANGE, this.stateChangeListener);
+  }
+
+  private unsubscribeCoopEvents(): void {
+    if (this.startRunListener) {
+      globalScene.coopSession.off(CoopSession.START_RUN_RECEIVED, this.startRunListener);
+      this.startRunListener = null;
+    }
+    if (this.runEndListener) {
+      globalScene.coopSession.off(CoopSession.RUN_END_RECEIVED, this.runEndListener);
+      this.runEndListener = null;
+    }
+    if (this.stateChangeListener) {
+      globalScene.coopSession.off(CoopSession.STATE_CHANGE, this.stateChangeListener);
+      this.stateChangeListener = null;
+    }
   }
 
   /**
@@ -408,6 +481,7 @@ export class TitlePhase extends Phase {
 
   // TODO: Refactor this
   end(): void {
+    this.unsubscribeCoopEvents();
     if (!this.loaded && !globalScene.gameMode.isDaily) {
       globalScene.loadBgm(globalScene.arena.bgm);
       globalScene.gameMode = getGameMode(this.gameMode);

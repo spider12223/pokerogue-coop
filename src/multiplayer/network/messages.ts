@@ -65,6 +65,11 @@ export const startRunSchema = z.object({
   startingWave: z.number().int().min(1),
 });
 
+export const runEndSchema = z.object({
+  type: z.literal("run-end"),
+  reason: z.string().nullable(),
+});
+
 export const envelopeSchema = z.discriminatedUnion("type", [
   helloSchema,
   pingSchema,
@@ -75,6 +80,7 @@ export const envelopeSchema = z.discriminatedUnion("type", [
   chooseCommandSchema,
   cancelCommandRequestSchema,
   startRunSchema,
+  runEndSchema,
 ]);
 
 export type HelloMessage = z.infer<typeof helloSchema>;
@@ -86,6 +92,7 @@ export type RequestCommandMessage = z.infer<typeof requestCommandSchema>;
 export type ChooseCommandMessage = z.infer<typeof chooseCommandSchema>;
 export type CancelCommandRequestMessage = z.infer<typeof cancelCommandRequestSchema>;
 export type StartRunMessage = z.infer<typeof startRunSchema>;
+export type RunEndMessage = z.infer<typeof runEndSchema>;
 export type Envelope = z.infer<typeof envelopeSchema>;
 
 export function parseEnvelope(raw: unknown): Envelope | null {
