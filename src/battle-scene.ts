@@ -280,6 +280,7 @@ export class BattleScene extends SceneBase {
   /** A manager for the commands and moves used in the current battle. */
   public readonly turnCommandManager: TurnCommandManager = new TurnCommandManager();
   public readonly coopSession: CoopSession = new CoopSession();
+  public coopMode: "single" | "host" | "joiner" = "single";
   public field: Phaser.GameObjects.Container;
   public fieldUI: Phaser.GameObjects.Container;
   public charSprite: CharSprite;
@@ -1144,6 +1145,7 @@ export class BattleScene extends SceneBase {
     }
 
     this.turnCommandManager.resetTurnOrder();
+    this.coopMode = "single";
     this.gameMode = getGameMode(GameModes.CLASSIC);
 
     this.disableMenu = false;

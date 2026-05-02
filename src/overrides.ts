@@ -352,6 +352,8 @@ class DefaultOverrides {
   readonly RANDOM_TRAINER_OVERRIDE: RandomTrainerOverride | null = null;
 
   readonly LOCAL_HOTSEAT_OVERRIDE: boolean = false;
+  readonly COOP_NETWORKED_OVERRIDE: false | "host" | "joiner" = false;
+  readonly COOP_BOT_FILL_JOINER: boolean = false;
 }
 
 export const defaultOverrides = new DefaultOverrides();

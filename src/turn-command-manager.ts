@@ -3,6 +3,7 @@ import type { CommandSource } from "#app/multiplayer/command-source";
 import { LocalUiCommandSource } from "#app/multiplayer/command-source";
 import type { FieldSlotRole, InputOwner, InputRole, PlayerSlot } from "#app/multiplayer/input-role";
 import type { InputEvent } from "#app/multiplayer/input-source";
+import { NetworkCommandSource } from "#app/multiplayer/network/network-command-source";
 import Overrides from "#app/overrides";
 import type { BattlerIndex } from "#enums/battler-index";
 
@@ -33,11 +34,53 @@ export class TurnCommandManager {
     this.commandSources.set(1, new LocalUiCommandSource(1));
   }
 
-  public refreshFromOverrides(): void {
+  public initCoopHost(): void {
+    this.fieldSlotOwners = { 0: 0, 1: 1 };
+    this.partySlotOwners.clear();
+    this.commandSources.clear();
+    this.commandSources.set(0, new LocalUiCommandSource(0));
+    this.commandSources.set(
+      1,
+      new NetworkCommandSource(1, globalScene.coopSession, {
+        botFillJoiner: Overrides.COOP_BOT_FILL_JOINER,
+      }),
+    );
+  }
+
+  public initCoopJoiner(): void {
+    this.fieldSlotOwners = { 0: 0, 1: 1 };
+    this.partySlotOwners.clear();
+    this.commandSources.clear();
+    this.commandSources.set(1, new LocalUiCommandSource(1));
+  }
+
+  private resolveCoopMode(): "single" | "host" | "joiner" | "hotseat" {
+    if (globalScene.coopMode !== "single") {
+      return globalScene.coopMode;
+    }
+    if (Overrides.COOP_NETWORKED_OVERRIDE) {
+      return Overrides.COOP_NETWORKED_OVERRIDE;
+    }
     if (Overrides.LOCAL_HOTSEAT_OVERRIDE) {
-      this.initHotseat();
-    } else {
-      this.initSinglePlayer();
+      return "hotseat";
+    }
+    return "single";
+  }
+
+  public refreshFromOverrides(): void {
+    switch (this.resolveCoopMode()) {
+      case "host":
+        this.initCoopHost();
+        return;
+      case "joiner":
+        this.initCoopJoiner();
+        return;
+      case "hotseat":
+        this.initHotseat();
+        return;
+      case "single":
+        this.initSinglePlayer();
+        return;
     }
   }
 

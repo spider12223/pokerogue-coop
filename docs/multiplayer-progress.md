@@ -18,10 +18,10 @@ This document is the single source of truth for the co-op multiplayer effort. It
 | Milestone | Scope | Status |
 |---|---|---|
 | **M1** | Hot-seat 2-player local: input gating in dual battles via two keyboard schemes, no networking | ✅ SHIPPED at commit `ef4041da` |
-| **M2a** | Co-op lobby pipe: title menu entry, room codes, Trystero handshake, "Connected" state. NO battle integration. | ✅ FUNCTIONALLY WORKING — pending diagnostic log cleanup + final commit |
-| **M2b** | Cloudflare Pages deploy of the fork so cross-machine smoke testing becomes possible | NOT STARTED. Cloudflare account ready. GitHub fork at `github.com/spider12223/pokerogue-coop`. |
-| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders from snapshots | NOT STARTED |
-| **M2d** | Full battle render parity on joiner side, animation sync, edge-case polish | NOT STARTED |
+| **M2a** | Co-op lobby pipe: title menu entry, room codes, Trystero handshake, "Connected" state. NO battle integration. | ✅ SHIPPED at commit `c49a105f` |
+| **M2b** | Public deploy of the fork so cross-machine smoke testing becomes possible | ✅ SHIPPED 2026-05-02 to `https://pokerogue-coop.netlify.app` (commit `714182bd86f` enabled guest mode; pivoted to Netlify after hitting Cloudflare Pages' 20,000-file deploy cap) |
+| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders via minimum-viable command panel | 🟡 IN PROGRESS — M2c.1 Foundation phase |
+| **M2d** | Full battle render parity on joiner side, animation sync, switch/baton support, snapshot diffing, edge-case polish | NOT STARTED |
 
 ---
 
@@ -33,35 +33,57 @@ Committed at **`ef4041da`**. Two keyboards, two players, dual battles. Input gat
 
 Toggled via `Overrides.LOCAL_HOTSEAT_OVERRIDE: true` in `src/overrides.ts`. When on, hot-seat uses keymaps from `cfg-keyboard-hotseat-p1.ts` (P1 = arrows + Z/X) and `cfg-keyboard-hotseat-p2.ts` (P2 = WASD + Q/Shift + numbers).
 
-### M2a — Lobby pipe (FUNCTIONALLY WORKING, NEEDS CLEANUP)
+### M2a — Lobby pipe (SHIPPED)
 
-Two-tab smoke test (same machine, both Chromium tabs to `localhost:8000`) just passed:
+Committed at **`c49a105f`** on branch `multiplayer-coop`. 446/446 test files green, 4333/4333 tests. Two-tab smoke test passed locally before deploy.
+
+Behavior:
 - Tab 1: Title → Co-op → Host Co-op → lobby renders with code (e.g. `XTP7JV`).
 - Tab 2: Title → Co-op → Join Co-op → form → enter code → lobby renders.
 - Trystero/Nostr handshake completes within ~5 seconds.
 - Both tabs reach `CoopState.kind = "CONNECTED"` and display "Connected (host)" / "Connected (joiner)".
 
-**Remaining work for M2a:**
-1. Strip all `[coop]` / `[coop-ui]` diagnostic logs (added during the rendering / cancel / handshake debugging session).
-2. Run full test suite — should be 446+ files green.
-3. Commit as M2a final.
+### M2b — Public deploy (SHIPPED)
 
-### M2b — Cloudflare deploy (NOT STARTED)
+Live at **`https://pokerogue-coop.netlify.app`** as of 2026-05-02. Two-tab cross-origin co-op handshake works. Cross-internet tested between regular Chrome and Chrome incognito (separate Trystero peer IDs).
 
-Cloudflare Pages target ready. Repo fork is `github.com/spider12223/pokerogue-coop`. The deploy will let two machines / two networks test peer connection across the public internet (the smoke test so far has only been same-machine). M2b is a deploy + smoke-test exercise; no significant code changes expected.
+**Pivot story:** Started on Cloudflare Pages → build succeeded but deploy validation failed at the **20,000-file deploy limit** (full pokerogue dist has 34,086 files). Cloudflare Workers Static Assets free tier has the same 20k cap (the 100k limit is paid-tier only, requires Wrangler 4.34.0+). Pivoted to **Netlify free tier** which has no overall file count cap (only a 54,000-files-per-single-directory cap that we don't hit — largest dir is `images/pokemon/back` at 2,811 files). Total deploy: 700 MB, well under Netlify's 10 GB storage.
 
-### M2c — Networked play (NOT STARTED)
+**Guest mode:** commit `714182bd86f` flipped `VITE_BYPASS_LOGIN=0 → 1` in `.env.production`. The deployed fork bypasses the login wall. All players play as `Guest`. Saves go to per-origin browser localStorage (isolated from `pokerogue.net`).
 
-The big one. Architecture is already designed in M1 — `CommandSource` is the abstraction. M2a's `CoopSession` provides the transport. M2c's job is to:
+**Build settings on Netlify:**
+- Build command: `pnpm build`
+- Publish directory: `dist`
+- Production branch: `multiplayer-coop`
+- Env vars: `NODE_VERSION=24.9.0`, `PNPM_VERSION=10.33.2`
+- Submodules (`assets/`, `locales/`) auto-clone via Netlify's default git-recurse-submodules behavior.
+
+**Side note:** the asset pipeline trick is in [src/plugins/vite/vite-minify-json-plugin.ts:93-100](../src/plugins/vite/vite-minify-json-plugin.ts#L93). Despite its name, the plugin recursively copies `./assets/` and `./locales/` into `dist/` during build. Vite's `publicDir` is set to `false` for the build command, so Vite's normal public copy doesn't fire.
+
+### M2c — Networked play (IN PROGRESS, M2c.1 phase)
+
+Architecture is designed in M1 — `CommandSource` is the abstraction. M2a's `CoopSession` provides the transport. M2c's job:
 - Plug a `NetworkCommandSource` into the joiner's slot on the host side.
-- Have the joiner's browser open a UI for slot 1's CommandPhase when the host sends a "request command" message.
-- Have the joiner send the chosen command back across the wire.
-- Host's `phase.handleCommand(...)` is invoked with the network-delivered command.
-- Joiner renders the battle by listening for state-snapshot messages.
+- Host pushes state snapshots to joiner over Trystero.
+- When host's `CommandPhase` fires for slot 1, host sends a `request-command` envelope; joiner UI opens; joiner sends `choose-command` back; host calls `phase.handleCommand(...)` with the network-delivered command.
+- Joiner renders a **minimum-viable command panel** (text + HP bars + move buttons), NOT a full battle mirror. Full mirror is M2d.
+
+**Phasing (each phase = one commit, tests green before next phase):**
+
+| Phase | Scope |
+|---|---|
+| **M2c.1 Foundation** | New envelope types + zod schemas; `NetworkCommandSource` skeleton class; `coopMode` field on BattleScene; `Overrides.COOP_NETWORKED_OVERRIDE` + `Overrides.COOP_BOT_FILL_JOINER`; `TurnCommandManager.initCoopHost` / `initCoopJoiner` + `refreshFromOverrides` extension; tests |
+| **M2c.2 State Snapshot** | `projectSnapshot()` pure function in `snapshot.ts`; `state-snapshot` envelope wiring host-side (send) + joiner-side (receive, store); tests |
+| **M2c.3 Command Request Roundtrip** | Full `NetworkCommandSource.requestCommand` send-and-await; timeout machinery; CANCEL re-issue; bot-fill-joiner short-circuit; full integration test |
+| **M2c.4 Joiner UI** | New `CoopCommandPanelUiHandler` (new UiMode); subscribes to coopSession events; move/switch/run buttons; target select overlay; idle state |
+| **M2c.5 Run Start/End Integration** | "Start Co-op Run" button on lobby (host-only); `start-run` envelope; lobby ↔ run transitions on both peers; GameOverPhase → COOP_LOBBY routing |
+| **M2c.6 Smoke + Polish** | Full test suite green; two-tab browser smoke; deploy to Netlify; cross-internet smoke; bug fixes that surface |
+
+**M2c scope: FIGHT and RUN only for joiner.** Switch/Pokémon command, Pokeball, Tera, Mega all deferred to M2d. (See Section 4 sub-decision M2c.S5 below.)
 
 ### M2d — Polish (NOT STARTED)
 
-Animation sync, edge cases (faints, switches, evolution prompts on joiner side), error recovery (peer drops mid-battle), full battle render parity. No design done yet.
+Switch/Pokémon command for joiner; Pokeball/Tera/Mega; full battle render parity (sprites, animations, weather visuals, type-effectiveness hints); snapshot diffing protocol; reconnect-after-drop with grace period; mystery encounter joiner participation (currently host-only). No detailed design yet.
 
 ---
 
@@ -194,23 +216,60 @@ UI is at `(0, scaledCanvas.height)` inside `uiContainer`. `uiContainer` has `set
 
 `CoopLobbyUiHandler.processInput` treats only `Button.CANCEL` as the exit. ACTION is a no-op for HOSTING/JOINING/CONNECTED states. Originally both ACTION and CANCEL exited, which caused intermittent cancellation when key-repeat from the original "Host Co-op" Z-press fired ACTION on the new lobby mode within 250ms. Single-button discipline = no race.
 
+### M2c-specific decisions (resolved 2026-05-02)
+
+**M2c.S1 — Joiner rendering = minimum viable, not full mirror.** Joiner gets a command-picker panel (HP bars + move buttons + recent log lines) instead of a full Phaser BattleScene render. Full mirror is M2d. *Why:* risk surface, faster iteration, decoupled from network protocol so M2d swap is non-breaking.
+
+**M2c.S2 — State sync = full snapshots, not diffs.** Host re-sends a complete `BattleSnapshot` on each meaningful event. Diff protocol is M2d if performance dictates. *Why:* correctness and debuggability over efficiency for an MVP. Snapshots are 5-15 KB; WebRTC handles them comfortably.
+
+**M2c.S3 — Snapshot projection is a pure function.** `projectSnapshot(scene): BattleSnapshot` lives in its own file (`src/multiplayer/network/snapshot.ts`). No Phaser dependencies leak into the message layer. *Why:* unit testable without booting a full BattleScene; keeps network layer clean.
+
+**M2c.S4 — Command request roundtrip uses `requestId` (uuid) for correlation.** Host generates a uuid per request, joiner echoes it in the response. Timeout default 60s (configurable via `Overrides.COOP_COMMAND_TIMEOUT_MS`). On timeout, host falls back to `Command.FIGHT` with first usable move + default targets, logs to host's battle log. *Why:* uuids defend against accidental session-reset collisions; 60s is generous for a casual co-op game; default-fight fallback is recoverable.
+
+**M2c.S5 — M2c scope = FIGHT and RUN for joiner only.** Switch/Pokémon command, Pokeball, Tera, Mega all deferred to M2d. CheckSwitchPhase/SwitchPhase network surface is non-trivial. *Why:* scope discipline; ship a playable minimum.
+
+**M2c.S6 — Joiner pokémon ownership = shared party.** Same model as M1 hot-seat: host owns the run; joiner sees host's party; joiner controls slot 1's pokémon and (in M2d) can switch in any party member not on the field. *Why:* matches the project goal ("Both players run through the same roguelike run together"); simpler than tag-team-format alternatives.
+
+**M2c.S7 — Joiner save data = none for M2c.** Host owns the run state. If host disconnects, joiner has no run to continue. Real save sync is a future-milestone concern. *Why:* localStorage-per-origin is unidirectional from host; full save sync would be an architectural pivot.
+
+**M2c.S8 — Mystery encounters = host runs entire ME, joiner observes via snapshot.** Joiner doesn't participate in ME UIs. *Why:* MEs have non-battle UIs (item rewards, NPC dialogues, encounter choices); designing joiner-side ME participation explodes M2c scope.
+
+**M2c.S9 — Pokémon names in snapshots = pre-localized strings.** Snapshot includes `name: string` (already localized on host). `nameKey` for joiner-side localization is correct long-term but defers to M2d. *Why:* simpler MVP wire format; localization parity not critical when both peers run the same i18next setup.
+
+**M2c.S10 — Run-end on disconnect = continue solo.** When joiner disconnects mid-run, host continues solo: NetworkCommandSource auto-falls back to default-move on every slot 1 request. Host battle log shows "Joiner disconnected" banner. *Why:* pokerogue runs are long; aborting destroys progress unnecessarily. Joiner-on-host-disconnect goes to title (joiner has no authoritative state).
+
+**M2c.S11 — `coopMode` runtime field, `COOP_NETWORKED_OVERRIDE` dev-only.** Two distinct knobs: `globalScene.coopMode: "single" | "host" | "joiner"` (set programmatically by the lobby Start button); `Overrides.COOP_NETWORKED_OVERRIDE: false | "host" | "joiner"` (committed to overrides.ts only for dev testing). Plus `Overrides.COOP_BOT_FILL_JOINER: boolean` — when true on a host, NetworkCommandSource auto-responds to its own `request-command` with a default move (no envelope sent). *Why:* runtime field for production; override for solo dev iteration without two browsers; bot-fill for fast inner-loop testing.
+
 ---
 
 ## SECTION 5 — IMMEDIATE NEXT STEPS FOR NEW CHAT
 
-Do these in order. Stop after step 3 — M2b is the new chat's call.
+**Current phase: M2c.1 Foundation.** Tests can be written test-first; production code requires user spec-approval before being written.
 
-1. **Strip all `[coop]` and `[coop-ui]` diagnostic logs** from these files (single cleanup commit, no other changes):
-   - `src/phases/title-phase.ts`
-   - `src/multiplayer/network/coop-session.ts`
-   - `src/multiplayer/network/transport.ts`
-   - `src/ui/handlers/coop-lobby-ui-handler.ts`
-   - `src/ui/ui.ts` (the `setModeInternal` log block — gated on `isCoopRelated`)
-   - Also remove the `// Trace ...` debug comments next to each log line. The codebase rule is no comments in production code — debug comments were allowed only during the diagnostic session.
-   - **Don't strip** the `console.trace` inside `CoopSession.setState`'s HOSTING → IDLE branch on a hunch — actually do strip it. All `console.trace` calls go too. Check every file with `grep -n "\[coop\]\|\[coop-ui\]\|console\.trace" src/`.
-2. **Run the full test suite**: `pnpm test:silent`. Should be 446+ test files green, 4333+ tests, 0 errors. If anything regresses, the cleanup pass over-deleted something.
-3. **Commit M2a final** with message describing scope (lobby pipe, no battle integration). User does final manual two-tab smoke test, confirms green, then merges.
-4. **M2b**: Cloudflare Pages deploy. Fork is `github.com/spider12223/pokerogue-coop`. Cloudflare account ready. The deploy is straightforward (PokéRogue is a Vite static site); the only co-op-specific concern is that production may apply CSP headers at the CDN layer that block `wss://` to Nostr relays — verify and configure CSP to allow `wss://*` if needed. Smoke test: open the deployed site in two tabs / two machines / two networks, verify host+join still connects.
+### M2c.1 — Foundation (CURRENT)
+
+Wire-format and skeleton work. After this phase: all the new types compile, but no production behavior changes (the `coopMode` field defaults to `"single"`, the override defaults to `false`, so nothing actually triggers the new code paths until M2c.5 lights them up).
+
+**Production code planned in M2c.1:**
+- `src/multiplayer/network/messages.ts` — add new envelope schemas: `state-snapshot` (placeholder payload, refined in M2c.2), `request-command`, `choose-command`, `cancel-command-request`, `start-run`. Extend `envelopeSchema` discriminated union. **Do NOT bump `COOP_PROTOCOL_VERSION` in this phase** — wait until M2c.5 when the integration code lights up the new types in real connections (see Section 4 sub-decision: bump on integration, not on plumbing).
+- `src/multiplayer/network/network-command-source.ts` — NEW. Skeleton class implementing `CommandSource`. `requestCommand()` is a no-op stub in this phase; real send/await machinery comes in M2c.3. Constructor takes `(playerSlot, session, opts)`. Has `cancelPending()` that clears any timer and zeroes pending state.
+- `src/turn-command-manager.ts` — add `initCoopHost()` and `initCoopJoiner()` methods. Extend `refreshFromOverrides()` to route through a `resolveCoopMode()` helper that prefers `globalScene.coopMode` runtime field, then `Overrides.COOP_NETWORKED_OVERRIDE`, then `Overrides.LOCAL_HOTSEAT_OVERRIDE`, then default single-player.
+- `src/battle-scene.ts` — add `coopMode: "single" | "host" | "joiner"` field, default `"single"`. Reset to `"single"` in `BattleScene.reset()` (parallel to existing reset behavior).
+- `src/overrides.ts` — add `COOP_NETWORKED_OVERRIDE: false | "host" | "joiner"` (default `false`) and `COOP_BOT_FILL_JOINER: boolean` (default `false`).
+
+**Test-first files for M2c.1:**
+- `test/tests/multiplayer/network/messages.test.ts` — extend with round-trip + reject-malformed tests for the 5 new envelope types.
+- `test/tests/multiplayer/network/network-command-source.test.ts` — NEW. Skeleton tests: constructor accepts the right args; `kind === "network"`; `playerSlot` exposed; `cancelPending()` clears state. Behavioral tests come in M2c.3 (don't try to write request/response tests here — the methods are no-op stubs).
+- `test/tests/multiplayer/turn-command-manager.test.ts` — NEW. `initCoopHost` registers `LocalUiCommandSource` for slot 0 and `NetworkCommandSource` for slot 1. `initCoopJoiner` registers `LocalUiCommandSource` for slot 1 only. `refreshFromOverrides` routing: coopMode runtime → init methods; override second; hotseat third; single-player default.
+
+**M2c.1 done criteria:**
+- Full suite green (target: 449+ test files, 4350+ tests).
+- Spec-approved before any production file is touched (test-first allowed without preview).
+- One commit, message format `M2c.1: foundation — envelope types, NetworkCommandSource skeleton, TurnCommandManager coop init`.
+
+### After M2c.1
+
+Phases M2c.2 → M2c.6 follow per the table in Section 2. Each its own commit, tests green before next phase. Don't skip.
 
 ---
 
@@ -246,20 +305,17 @@ Do these in order. Stop after step 3 — M2b is the new chat's call.
 
 ---
 
-## SECTION 9 — OPEN QUESTIONS FOR M2C ONWARDS
+## SECTION 9 — OPEN QUESTIONS
 
-These are real unknowns. The new chat should think carefully and propose options before committing:
+Items resolved during M2c planning (2026-05-02) are now in Section 4 sub-decisions M2c.S1–M2c.S11. Remaining open questions:
 
-- **Joiner-side rendering strategy.** Three viable approaches:
-  - (a) **Full mirror**: joiner runs the whole BattleScene render pipeline against host-pushed state snapshots. Hardest to implement (need to serialize a lot of state), best UX (everything looks identical).
-  - (b) **Simplified UI**: joiner renders just a moveset selector + opponent HP + minimal field state. Easier to implement, weirder UX (asymmetric experience between players).
-  - (c) **Decision deferred**: ship M2c with whatever the minimum is for "joiner can pick a move", iterate.
-  - Recommendation: design discussion with user before code. Probably (a) ultimately, but maybe staged via (c).
-- **Explicit `relayUrls` fallback.** Trystero's default Nostr relay list may have outages. Should we pin a specific subset for reliability? Or detect failure and rotate? Decision can wait until M2b production smoke surfaces real reliability data.
-- **Backdrop full-canvas coverage edge case.** The visual seam on the right edge (Section 6) — is it an alpha-blend artifact, a coordinate rounding issue, or actually a different handler peeking through? Worth ~30 min of investigation in a quiet moment.
-- **Reconnect after peer drop mid-battle.** Trystero supports manual relay reconnection. Should we attempt to reconnect for a grace period (e.g. 30s) before terminating the run? UX question for M2c.
-- **Battle scene state size for snapshot sync.** A full PokéRogue battle has hundreds of fields (Pokémon HP/status/stat-stages, arena tags, weather, modifiers, etc.). Naive JSON serialization may push the WebRTC data-channel limits or be slow. Consider: differential snapshots, structured event log instead of full state, or a hybrid. Open architecture question for M2c.
+- **Explicit `relayUrls` fallback.** Trystero's default Nostr relay list may have outages. Should we pin a specific subset for reliability? Or detect failure and rotate? Decision can wait until cross-internet smoke testing during M2c.6 surfaces real reliability data on the deployed site.
+- **Backdrop full-canvas coverage edge case** (handoff Section 6 visual seam on the lobby's right edge). Is it an alpha-blend artifact, a coordinate rounding issue, or actually a different handler peeking through? Worth ~30 min of investigation in a quiet moment. Not blocking M2c.
+- **Reconnect after peer drop mid-battle.** Per M2c.S10, M2c continues solo on disconnect. M2d should reconsider: trystero supports manual relay reconnection — should we attempt to reconnect for a grace period (e.g. 30s) before falling back to solo? UX question for M2d, not M2c.
+- **Snapshot diffing** (M2d). Current decision (M2c.S2) is full snapshots every event. If M2c.6 cross-internet smoke shows latency or bandwidth pain, M2d should add diff-based updates. Open architecture work.
+- **Animation event channel** (M2d). For full-mirror joiner rendering, host needs to push more than state — needs to push events ("Foe Pidgey used Tackle on slot 1"). Either a separate `battle-event` envelope type, or embed events in snapshots. Defer until M2d's full-mirror design phase.
+- **Joiner save data** (post-M2d). M2c.S7 says no save sync; if the project later wants a co-op-aware save format (each player has their own progress on a shared run), this is a major architectural item.
 
 ---
 
-*Document last updated immediately after the M2a two-tab smoke test passed. M2a code is in working order pending the [coop] log cleanup pass.*
+*Document last updated 2026-05-02, after M2b shipped to https://pokerogue-coop.netlify.app and the M2c plan was finalized with Q1-Q8 resolved as sub-decisions M2c.S1-M2c.S11 in Section 4. Current phase: M2c.1 Foundation, awaiting spec approval before production code.*
