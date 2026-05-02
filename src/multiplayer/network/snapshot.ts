@@ -108,6 +108,6 @@ export function projectSnapshot(scene: BattleScene, opts: ProjectSnapshotOptions
           turnsRemaining: weather.turnsLeft,
         }
       : null,
-    recentLog: [],
+    recentLog: scene.messageLog.getRecent(5),
   };
 }

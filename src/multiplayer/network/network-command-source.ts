@@ -24,8 +24,12 @@ export interface NetworkCommandSourceOptions {
   getScene?: SceneAccessor;
 }
 
+export function buildDefaultTargets(result: { targets: number[]; multiple: boolean }): number[] {
+  return result.multiple ? result.targets : result.targets.slice(0, 1);
+}
+
 const defaultGetDefaultTargets: DefaultTargetsResolver = (pokemon, moveId) =>
-  getMoveTargets(pokemon, moveId).targets.slice(0, 1);
+  buildDefaultTargets(getMoveTargets(pokemon, moveId));
 
 const defaultGetScene: SceneAccessor = () => globalScene;
 

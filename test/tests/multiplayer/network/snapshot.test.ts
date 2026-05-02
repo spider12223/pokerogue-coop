@@ -46,6 +46,7 @@ interface FakeSceneOpts {
   playerField?: ReturnType<typeof makeFakePokemon>[] | (ReturnType<typeof makeFakePokemon> | undefined)[];
   enemyField?: ReturnType<typeof makeFakePokemon>[] | (ReturnType<typeof makeFakePokemon> | undefined)[];
   weather?: { type: WeatherType; turnsRemaining: number } | null;
+  recentMessages?: string[];
 }
 
 function makeFakeScene(opts: FakeSceneOpts = {}) {
@@ -59,6 +60,9 @@ function makeFakeScene(opts: FakeSceneOpts = {}) {
             turnsLeft: opts.weather.turnsRemaining,
           }
         : null,
+    },
+    messageLog: {
+      getRecent: (_n: number) => opts.recentMessages ?? [],
     },
   };
 }
@@ -193,9 +197,17 @@ describe("projectSnapshot", () => {
     expect(snap.field.slot0?.id).toBe(12345);
   });
 
-  it("returns recentLog === [] in M2c.2 (placeholder until M2c.4 wires capture)", () => {
+  it("recentLog is empty when scene has no recent messages", () => {
     const scene = makeFakeScene({});
     const snap = projectSnapshot(scene as any, stubOpts);
     expect(snap.recentLog).toEqual([]);
+  });
+
+  it("recentLog reflects scene.messageLog.getRecent(5)", () => {
+    const scene = makeFakeScene({
+      recentMessages: ["Wild Pidgey appeared!", "Pikachu used Tackle!", "It's super effective!"],
+    });
+    const snap = projectSnapshot(scene as any, stubOpts);
+    expect(snap.recentLog).toEqual(["Wild Pidgey appeared!", "Pikachu used Tackle!", "It's super effective!"]);
   });
 });

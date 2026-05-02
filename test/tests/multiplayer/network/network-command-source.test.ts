@@ -1,6 +1,7 @@
 import { CoopSession } from "#app/multiplayer/network/coop-session";
 import type { ChooseCommandMessage } from "#app/multiplayer/network/messages";
 import {
+  buildDefaultTargets,
   COOP_DEFAULT_COMMAND_TIMEOUT_MS,
   NetworkCommandSource,
   type NetworkCommandSourceOptions,
@@ -408,6 +409,21 @@ describe("NetworkCommandSource", () => {
         MoveUseMode.NORMAL,
         expect.objectContaining({ move: 7 }),
       );
+    });
+  });
+
+  describe("buildDefaultTargets (M2c.4 multi-target fix)", () => {
+    it("single-target move (multiple=false) returns only the first target", () => {
+      expect(buildDefaultTargets({ targets: [2, 3], multiple: false })).toEqual([2]);
+    });
+
+    it("multi-target move (multiple=true) returns all targets", () => {
+      expect(buildDefaultTargets({ targets: [2, 3], multiple: true })).toEqual([2, 3]);
+    });
+
+    it("returns empty array when no targets", () => {
+      expect(buildDefaultTargets({ targets: [], multiple: false })).toEqual([]);
+      expect(buildDefaultTargets({ targets: [], multiple: true })).toEqual([]);
     });
   });
 

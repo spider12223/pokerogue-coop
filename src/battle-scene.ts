@@ -14,6 +14,7 @@ import { initGlobalScene } from "#app/global-scene";
 import { starterColors } from "#app/global-vars/starter-colors";
 import { InputsController } from "#app/inputs-controller";
 import { LoadingScene } from "#app/loading-scene";
+import { MessageLog } from "#app/multiplayer/message-log";
 import { CoopSession } from "#app/multiplayer/network/coop-session";
 import Overrides from "#app/overrides";
 import type { Phase } from "#app/phase";
@@ -281,6 +282,7 @@ export class BattleScene extends SceneBase {
   public readonly turnCommandManager: TurnCommandManager = new TurnCommandManager();
   public readonly coopSession: CoopSession = new CoopSession();
   public coopMode: "single" | "host" | "joiner" = "single";
+  public readonly messageLog: MessageLog = new MessageLog();
   public field: Phaser.GameObjects.Container;
   public fieldUI: Phaser.GameObjects.Container;
   public charSprite: CharSprite;
@@ -657,9 +659,19 @@ export class BattleScene extends SceneBase {
     this.ui = new UI();
     this.uiContainer.add(this.ui);
     this.ui.setup();
+    this.installMessageLogHook();
 
     this.phaseManager.toTitleScreen(true);
     this.phaseManager.shiftPhase();
+  }
+
+  private installMessageLogHook(): void {
+    const ui = this.ui as unknown as { showText: (...args: unknown[]) => unknown };
+    const originalShowText = ui.showText.bind(ui);
+    ui.showText = (...args: unknown[]) => {
+      this.messageLog.append(args[0]);
+      return originalShowText(...args);
+    };
   }
 
   initSession(): void {

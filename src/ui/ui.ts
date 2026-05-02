@@ -61,6 +61,7 @@ import { UnavailableModalUiHandler } from "#ui/unavailable-modal-ui-handler";
 import { executeIf } from "#utils/common";
 import i18next from "i18next";
 import { AdminUiHandler } from "./handlers/admin-ui-handler";
+import { CoopCommandPanelUiHandler } from "./handlers/coop-command-panel-ui-handler";
 import { CoopJoinFormUiHandler } from "./handlers/coop-join-form-ui-handler";
 import { CoopLobbyUiHandler } from "./handlers/coop-lobby-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
@@ -185,6 +186,7 @@ export class UI extends Phaser.GameObjects.Container {
       new ChangePasswordFormUiHandler(),
       new CoopLobbyUiHandler(),
       new CoopJoinFormUiHandler(),
+      new CoopCommandPanelUiHandler(),
     ];
   }
 
