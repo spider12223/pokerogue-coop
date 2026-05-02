@@ -126,7 +126,7 @@ export class CoopLobbyUiHandler extends UiHandler {
     globalScene.gameMode = getGameMode(GameModes.CLASSIC);
     globalScene.setSeed(seed);
     globalScene.resetSeed();
-    (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = false;
+    (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).clear();
     const phase = globalScene.phaseManager.getCurrentPhase();
     if (phase.is("TitlePhase")) {
       const titlePhase = phase as TitlePhase;

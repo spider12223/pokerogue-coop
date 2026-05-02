@@ -66,7 +66,9 @@ export class TitlePhase extends Phase {
     }
 
     if (globalScene.coopSession.getState().kind === "CONNECTED") {
-      (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = true;
+      const titleHandler = globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler;
+      titleHandler.suspended = true;
+      titleHandler.clear();
       this.subscribeCoopEvents();
       void globalScene.ui.setMode(UiMode.COOP_LOBBY);
       return;
