@@ -341,3 +341,58 @@ describe("CoopSession state machine", () => {
     });
   });
 });
+
+describe("CoopSession snapshot routing", () => {
+  function emptySnapshot() {
+    return {
+      field: { slot0: null, slot1: null, foe0: null, foe1: null },
+      weather: null,
+      recentLog: [] as string[],
+    };
+  }
+
+  async function makeConnectedSession() {
+    const transports: FakeTransport[] = [];
+    const session = new CoopSession({
+      transportFactory: (opts: TrysteroTransportOptions) => {
+        const fake = makeFakeTransport(opts);
+        transports.push(fake);
+        return fake as unknown as TrysteroTransport;
+      },
+      joinTimeoutMs: 30_000,
+    });
+    await session.host();
+    const t = transports[0];
+    t.triggerPeerJoin("peer-J");
+    t.triggerEnvelope({ type: "hello", version: COOP_PROTOCOL_VERSION, role: "joiner" }, "peer-J");
+    return { session, transport: t };
+  }
+
+  it("stores a received state-snapshot in the SnapshotStore", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const snap = emptySnapshot();
+    transport.triggerEnvelope({ type: "state-snapshot", turn: 5, payload: snap }, "peer-J");
+    const stored = session.getSnapshotStore().getCurrent();
+    expect(stored).not.toBeNull();
+    expect(stored?.snapshot).toEqual(snap);
+    expect(stored?.turn).toBe(5);
+  });
+
+  it("emits SNAPSHOT_UPDATE when a state-snapshot is received", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.SNAPSHOT_UPDATE, handler);
+    const snap = emptySnapshot();
+    transport.triggerEnvelope({ type: "state-snapshot", turn: 2, payload: snap }, "peer-J");
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith(snap, 2);
+  });
+
+  it("the latest snapshot wins after multiple receipts", async () => {
+    const { session, transport } = await makeConnectedSession();
+    transport.triggerEnvelope({ type: "state-snapshot", turn: 1, payload: emptySnapshot() }, "peer-J");
+    transport.triggerEnvelope({ type: "state-snapshot", turn: 2, payload: emptySnapshot() }, "peer-J");
+    transport.triggerEnvelope({ type: "state-snapshot", turn: 3, payload: emptySnapshot() }, "peer-J");
+    expect(session.getSnapshotStore().getCurrent()?.turn).toBe(3);
+  });
+});

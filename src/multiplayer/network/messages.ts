@@ -1,3 +1,4 @@
+import { battleSnapshotSchema } from "#app/multiplayer/network/snapshot";
 import { z } from "zod";
 
 export const COOP_PROTOCOL_VERSION = "m2a-1";
@@ -26,7 +27,7 @@ export const disconnectSchema = z.object({
 export const stateSnapshotSchema = z.object({
   type: z.literal("state-snapshot"),
   turn: z.number().int().min(0),
-  payload: z.unknown(),
+  payload: battleSnapshotSchema,
 });
 
 export const requestCommandSchema = z.object({

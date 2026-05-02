@@ -1,5 +1,8 @@
+import type { BattleScene } from "#app/battle-scene";
 import { COOP_PROTOCOL_VERSION, type Envelope } from "#app/multiplayer/network/messages";
 import { generateRoomCode, isValidRoomCode, normalizeRoomCode } from "#app/multiplayer/network/room-code";
+import { projectSnapshot } from "#app/multiplayer/network/snapshot";
+import { SnapshotStore } from "#app/multiplayer/network/snapshot-store";
 import { TrysteroTransport, type TrysteroTransportOptions } from "#app/multiplayer/network/transport";
 import Phaser from "phaser";
 
@@ -27,10 +30,12 @@ export interface CoopSessionOptions {
 
 export class CoopSession extends Phaser.Events.EventEmitter {
   public static readonly STATE_CHANGE = "state-change";
+  public static readonly SNAPSHOT_UPDATE = "snapshot-update";
 
   private readonly transportFactory: TransportFactory;
   private readonly joinTimeoutMs: number;
   private readonly protocolVersion: string;
+  private readonly snapshotStore = new SnapshotStore();
 
   private state: CoopState = { kind: "IDLE" };
   private transport: TrysteroTransport | null = null;
@@ -45,6 +50,28 @@ export class CoopSession extends Phaser.Events.EventEmitter {
 
   getState(): CoopState {
     return this.state;
+  }
+
+  getSnapshotStore(): SnapshotStore {
+    return this.snapshotStore;
+  }
+
+  isHost(): boolean {
+    return this.state.kind === "CONNECTED" && this.state.role === "host";
+  }
+
+  async broadcastSnapshot(scene: BattleScene): Promise<void> {
+    if (!this.isHost() || !this.transport?.isOpen()) {
+      return;
+    }
+    const payload = projectSnapshot(scene);
+    await this.transport
+      .sendEnvelope({
+        type: "state-snapshot",
+        turn: scene.currentBattle.turn,
+        payload,
+      })
+      .catch(() => {});
   }
 
   async host(): Promise<string> {
@@ -123,6 +150,7 @@ export class CoopSession extends Phaser.Events.EventEmitter {
   async destroy(): Promise<void> {
     await this.teardown();
     this.state = { kind: "IDLE" };
+    this.snapshotStore.clear();
     this.removeAllListeners();
   }
 
@@ -173,6 +201,11 @@ export class CoopSession extends Phaser.Events.EventEmitter {
       if (this.state.kind === "CONNECTED") {
         void this.teardown().then(() => this.setState({ kind: "IDLE" }));
       }
+      return;
+    }
+    if (envelope.type === "state-snapshot") {
+      this.snapshotStore.setSnapshot(envelope.payload, envelope.turn);
+      this.emit(CoopSession.SNAPSHOT_UPDATE, envelope.payload, envelope.turn);
       return;
     }
   }

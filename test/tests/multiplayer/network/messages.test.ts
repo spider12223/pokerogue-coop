@@ -107,7 +107,15 @@ describe("network messages", () => {
 describe("M2c envelope types", () => {
   describe("round-trips", () => {
     it("parses a state-snapshot message", () => {
-      const msg: StateSnapshotMessage = { type: "state-snapshot", turn: 3, payload: { foo: "bar" } };
+      const msg: StateSnapshotMessage = {
+        type: "state-snapshot",
+        turn: 3,
+        payload: {
+          field: { slot0: null, slot1: null, foe0: null, foe1: null },
+          weather: null,
+          recentLog: [],
+        },
+      };
       const result = envelopeSchema.safeParse(msg);
       expect(result.success).toBe(true);
       if (result.success && result.data.type === "state-snapshot") {
@@ -263,8 +271,124 @@ describe("M2c envelope types", () => {
     });
 
     it("rejects state-snapshot with negative turn", () => {
-      const raw = { type: "state-snapshot", turn: -1, payload: {} };
+      const raw = {
+        type: "state-snapshot",
+        turn: -1,
+        payload: {
+          field: { slot0: null, slot1: null, foe0: null, foe1: null },
+          weather: null,
+          recentLog: [],
+        },
+      };
       expect(envelopeSchema.safeParse(raw).success).toBe(false);
+    });
+
+    it("rejects state-snapshot with payload missing field key", () => {
+      const raw = {
+        type: "state-snapshot",
+        turn: 0,
+        payload: { weather: null, recentLog: [] },
+      };
+      expect(envelopeSchema.safeParse(raw).success).toBe(false);
+    });
+
+    it("rejects state-snapshot with a pokemon view that has negative hp", () => {
+      const raw = {
+        type: "state-snapshot",
+        turn: 0,
+        payload: {
+          field: {
+            slot0: {
+              id: 1,
+              species: 25,
+              name: "Pikachu",
+              level: 50,
+              hp: -1,
+              maxHp: 100,
+              status: null,
+              isShiny: false,
+              moves: [],
+            },
+            slot1: null,
+            foe0: null,
+            foe1: null,
+          },
+          weather: null,
+          recentLog: [],
+        },
+      };
+      expect(envelopeSchema.safeParse(raw).success).toBe(false);
+    });
+
+    it("rejects state-snapshot with a pokemon view that has more than 4 moves", () => {
+      const raw = {
+        type: "state-snapshot",
+        turn: 0,
+        payload: {
+          field: {
+            slot0: {
+              id: 1,
+              species: 25,
+              name: "Pikachu",
+              level: 50,
+              hp: 100,
+              maxHp: 100,
+              status: null,
+              isShiny: false,
+              moves: [
+                { id: 1, name: "M1", ppRemaining: 35, ppMax: 35 },
+                { id: 2, name: "M2", ppRemaining: 35, ppMax: 35 },
+                { id: 3, name: "M3", ppRemaining: 35, ppMax: 35 },
+                { id: 4, name: "M4", ppRemaining: 35, ppMax: 35 },
+                { id: 5, name: "M5", ppRemaining: 35, ppMax: 35 },
+              ],
+            },
+            slot1: null,
+            foe0: null,
+            foe1: null,
+          },
+          weather: null,
+          recentLog: [],
+        },
+      };
+      expect(envelopeSchema.safeParse(raw).success).toBe(false);
+    });
+
+    it("parses a state-snapshot with a populated PokemonView and weather", () => {
+      const raw: StateSnapshotMessage = {
+        type: "state-snapshot",
+        turn: 5,
+        payload: {
+          field: {
+            slot0: {
+              id: 7,
+              species: 25,
+              name: "Pikachu",
+              level: 50,
+              hp: 80,
+              maxHp: 100,
+              status: 1,
+              isShiny: true,
+              moves: [
+                { id: 33, name: "Tackle", ppRemaining: 30, ppMax: 35 },
+                { id: 45, name: "Growl", ppRemaining: 40, ppMax: 40 },
+              ],
+            },
+            slot1: null,
+            foe0: null,
+            foe1: null,
+          },
+          weather: { type: 2, turnsRemaining: 3 },
+          recentLog: ["Wild Pidgey appeared!", "Pikachu used Tackle!"],
+        },
+      };
+      const result = envelopeSchema.safeParse(raw);
+      expect(result.success).toBe(true);
+      if (result.success && result.data.type === "state-snapshot") {
+        expect(result.data.payload.field.slot0?.id).toBe(7);
+        expect(result.data.payload.weather?.type).toBe(2);
+        expect(result.data.payload.recentLog).toHaveLength(2);
+      }
     });
   });
 });
