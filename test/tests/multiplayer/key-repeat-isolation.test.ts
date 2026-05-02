@@ -6,11 +6,12 @@ import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
 import type { CommandPhase } from "#phases/command-phase";
 import { GameManager } from "#test/framework/game-manager";
 import { InputsHandler } from "#test/framework/inputs-handler";
+import { holdOn } from "#test/utils/game-manager-utils";
 import type { CommandUiHandler } from "#ui/command-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
+describe("Multiplayer: held-key isolation across slot transition (hot-seat)", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
 
@@ -33,54 +34,54 @@ describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
 
   afterEach(() => {
     game.inputsHandler?.destroy();
+    game.scene.input.keyboard?.emit("keyup", { keyCode: CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN });
   });
 
-  it("drops a P2 keymap key during P1's CommandPhase (cursor unchanged)", async () => {
-    await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
-
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.is("CommandPhase")).toBe(true);
-    expect(phase.getFieldIndex()).toBe(0);
-
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
-
-    await game.inputsHandler.pressKeyboardKeyForSlot(1, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_S, 50);
-
-    expect(handler.getCursor()).toBe(cursorBefore);
-  });
-
-  it("accepts a P1 keymap key during P1's CommandPhase (cursor changes)", async () => {
-    await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
-
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.getFieldIndex()).toBe(0);
-
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-
-    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
-
-    expect(handler.getCursor()).toBe(Command.POKEMON);
-  });
-
-  it("drops a P1 keymap key during P2's CommandPhase (cursor unchanged)", async () => {
+  it("P1 holding a key across slot transition does not bleed into slot 1's cursor", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
     const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    expect(phase0.getFieldIndex()).toBe(0);
+
+    const handler = game.scene.ui.getHandler() as CommandUiHandler;
+    handler.setCursor(Command.FIGHT);
+
+    game.scene.input.keyboard?.emit("keydown", { keyCode: CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN });
+    expect(handler.getCursor()).toBe(Command.POKEMON);
+
     phase0.handleCommand(Command.FIGHT, 2);
 
     await game.phaseInterceptor.to("CommandPhase", true);
     const phase1 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
     expect(phase1.getFieldIndex()).toBe(1);
 
+    const slot1CursorBefore = handler.getCursor();
+    expect(slot1CursorBefore).toBe(Command.FIGHT);
+
+    await holdOn(350);
+
+    expect(handler.getCursor()).toBe(slot1CursorBefore);
+  });
+
+  it("P1's repeat timer is cleared after slot transition (no stale events queued)", async () => {
+    await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
+
+    const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
     const handler = game.scene.ui.getHandler() as CommandUiHandler;
     handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
 
-    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
+    game.scene.input.keyboard?.emit("keydown", { keyCode: CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN });
+    phase0.handleCommand(Command.FIGHT, 2);
 
-    expect(handler.getCursor()).toBe(cursorBefore);
+    await game.phaseInterceptor.to("CommandPhase", true);
+
+    await holdOn(300);
+
+    const slot1CursorAfterRepeat = handler.getCursor();
+    expect(slot1CursorAfterRepeat).toBe(Command.FIGHT);
+
+    await holdOn(300);
+
+    expect(handler.getCursor()).toBe(Command.FIGHT);
   });
 });

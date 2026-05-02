@@ -2,15 +2,13 @@ import Overrides from "#app/overrides";
 import { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
-import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
 import type { CommandPhase } from "#phases/command-phase";
 import { GameManager } from "#test/framework/game-manager";
 import { InputsHandler } from "#test/framework/inputs-handler";
-import type { CommandUiHandler } from "#ui/command-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
+describe("Multiplayer: turn resolution gating (hot-seat)", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
 
@@ -35,37 +33,36 @@ describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
     game.inputsHandler?.destroy();
   });
 
-  it("drops a P2 keymap key during P1's CommandPhase (cursor unchanged)", async () => {
+  it("queue holds at CommandPhase(1) after only slot 0 commits", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.is("CommandPhase")).toBe(true);
-    expect(phase.getFieldIndex()).toBe(0);
+    const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    expect(phase0.getFieldIndex()).toBe(0);
+    phase0.handleCommand(Command.FIGHT, 2);
 
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
+    await game.phaseInterceptor.to("CommandPhase", true);
 
-    await game.inputsHandler.pressKeyboardKeyForSlot(1, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_S, 50);
+    const current = game.scene.phaseManager.getCurrentPhase();
+    expect(current.is("CommandPhase")).toBe(true);
+    expect((current as CommandPhase).getFieldIndex()).toBe(1);
 
-    expect(handler.getCursor()).toBe(cursorBefore);
+    expect(game.scene.currentBattle.turnCommands[0]?.command).toBe(Command.FIGHT);
+    expect(game.scene.currentBattle.turnCommands[1]).toBeNull();
   });
 
-  it("accepts a P1 keymap key during P1's CommandPhase (cursor changes)", async () => {
+  it("does not reach TurnStartPhase before slot 1 commits", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.getFieldIndex()).toBe(0);
+    const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    phase0.handleCommand(Command.FIGHT, 2);
 
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
+    await game.phaseInterceptor.to("CommandPhase", true);
 
-    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
-
-    expect(handler.getCursor()).toBe(Command.POKEMON);
+    expect(game.phaseInterceptor.log).not.toContain("TurnStartPhase");
+    expect(game.phaseInterceptor.log).not.toContain("EnemyCommandPhase");
   });
 
-  it("drops a P1 keymap key during P2's CommandPhase (cursor unchanged)", async () => {
+  it("queue advances past command phases once both slots commit", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
     const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
@@ -74,13 +71,14 @@ describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
     await game.phaseInterceptor.to("CommandPhase", true);
     const phase1 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
     expect(phase1.getFieldIndex()).toBe(1);
+    phase1.handleCommand(Command.FIGHT, 2);
 
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
+    await game.phaseInterceptor.to("MovePhase", false);
 
-    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
-
-    expect(handler.getCursor()).toBe(cursorBefore);
+    const current = game.scene.phaseManager.getCurrentPhase();
+    expect(current.is("MovePhase")).toBe(true);
+    expect(game.phaseInterceptor.log).toContain("TurnStartPhase");
+    expect(game.scene.currentBattle.turnCommands[0]?.command).toBe(Command.FIGHT);
+    expect(game.scene.currentBattle.turnCommands[1]?.command).toBe(Command.FIGHT);
   });
 });

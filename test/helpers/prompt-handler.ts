@@ -36,6 +36,7 @@ interface UIPrompt {
  */
 const endBySetMode: readonly PhaseString[] = [
   "CommandPhase",
+  "SelectTargetPhase",
   "TitlePhase",
   "SelectGenderPhase",
   "SelectStarterPhase",

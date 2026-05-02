@@ -45,17 +45,17 @@ describe("Inputs", () => {
   });
 
   it("keyboard - test input holding for 200ms - 1 input", async () => {
-    await game.inputsHandler.pressKeyboardKey(CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 200);
+    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 200);
     expect(game.inputsHandler.log.length).toBe(1);
   });
 
   it("keyboard - test input holding for 300ms - 2 input", async () => {
-    await game.inputsHandler.pressKeyboardKey(CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 300);
+    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 300);
     expect(game.inputsHandler.log.length).toBe(2);
   });
 
   it("keyboard - test input holding for 1000ms - 4 input", async () => {
-    await game.inputsHandler.pressKeyboardKey(CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 1050);
+    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_UP, 1050);
     expect(game.inputsHandler.log.length).toBe(5);
   });
 

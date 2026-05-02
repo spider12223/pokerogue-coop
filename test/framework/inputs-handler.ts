@@ -1,5 +1,6 @@
 import type { BattleScene } from "#app/battle-scene";
 import type { InputsController } from "#app/inputs-controller";
+import type { PlayerSlot } from "#app/multiplayer/input-role";
 import { TouchControl } from "#app/touch-controls";
 import { PAD_XBOX360 } from "#inputs/pad-xbox360";
 import { holdOn } from "#test/utils/game-manager-utils";
@@ -78,11 +79,21 @@ export class InputsHandler {
     });
   }
 
-  pressKeyboardKey(key: number, duration: number): Promise<void> {
+  pressKeyboardKeyForSlot(slot: PlayerSlot, key: number, duration: number): Promise<void> {
     return new Promise(async resolve => {
+      const otherIds = this.inputController
+        .getAllSources()
+        .filter(s => s.kind === "keyboard" && s.playerSlot !== slot)
+        .map(s => s.id);
+      for (const id of otherIds) {
+        this.inputController.setSourceEnabled(id, false);
+      }
       this.scene.input.keyboard?.emit("keydown", { keyCode: key });
       await holdOn(duration);
       this.scene.input.keyboard?.emit("keyup", { keyCode: key });
+      for (const id of otherIds) {
+        this.inputController.setSourceEnabled(id, true);
+      }
       resolve();
     });
   }

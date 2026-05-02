@@ -10,7 +10,7 @@ import type { CommandUiHandler } from "#ui/command-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
+describe("Multiplayer: CommandPhase cancel rollback (hot-seat)", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
 
@@ -35,37 +35,21 @@ describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
     game.inputsHandler?.destroy();
   });
 
-  it("drops a P2 keymap key during P1's CommandPhase (cursor unchanged)", async () => {
+  it("slot 0 cancel is a no-op (phase remains current)", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.is("CommandPhase")).toBe(true);
-    expect(phase.getFieldIndex()).toBe(0);
+    const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    expect(phase0.getFieldIndex()).toBe(0);
 
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
+    phase0.cancel();
 
-    await game.inputsHandler.pressKeyboardKeyForSlot(1, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_S, 50);
-
-    expect(handler.getCursor()).toBe(cursorBefore);
+    const after = game.scene.phaseManager.getCurrentPhase();
+    expect(after).toBe(phase0);
+    expect(after.is("CommandPhase")).toBe(true);
+    expect((after as CommandPhase).getFieldIndex()).toBe(0);
   });
 
-  it("accepts a P1 keymap key during P1's CommandPhase (cursor changes)", async () => {
-    await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
-
-    const phase = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
-    expect(phase.getFieldIndex()).toBe(0);
-
-    const handler = game.scene.ui.getHandler() as CommandUiHandler;
-    handler.setCursor(Command.FIGHT);
-
-    await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
-
-    expect(handler.getCursor()).toBe(Command.POKEMON);
-  });
-
-  it("drops a P1 keymap key during P2's CommandPhase (cursor unchanged)", async () => {
+  it("slot 1 cancel re-pushes both CommandPhases and lands on slot 0", async () => {
     await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
 
     const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
@@ -75,12 +59,36 @@ describe("Multiplayer: CommandPhase input gating (hot-seat)", () => {
     const phase1 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
     expect(phase1.getFieldIndex()).toBe(1);
 
+    phase1.cancel();
+
+    await game.phaseInterceptor.to("CommandPhase", true);
+    const newPhase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    expect(newPhase0.is("CommandPhase")).toBe(true);
+    expect(newPhase0.getFieldIndex()).toBe(0);
+    expect(newPhase0).not.toBe(phase0);
+  });
+
+  it("post-cancel, P1 input drives the new CommandPhase(0); P2 input is dropped", async () => {
+    await game.classicMode.startBattle(SpeciesId.RAYQUAZA, SpeciesId.GROUDON);
+
+    const phase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    phase0.handleCommand(Command.FIGHT, 2);
+
+    await game.phaseInterceptor.to("CommandPhase", true);
+    const phase1 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    phase1.cancel();
+
+    await game.phaseInterceptor.to("CommandPhase", true);
+    const newPhase0 = game.scene.phaseManager.getCurrentPhase() as CommandPhase;
+    expect(newPhase0.getFieldIndex()).toBe(0);
+
     const handler = game.scene.ui.getHandler() as CommandUiHandler;
     handler.setCursor(Command.FIGHT);
-    const cursorBefore = handler.getCursor();
+
+    await game.inputsHandler.pressKeyboardKeyForSlot(1, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_S, 50);
+    expect(handler.getCursor()).toBe(Command.FIGHT);
 
     await game.inputsHandler.pressKeyboardKeyForSlot(0, CFG_KEYBOARD_QWERTY.deviceMapping.KEY_ARROW_DOWN, 50);
-
-    expect(handler.getCursor()).toBe(cursorBefore);
+    expect(handler.getCursor()).toBe(Command.POKEMON);
   });
 });

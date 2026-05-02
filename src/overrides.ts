@@ -359,7 +359,7 @@ export const defaultOverrides = new DefaultOverrides();
 export default {
   ...defaultOverrides,
   ...overrides,
-} satisfies InstanceType<typeof DefaultOverrides>;
+} as InstanceType<typeof DefaultOverrides>;
 
 export type BattleStyle = "double" | "single" | "even-doubles" | "odd-doubles";
 
