@@ -31,6 +31,9 @@ export interface CoopSessionOptions {
 export class CoopSession extends Phaser.Events.EventEmitter {
   public static readonly STATE_CHANGE = "state-change";
   public static readonly SNAPSHOT_UPDATE = "snapshot-update";
+  public static readonly REQUEST_COMMAND_RECEIVED = "request-command-received";
+  public static readonly CHOOSE_COMMAND_RECEIVED = "choose-command-received";
+  public static readonly CANCEL_COMMAND_REQUEST_RECEIVED = "cancel-command-request-received";
 
   private readonly transportFactory: TransportFactory;
   private readonly joinTimeoutMs: number;
@@ -72,6 +75,13 @@ export class CoopSession extends Phaser.Events.EventEmitter {
         payload,
       })
       .catch(() => {});
+  }
+
+  async sendEnvelope(envelope: Envelope, targetPeer?: string): Promise<void> {
+    if (!this.transport?.isOpen()) {
+      return;
+    }
+    await this.transport.sendEnvelope(envelope, targetPeer).catch(() => {});
   }
 
   async host(): Promise<string> {
@@ -206,6 +216,18 @@ export class CoopSession extends Phaser.Events.EventEmitter {
     if (envelope.type === "state-snapshot") {
       this.snapshotStore.setSnapshot(envelope.payload, envelope.turn);
       this.emit(CoopSession.SNAPSHOT_UPDATE, envelope.payload, envelope.turn);
+      return;
+    }
+    if (envelope.type === "request-command") {
+      this.emit(CoopSession.REQUEST_COMMAND_RECEIVED, envelope);
+      return;
+    }
+    if (envelope.type === "choose-command") {
+      this.emit(CoopSession.CHOOSE_COMMAND_RECEIVED, envelope);
+      return;
+    }
+    if (envelope.type === "cancel-command-request") {
+      this.emit(CoopSession.CANCEL_COMMAND_REQUEST_RECEIVED, envelope);
       return;
     }
   }

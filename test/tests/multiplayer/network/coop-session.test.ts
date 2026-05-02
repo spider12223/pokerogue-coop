@@ -396,3 +396,85 @@ describe("CoopSession snapshot routing", () => {
     expect(session.getSnapshotStore().getCurrent()?.turn).toBe(3);
   });
 });
+
+describe("CoopSession command envelope routing", () => {
+  async function makeConnectedSession() {
+    const transports: FakeTransport[] = [];
+    const session = new CoopSession({
+      transportFactory: (opts: TrysteroTransportOptions) => {
+        const fake = makeFakeTransport(opts);
+        transports.push(fake);
+        return fake as unknown as TrysteroTransport;
+      },
+      joinTimeoutMs: 30_000,
+    });
+    await session.host();
+    const t = transports[0];
+    t.triggerPeerJoin("peer-J");
+    t.triggerEnvelope({ type: "hello", version: COOP_PROTOCOL_VERSION, role: "joiner" }, "peer-J");
+    return { session, transport: t };
+  }
+
+  it("emits REQUEST_COMMAND_RECEIVED when a request-command envelope arrives", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.REQUEST_COMMAND_RECEIVED, handler);
+    const env = {
+      type: "request-command" as const,
+      requestId: "req-1",
+      fieldIndex: 1 as const,
+      snapshotTurn: 0,
+      allowedCommands: ["FIGHT" as const],
+      forcedKind: null,
+    };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("emits CHOOSE_COMMAND_RECEIVED when a choose-command envelope arrives", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.CHOOSE_COMMAND_RECEIVED, handler);
+    const env = {
+      type: "choose-command" as const,
+      requestId: "req-1",
+      command: { kind: "RUN" as const },
+    };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("emits CANCEL_COMMAND_REQUEST_RECEIVED when a cancel-command-request envelope arrives", async () => {
+    const { session, transport } = await makeConnectedSession();
+    const handler = vi.fn();
+    session.on(CoopSession.CANCEL_COMMAND_REQUEST_RECEIVED, handler);
+    const env = {
+      type: "cancel-command-request" as const,
+      requestId: "req-1",
+      reason: "host timeout",
+    };
+    transport.triggerEnvelope(env, "peer-J");
+    expect(handler).toHaveBeenCalledWith(env);
+  });
+
+  it("sendEnvelope routes through transport.sendEnvelope when CONNECTED", async () => {
+    const { session, transport } = await makeConnectedSession();
+    transport.sendEnvelope.mockClear();
+    const env = { type: "ping" as const, nonce: 42 };
+    await session.sendEnvelope(env);
+    expect(transport.sendEnvelope).toHaveBeenCalledWith(env, undefined);
+  });
+
+  it("sendEnvelope is a no-op when transport is closed", async () => {
+    const { session } = await makeConnectedSession();
+    await session.disconnect();
+    await expect(session.sendEnvelope({ type: "ping", nonce: 1 })).resolves.toBeUndefined();
+  });
+
+  it("sendEnvelope to a specific peer forwards the targetPeer arg", async () => {
+    const { session, transport } = await makeConnectedSession();
+    transport.sendEnvelope.mockClear();
+    await session.sendEnvelope({ type: "ping", nonce: 1 }, "peer-J");
+    expect(transport.sendEnvelope).toHaveBeenCalledWith({ type: "ping", nonce: 1 }, "peer-J");
+  });
+});
