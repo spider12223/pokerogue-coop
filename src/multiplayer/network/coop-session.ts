@@ -142,9 +142,7 @@ export class CoopSession extends Phaser.Events.EventEmitter {
     if (!this.transport?.isOpen()) {
       return;
     }
-    void this.transport
-      .sendEnvelope({ type: "hello", version: this.protocolVersion, role }, peerId)
-      .catch(() => {});
+    void this.transport.sendEnvelope({ type: "hello", version: this.protocolVersion, role }, peerId).catch(() => {});
   }
 
   private onPeerLeave(_peerId: string): void {
