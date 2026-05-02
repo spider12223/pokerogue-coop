@@ -14,6 +14,7 @@ import { initGlobalScene } from "#app/global-scene";
 import { starterColors } from "#app/global-vars/starter-colors";
 import { InputsController } from "#app/inputs-controller";
 import { LoadingScene } from "#app/loading-scene";
+import { CoopSession } from "#app/multiplayer/network/coop-session";
 import Overrides from "#app/overrides";
 import type { Phase } from "#app/phase";
 import { PhaseManager } from "#app/phase-manager";
@@ -278,6 +279,7 @@ export class BattleScene extends SceneBase {
 
   /** A manager for the commands and moves used in the current battle. */
   public readonly turnCommandManager: TurnCommandManager = new TurnCommandManager();
+  public readonly coopSession: CoopSession = new CoopSession();
   public field: Phaser.GameObjects.Container;
   public fieldUI: Phaser.GameObjects.Container;
   public charSprite: CharSprite;

@@ -61,6 +61,8 @@ import { UnavailableModalUiHandler } from "#ui/unavailable-modal-ui-handler";
 import { executeIf } from "#utils/common";
 import i18next from "i18next";
 import { AdminUiHandler } from "./handlers/admin-ui-handler";
+import { CoopJoinFormUiHandler } from "./handlers/coop-join-form-ui-handler";
+import { CoopLobbyUiHandler } from "./handlers/coop-lobby-ui-handler";
 import { RenameRunFormUiHandler } from "./handlers/rename-run-ui-handler";
 
 const transitionModes = [
@@ -181,6 +183,8 @@ export class UI extends Phaser.GameObjects.Container {
       new AdminUiHandler(),
       new MysteryEncounterUiHandler(),
       new ChangePasswordFormUiHandler(),
+      new CoopLobbyUiHandler(),
+      new CoopJoinFormUiHandler(),
     ];
   }
 

@@ -20,6 +20,7 @@ import { getDailyRunStarterModifiers, regenerateModifierPoolThresholds } from "#
 import { vouchers } from "#system/voucher";
 import type { OptionSelectConfig, OptionSelectItem } from "#ui/abstract-option-select-ui-handler";
 import { SaveSlotUiMode } from "#ui/save-slot-select-ui-handler";
+import type { TitleUiHandler } from "#ui/title-ui-handler";
 import { isLocalServerConnected } from "#utils/common";
 import { getPokemonSpecies } from "#utils/pokemon-utils";
 import i18next from "i18next";
@@ -158,6 +159,14 @@ export class TitlePhase extends Phase {
         },
       },
       {
+        label: "Co-op",
+        handler: () => {
+          this.openCoopSubmenu();
+          return true;
+        },
+        keepOpen: true,
+      },
+      {
         label: i18next.t("menu:loadGame"),
         handler: () => {
           globalScene.ui.setOverlayMode(UiMode.SAVE_SLOT, SaveSlotUiMode.LOAD, (slotId: number) => {
@@ -193,6 +202,54 @@ export class TitlePhase extends Phase {
       yOffset: 47,
     };
     await globalScene.ui.setMode(UiMode.TITLE, config);
+  }
+
+  private openCoopSubmenu(): void {
+    const submenu: OptionSelectItem[] = [
+      {
+        label: "Host Co-op",
+        handler: () => {
+          void globalScene.coopSession.host().then(() => {
+            (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = true;
+            globalScene.ui.resetModeChain();
+            void globalScene.ui.setMode(UiMode.COOP_LOBBY);
+          });
+          return true;
+        },
+      },
+      {
+        label: "Join Co-op",
+        handler: () => {
+          globalScene.ui.setOverlayMode(
+            UiMode.COOP_JOIN_FORM,
+            {
+              buttonActions: [
+                (code: string) => {
+                  void globalScene.coopSession.join(code).then(() => {
+                    (globalScene.ui.handlers[UiMode.TITLE] as TitleUiHandler).suspended = true;
+                    globalScene.ui.resetModeChain();
+                    void globalScene.ui.setMode(UiMode.COOP_LOBBY);
+                  });
+                },
+                () => {
+                  globalScene.ui.revertMode();
+                },
+              ],
+            },
+            "",
+          );
+          return true;
+        },
+      },
+      {
+        label: i18next.t("menu:cancel"),
+        handler: () => {
+          globalScene.ui.revertMode();
+          return true;
+        },
+      },
+    ];
+    globalScene.ui.setOverlayMode(UiMode.OPTION_SELECT, { options: submenu });
   }
 
   // TODO: Make callers actually wait for the save slot to load

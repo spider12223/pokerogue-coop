@@ -30,6 +30,7 @@ export class TitleUiHandler extends OptionSelectUiHandler {
   private appVersionText: Phaser.GameObjects.Text;
 
   private titleStatsTimer: NodeJS.Timeout | null;
+  public suspended = false;
 
   /**
    * Returns the username of logged in user. If the username is hidden, the trainer name based on gender will be displayed.
@@ -117,6 +118,9 @@ export class TitleUiHandler extends OptionSelectUiHandler {
   }
 
   updateTitleStats(): void {
+    if (this.suspended) {
+      return;
+    }
     pokerogueApi
       .getGameTitleStats()
       .then(stats => {
@@ -162,6 +166,7 @@ export class TitleUiHandler extends OptionSelectUiHandler {
   }
 
   show(args: any[]): boolean {
+    this.suspended = false;
     const ret = super.show(args);
 
     if (!ret) {
