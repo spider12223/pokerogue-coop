@@ -20,8 +20,8 @@ This document is the single source of truth for the co-op multiplayer effort. It
 | **M1** | Hot-seat 2-player local: input gating in dual battles via two keyboard schemes, no networking | ✅ SHIPPED at commit `ef4041da` |
 | **M2a** | Co-op lobby pipe: title menu entry, room codes, Trystero handshake, "Connected" state. NO battle integration. | ✅ SHIPPED at commit `c49a105f` |
 | **M2b** | Public deploy of the fork so cross-machine smoke testing becomes possible | ✅ SHIPPED 2026-05-02 to `https://pokerogue-coop.netlify.app` (commit `714182bd86f` enabled guest mode; pivoted to Netlify after hitting Cloudflare Pages' 20,000-file deploy cap) |
-| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders via minimum-viable command panel | 🟡 IN PROGRESS — M2c.1 Foundation phase |
-| **M2d** | Full battle render parity on joiner side, animation sync, switch/baton support, snapshot diffing, edge-case polish | NOT STARTED |
+| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders via minimum-viable command panel | 🟢 FUNCTIONALLY SHIPPED — M2c.1-M2c.5 + M2c.6 phase A complete. Local dev two-tab co-op battle works end-to-end (joiner picks, host resolves, turn advances). Phases B (local prod build), C (netlify deploy), D (cross-internet) pending. Latest: `57ee83e0fc7` |
+| **M2d** | Full visual mirror on joiner side (real Phaser BattleScene render, sprites, animations, HP bars, weather, modifiers) — see Section 10 planning notes | NOT STARTED |
 
 ---
 
@@ -60,30 +60,51 @@ Live at **`https://pokerogue-coop.netlify.app`** as of 2026-05-02. Two-tab cross
 
 **Side note:** the asset pipeline trick is in [src/plugins/vite/vite-minify-json-plugin.ts:93-100](../src/plugins/vite/vite-minify-json-plugin.ts#L93). Despite its name, the plugin recursively copies `./assets/` and `./locales/` into `dist/` during build. Vite's `publicDir` is set to `false` for the build command, so Vite's normal public copy doesn't fire.
 
-### M2c — Networked play (IN PROGRESS, M2c.1 phase)
+### M2c — Networked play (FUNCTIONALLY SHIPPED, smoke phases B/C/D pending)
 
-Architecture is designed in M1 — `CommandSource` is the abstraction. M2a's `CoopSession` provides the transport. M2c's job:
-- Plug a `NetworkCommandSource` into the joiner's slot on the host side.
-- Host pushes state snapshots to joiner over Trystero.
-- When host's `CommandPhase` fires for slot 1, host sends a `request-command` envelope; joiner UI opens; joiner sends `choose-command` back; host calls `phase.handleCommand(...)` with the network-delivered command.
-- Joiner renders a **minimum-viable command panel** (text + HP bars + move buttons), NOT a full battle mirror. Full mirror is M2d.
+**Phase commits:**
+| Phase | Commit | Scope |
+|---|---|---|
+| M2c.1 Foundation | `b95cfcaccc1` | Envelope types, NetworkCommandSource skeleton, TurnCommandManager coop init |
+| M2c.2 State Snapshot | `d8a620532d1` | `projectSnapshot()` pure function, SnapshotStore, snapshot-update event, schema narrowing |
+| M2c.3 Command Roundtrip | `127415cce90` | NetworkCommandSource state machine, timeout, bot-fill, cancel-rollback |
+| M2c.4 Joiner UI | `8eabae027c3` | CoopCommandPanelLogic, CoopCommandPanelUiHandler, target picker, MessageLog capture, multi-target default fix |
+| M2c.5 Run Integration | `cbfe823aaab` | Start Co-op Run button, joiner panel entry via TitlePhase ui mode juggling, run-end protocol, disconnect handling, FakeCoopSession integration tests |
+| M2c.6 Phase A fix | `57ee83e0fc7` | Title UI bleed-through fix: `TitleUiHandler.clear()` called when entering co-op run |
 
-**Phasing (each phase = one commit, tests green before next phase):**
+**M2c.6 Phase A — Local dev two-tab smoke (PASSED 2026-05-02):**
+- `pnpm start:dev`, two browser tabs (regular + incognito) at `localhost:8000`
+- Co-op → Host on A, Co-op → Join with code on B → both reach Connected
+- A clicks ACTION on lobby → Start Co-op Run flow:
+  - A enters new game (starter select, etc.)
+  - B's UI flips to COOP_COMMAND_PANEL automatically
+- First battle: A picks for slot 0 via local UI; B's panel shows foes / ally / self / moves with PP / RUN button / log lines
+- B picks a move → host's slot 1 CommandPhase resolves → turn advances on both sides
+- **Initial bug found and fixed:** title menu options (Continue/New Game/Co-op/etc.) bled through onto the battle UI on host side because `TitleUiHandler.clear()` was never called when transitioning to a co-op run. Fixed by replacing the wrong `suspended = false` line in `startCoopRun` with a direct `clear()` call. Plus defensive `clear()` in `TitlePhase.start()` CONNECTED branch for post-run safety.
 
-| Phase | Scope |
-|---|---|
-| **M2c.1 Foundation** | New envelope types + zod schemas; `NetworkCommandSource` skeleton class; `coopMode` field on BattleScene; `Overrides.COOP_NETWORKED_OVERRIDE` + `Overrides.COOP_BOT_FILL_JOINER`; `TurnCommandManager.initCoopHost` / `initCoopJoiner` + `refreshFromOverrides` extension; tests |
-| **M2c.2 State Snapshot** | `projectSnapshot()` pure function in `snapshot.ts`; `state-snapshot` envelope wiring host-side (send) + joiner-side (receive, store); tests |
-| **M2c.3 Command Request Roundtrip** | Full `NetworkCommandSource.requestCommand` send-and-await; timeout machinery; CANCEL re-issue; bot-fill-joiner short-circuit; full integration test |
-| **M2c.4 Joiner UI** | New `CoopCommandPanelUiHandler` (new UiMode); subscribes to coopSession events; move/switch/run buttons; target select overlay; idle state |
-| **M2c.5 Run Start/End Integration** | "Start Co-op Run" button on lobby (host-only); `start-run` envelope; lobby ↔ run transitions on both peers; GameOverPhase → COOP_LOBBY routing |
-| **M2c.6 Smoke + Polish** | Full test suite green; two-tab browser smoke; deploy to Netlify; cross-internet smoke; bug fixes that surface |
+**Test count progression** (production tests across the project):
+| Milestone | Tests | Files |
+|---|---|---|
+| M1 final | 4255 | 442 |
+| M2a final | 4333 | 446 |
+| M2c.1 | 4366 | 448 |
+| M2c.2 | 4389 | 450 |
+| M2c.3 | 4415 | 450 |
+| M2c.4 | 4443 | 452 |
+| M2c.5 | 4463 | 453 |
+| **Current** | **4463** | **453** |
 
-**M2c scope: FIGHT and RUN only for joiner.** Switch/Pokémon command, Pokeball, Tera, Mega all deferred to M2d. (See Section 4 sub-decision M2c.S5 below.)
+**Remaining for M2c "shipped" tag:**
+1. **Phase B** — Local production build (`pnpm build` + `pnpm preview` at `localhost:4173`). Re-run phase A. Catches build-mode-only bugs (tree-shaking, name mangling, env var differences).
+2. **Phase C** — Netlify deploy verification. Push triggers auto-deploy to `https://pokerogue-coop.netlify.app`. Re-run phase A on the deployed URL.
+3. **Phase D** — Cross-internet smoke test. Send the netlify URL to a friend on a different ISP. Connect, play, confirm Trystero/Nostr handshake works across real WebRTC.
+4. **Final commit** — `M2c shipped: networked co-op battle play.` after D passes.
 
-### M2d — Polish (NOT STARTED)
+**M2c scope: FIGHT and RUN only for joiner.** Switch/Pokémon command, Pokeball, Tera, Mega all deferred to M2d (see Section 4 sub-decision M2c.S5 and Section 10 planning notes).
 
-Switch/Pokémon command for joiner; Pokeball/Tera/Mega; full battle render parity (sprites, animations, weather visuals, type-effectiveness hints); snapshot diffing protocol; reconnect-after-drop with grace period; mystery encounter joiner participation (currently host-only). No detailed design yet.
+### M2d — Full Visual Mirror (NOT STARTED — see Section 10)
+
+Switch/Pokémon command for joiner; Pokeball/Tera/Mega; full battle render parity (real Phaser BattleScene with sprites, animations, weather visuals, modifier UI, type-effectiveness hints); snapshot diffing protocol; reconnect-after-drop with grace period; mystery encounter joiner participation (currently host-only). Detailed planning notes in Section 10 below; no code yet.
 
 ---
 
@@ -318,4 +339,104 @@ Items resolved during M2c planning (2026-05-02) are now in Section 4 sub-decisio
 
 ---
 
-*Document last updated 2026-05-02, after M2b shipped to https://pokerogue-coop.netlify.app and the M2c plan was finalized with Q1-Q8 resolved as sub-decisions M2c.S1-M2c.S11 in Section 4. Current phase: M2c.1 Foundation, awaiting spec approval before production code.*
+## SECTION 10 — M2D FULL VISUAL MIRROR — STRATEGY (PLANNING NOTES)
+
+This section is forward-looking. No code yet. Read before designing M2d implementation.
+
+### Why M2c uses text-only joiner UI
+
+Per **decision M2c.S1** (the (c) variant — "decision deferred"), M2c shipped a minimum-viable command panel: text-based rendering with HP bars, move buttons, opponent labels, and recent log lines. **No sprites, no animations, no weather visuals, no modifier UI.** The asymmetric UX is real but acceptable for an MVP — joiner can make every move-decision needed without seeing the visual battle.
+
+The data needed for full visual rendering is mostly in `BattleSnapshot` already (`field` slots with species, HP, status, moves; weather; recentLog). What's missing is the *rendering pipeline on joiner* and the *event-stream protocol* for animations/transitions.
+
+### What M2d adds
+
+The joiner should see the host's actual Phaser `BattleScene` rendered against the snapshot data — not a recreated mini-game, but a faithful visual mirror:
+- **Pokémon sprites** on field: slot 0, slot 1, foe 0, foe 1. Active poses, fainted states, status overlays (sleep, poison particles, etc.)
+- **HP bar widgets** that animate when HP changes (smooth tween from old HP to new)
+- **Battle log scrolling** that mirrors host's message flow at the same pace
+- **Move animations** when a pokémon attacks — the actual Phaser animations the host plays
+- **Weather effects** (rain particles, sun glare, sandstorm overlay)
+- **Modifier UI** — held items, multi-hit counters, charge states (Solar Beam, Bide, etc.)
+- **Switch/baton animations** when pokémon swap in/out
+- **Faint animations** + return-to-pokeball
+- **Mystery encounter scenes** (NPC dialogues, item rewards) — currently host-only; joiner observes via M2d
+- **Pokeball / Tera / Mega button** support on joiner panel (currently deferred per M2c.S5)
+- **Switch (Pokémon) command** support on joiner panel — joiner can pick a switch from party (M2c.S5 deferred)
+
+### The data is mostly there; the rendering is the work
+
+`BattleSnapshot` (M2c.2) carries:
+- field positions with PokemonView (id, species, name, level, hp, maxHp, status, isShiny, moves with PP)
+- weather (type, turnsRemaining)
+- recentLog (last 5 messages)
+
+For full mirror, snapshots get extended with:
+- Active modifiers per pokémon (held items, multi-hit counters, charge, etc.)
+- Stat stages (atk +1, spe -2, etc.)
+- Battler tags (substitute, reflect, light screen, etc.)
+- Field effects (entry hazards, terrain, screens, traps)
+- Animation/event hints for the rendering pipeline
+
+The renderer is the harder part: **joiner needs to drive its own `BattleScene` against the host's state**, but joiner's BattleScene isn't running phases. We'd need a `MirrorBattleScene` (or equivalent) that renders state without simulating turns. Big architectural piece.
+
+### Risk areas
+
+The hardest problems in M2d, in roughly likely-to-bite order:
+
+1. **Animation timing drift between host and joiner.** Host plays a Tackle animation over 800ms; joiner plays one too — but starts on a slight delay (due to network latency) and may finish at a different time. If the *next* turn's request-command arrives on joiner before the previous animation completes, the panel state is stale. **Need:** event-stream protocol that joiner can buffer and play in order, with host waiting for joiner's "ready for next event" ack OR joiner skipping to current state if it falls behind.
+
+2. **Partial mid-animation states.** Host sends a snapshot at "after Tackle, before HP tick"; joiner renders that state but the sprite is still mid-Tackle locally. Needs the joiner's BattleScene to know "I'm rendering the FROM state" vs "I'm rendering the TO state".
+
+3. **Coarse snapshots are insufficient for animations.** A snapshot says "foe Pidgey HP went from 100 to 65" — but the visual needs "Pikachu lunges → Pidgey takes hit → HP bar animates from 100 to 65 → particle effect → message text scrolls". Host's BattleScene generates these events naturally; joiner needs them serialized. **Needs an event-stream envelope type:** `battle-event` with discriminated kinds (`move-used`, `damage-dealt`, `status-applied`, `pokemon-fainted`, `weather-changed`, `modifier-added`, `message-shown`, etc.). Likely the biggest design item in M2d.
+
+4. **Sprite asset loading on joiner.** When a battle starts on host, host loads the Pokemon sprites for the encounter. On joiner, those sprites need to be loaded too. The joiner's BattleScene asset loading must fire on `state-snapshot` arrival (or `start-run`), not on a phase that joiner isn't running. **Needs:** rework of LoadingScene for joiner mode to load assets on-demand from snapshot data.
+
+5. **Out-of-order Trystero delivery.** Trystero/WebRTC data channels are ordered per-channel, but if we use multiple channels (e.g. envelopes + animation events), ordering between channels isn't guaranteed. M2c uses a single `"msg"` action so ordering is fine — but M2d may need to keep that constraint or build a sequence-number system.
+
+6. **Modifier UI rendering.** Host's modifier UI (held items, X tokens, etc.) is computed from BattleScene state. Joiner needs the modifier list in the snapshot AND the UI handler to render it. Modifier sprites get loaded on demand — same asset-loading concern as sprites.
+
+7. **Edge cases that bite specifically on joiner side:**
+   - **Evolutions:** trigger an evolution scene on host. Joiner needs the same scene played out. New envelope type or embed in event stream.
+   - **Faints:** the visual sequence is multiple animations chained. Faint → return → switch in.
+   - **Switches:** baton vs normal. Animation differs.
+   - **Mystery Encounters:** non-battle UI flows. Joiner currently skips entirely (M2c.S8). M2d would need joiner to render the ME UI in observer mode.
+   - **Dialogue boxes:** host-driven message flow. Joiner currently sees only the last 5 messages in `recentLog`; M2d needs full message playback.
+
+### Likely M2d phases
+
+Detailed design discussion needed before code. Tentative phasing (subject to revision):
+
+- **M2d.1 — Joiner BattleScene scaffolding.** New `MirrorBattleScene` or extend existing scene with `coopMode === "joiner"` branches. Sprite render against snapshot data. No animations yet — just static field state.
+- **M2d.2 — Battle event envelope.** New `battle-event` envelope type with discriminated kinds (move-used, damage-dealt, faint, status, weather, etc.). Host pushes events as they happen. Joiner buffers and plays.
+- **M2d.3 — Animation playback on joiner.** Joiner's MirrorBattleScene consumes battle-events and triggers Phaser animations. Includes HP bar tween, status overlays, basic move animations.
+- **M2d.4 — Modifier UI + edge cases.** Joiner renders modifiers, handles faint sequences, baton switches, evolutions. The "everything else" phase.
+- **M2d.5 — Mystery encounters.** Joiner observes ME UIs in passive mode. Probably 1-2 weeks alone.
+- **M2d.6 — Snapshot diffing.** Optimization. Replace full-snapshot-every-event with diff-based updates. Reduces bandwidth. Only do if M2c.6 cross-internet smoke shows pain.
+- **M2d.7 — Switch/Pokeball/Tera/Mega on joiner panel.** Adds the deferred command kinds from M2c.S5.
+- **M2d.8 — Reconnect grace period.** Trystero auto-reconnect on peer drop, 30s grace. Per M2c.S10 deferral.
+
+### Estimate
+
+**2-3 weeks of evening builds.** Bigger than M2c (which was ~5 days of solid work). The complexity is real:
+- M2d.1-M2d.3 are the meat and probably 60% of the time.
+- M2d.4 is a long tail of edge cases.
+- M2d.5 (mystery encounters) is its own beast.
+- M2d.6-M2d.8 are smaller and could be skipped if not needed.
+
+### Recommendation for the next chat
+
+**Design discussion FIRST, then code.** Don't dive into M2d.1 implementation until the event envelope and animation strategy are spec'd:
+
+1. Read the M2c.1-M2c.5 commits to understand what's already wired (NetworkCommandSource, BattleSnapshot, CoopSession event-routing).
+2. Confirm the joiner's `BattleScene` approach vs a new `MirrorBattleScene`. Big architectural decision.
+3. Spec the `battle-event` envelope type — discriminated kinds, ordering guarantees, ack protocol.
+4. Decide on snapshot vs event-stream tradeoffs for each kind of state change. Some changes are best as snapshots (current HP, current weather), others as events (move played, status applied).
+5. Decide on the asset-loading flow for joiner — does it preload on `start-run`, or lazy-load per-snapshot?
+6. Then phase M2d.1 spec, get approval, write code.
+
+Same workflow as M2c: spec → approval → tests-first → impl → run suite → commit per phase.
+
+---
+
+*Document last updated 2026-05-02, after M2c.6 phase A passed local dev two-tab smoke. M2c functionally shipped; phases B (local prod build), C (netlify deploy), D (cross-internet) pending. Latest commit `57ee83e0fc7`. Next chat: complete M2c.6 B/C/D OR start M2d planning per Section 10 above.*
