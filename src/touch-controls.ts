@@ -156,16 +156,22 @@ export class TouchControl {
     switch (eventType) {
       case "keydown":
         this.events.emit("input_down", {
-          controller_type: "keyboard",
           button,
-          isTouch: true,
+          sourceId: "touch",
+          sourceKind: "touch",
+          playerSlot: 0,
+          timestamp: Date.now(),
+          isRepeat: false,
         });
         break;
       case "keyup":
         this.events.emit("input_up", {
-          controller_type: "keyboard",
           button,
-          isTouch: true,
+          sourceId: "touch",
+          sourceKind: "touch",
+          playerSlot: 0,
+          timestamp: Date.now(),
+          isRepeat: false,
         });
         break;
     }

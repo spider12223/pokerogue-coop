@@ -1,8 +1,14 @@
 import { globalScene } from "#app/global-scene";
+import type { PlayerSlot } from "#app/multiplayer/input-role";
+import type { InputSource, SourceId } from "#app/multiplayer/input-source";
+import { KeyboardInputSource } from "#app/multiplayer/keyboard-input-source";
+import Overrides from "#app/overrides";
 import { TouchControl } from "#app/touch-controls";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { UiMode } from "#enums/ui-mode";
+import { CFG_KEYBOARD_HOTSEAT_P1 } from "#inputs/cfg-keyboard-hotseat-p1";
+import { CFG_KEYBOARD_HOTSEAT_P2 } from "#inputs/cfg-keyboard-hotseat-p2";
 import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
 import { assign, getButtonWithKeycode, getIconForLatestInput, swap } from "#inputs/config-handler";
 import { PAD_DUALSHOCK } from "#inputs/pad-dualshock";
@@ -16,6 +22,7 @@ import type {
   CustomPadConfig,
   Interaction,
   InterfaceConfig,
+  KeyboardConfig,
   MappingSettingName,
   SelectedDevice,
 } from "#types/configs/inputs";
@@ -67,6 +74,9 @@ export class InputsController {
   private readonly inputInterval: NodeJS.Timeout[] = [];
   private touchControls: TouchControl;
   public moveTouchControlsHandler: MoveTouchControlsHandler;
+
+  private readonly sources: Map<SourceId, InputSource> = new Map();
+  private readonly slotToSourceIds: Map<PlayerSlot, SourceId[]> = new Map();
 
   /**
    * Initializes a new instance of the game control system, setting up initial state and configurations.
@@ -143,10 +153,89 @@ export class InputsController {
       }
 
       globalScene.input.gamepad?.on("down", this.gamepadButtonDown, this).on("up", this.gamepadButtonUp, this);
-      globalScene.input.keyboard?.on("keydown", this.keyboardKeyDown, this).on("keyup", this.keyboardKeyUp, this);
     }
     this.touchControls = new TouchControl();
     this.moveTouchControlsHandler = new MoveTouchControlsHandler(this.touchControls);
+
+    this.registerDefaultKeyboardSources();
+  }
+
+  private registerDefaultKeyboardSources(): void {
+    if (Overrides.LOCAL_HOTSEAT_OVERRIDE) {
+      this.registerSource(new KeyboardInputSource("kbd-p1", 0, CFG_KEYBOARD_HOTSEAT_P1));
+      this.registerSource(new KeyboardInputSource("kbd-p2", 1, CFG_KEYBOARD_HOTSEAT_P2));
+    } else {
+      this.registerSource(new KeyboardInputSource("kbd-p1", 0, this.getKeyboardConfigForSlot0()));
+    }
+  }
+
+  public refreshFromOverrides(): void {
+    for (const id of Array.from(this.sources.keys())) {
+      const source = this.sources.get(id);
+      if (source?.kind === "keyboard") {
+        this.unregisterSource(id);
+      }
+    }
+    this.registerDefaultKeyboardSources();
+  }
+
+  private getKeyboardConfigForSlot0(): KeyboardConfig {
+    this.ensureKeyboardIsInit();
+    const stored = this.configs[this.selectedDevice[Device.KEYBOARD]];
+    if (stored && stored.padType === "keyboard") {
+      return stored as KeyboardConfig;
+    }
+    return CFG_KEYBOARD_QWERTY;
+  }
+
+  public registerSource(source: InputSource): void {
+    if (this.sources.has(source.id)) {
+      this.unregisterSource(source.id);
+    }
+    this.sources.set(source.id, source);
+    const ids = this.slotToSourceIds.get(source.playerSlot) ?? [];
+    ids.push(source.id);
+    this.slotToSourceIds.set(source.playerSlot, ids);
+    source.attach(globalScene, this.events);
+  }
+
+  public unregisterSource(id: SourceId): void {
+    const source = this.sources.get(id);
+    if (!source) {
+      return;
+    }
+    source.detach();
+    this.sources.delete(id);
+    const ids = this.slotToSourceIds.get(source.playerSlot) ?? [];
+    const idx = ids.indexOf(id);
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+    }
+    this.slotToSourceIds.set(source.playerSlot, ids);
+  }
+
+  public getSource(id: SourceId): InputSource | undefined {
+    return this.sources.get(id);
+  }
+
+  public getSourcesForSlot(slot: PlayerSlot): InputSource[] {
+    const ids = this.slotToSourceIds.get(slot) ?? [];
+    return ids.map(id => this.sources.get(id)!).filter(Boolean);
+  }
+
+  public getAllSources(): readonly InputSource[] {
+    return Array.from(this.sources.values());
+  }
+
+  public setSourceEnabled(id: SourceId, enabled: boolean): void {
+    const source = this.sources.get(id);
+    if (!source) {
+      return;
+    }
+    source.enabled = enabled;
+    if (!enabled) {
+      source.releaseAll();
+    }
   }
 
   /**
@@ -158,6 +247,9 @@ export class InputsController {
   loseFocus(): void {
     this.deactivatePressedKey();
     this.touchControls.deactivatePressedKey();
+    for (const source of this.sources.values()) {
+      source.releaseAll();
+    }
   }
 
   /**
@@ -318,54 +410,6 @@ export class InputsController {
   }
 
   /**
-   * Handles the keydown event for the keyboard.
-   *
-   * @param event The keyboard event.
-   */
-  keyboardKeyDown(event: KeyboardEvent): void {
-    this.lastSource = "keyboard";
-    this.ensureKeyboardIsInit();
-    const buttonDown = getButtonWithKeycode(this.getActiveConfig(Device.KEYBOARD)!, event.keyCode);
-    if (buttonDown != null) {
-      if (this.buttonLock.includes(buttonDown)) {
-        return;
-      }
-      this.events.emit("input_down", {
-        controller_type: "keyboard",
-        button: buttonDown,
-      });
-      clearInterval(this.inputInterval[buttonDown]);
-      this.inputInterval[buttonDown] = setInterval(() => {
-        this.events.emit("input_down", {
-          controller_type: "keyboard",
-          button: buttonDown,
-        });
-      }, repeatInputDelayMillis);
-      this.buttonLock.push(buttonDown);
-    }
-  }
-
-  /**
-   * Handles the keyup event for the keyboard.
-   *
-   * @param event The keyboard event.
-   */
-  keyboardKeyUp(event: KeyboardEvent): void {
-    this.lastSource = "keyboard";
-    // Bang is safe here; can't receive keyboard input if no active keyboard
-    const buttonUp = getButtonWithKeycode(this.getActiveConfig(Device.KEYBOARD)!, event.keyCode);
-    if (buttonUp != null) {
-      this.events.emit("input_up", {
-        controller_type: "keyboard",
-        button: buttonUp,
-      });
-      const index = this.buttonLock.indexOf(buttonUp);
-      this.buttonLock.splice(index, 1);
-      clearInterval(this.inputInterval[buttonUp]);
-    }
-  }
-
-  /**
    * Handles button press events on a gamepad. This method sets the gamepad as chosen on the first input if no gamepad is currently chosen.
    * It checks if gamepad support is enabled and if the event comes from the chosen gamepad. If so, it maps the button press to a specific
    * action using a custom configuration, emits an event for the button press, and records the time of the action.
@@ -398,23 +442,28 @@ export class InputsController {
       if (this.buttonLock.includes(buttonDown)) {
         return;
       }
-      this.events.emit("input_down", {
-        controller_type: "gamepad",
-        button: buttonDown,
-      });
+      this.emitGamepad("input_down", buttonDown, false);
       clearInterval(this.inputInterval[buttonDown]);
       this.inputInterval[buttonDown] = setInterval(() => {
         if (!this.buttonLock.includes(buttonDown)) {
           clearInterval(this.inputInterval[buttonDown]);
           return;
         }
-        this.events.emit("input_down", {
-          controller_type: "gamepad",
-          button: buttonDown,
-        });
+        this.emitGamepad("input_down", buttonDown, true);
       }, repeatInputDelayMillis);
       this.buttonLock.push(buttonDown);
     }
+  }
+
+  private emitGamepad(name: "input_down" | "input_up", button: Button, isRepeat: boolean): void {
+    this.events.emit(name, {
+      button,
+      sourceId: "gamepad-default",
+      sourceKind: "gamepad",
+      playerSlot: 0,
+      timestamp: Date.now(),
+      isRepeat,
+    });
   }
 
   /**
@@ -437,10 +486,7 @@ export class InputsController {
     // Bang is safe here; can't receive gamepad input if no active gamepad
     const buttonUp = getButtonWithKeycode(this.getActiveConfig(Device.GAMEPAD)!, button.index);
     if (buttonUp !== undefined) {
-      this.events.emit("input_up", {
-        controller_type: "gamepad",
-        button: buttonUp,
-      });
+      this.emitGamepad("input_up", buttonUp, false);
       const index = this.buttonLock.indexOf(buttonUp);
       this.buttonLock.splice(index, 1);
       clearInterval(this.inputInterval[buttonUp]);
@@ -496,6 +542,9 @@ export class InputsController {
       clearInterval(value);
     }
     this.buttonLock = [];
+    for (const source of this.sources.values()) {
+      source.releaseAll();
+    }
   }
 
   /**

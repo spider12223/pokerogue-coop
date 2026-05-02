@@ -424,6 +424,8 @@ export class BattleScene extends SceneBase {
     this.inputController = new InputsController();
     this.uiInputs = new UiInputs(this.inputController);
 
+    this.turnCommandManager.initSinglePlayer();
+
     this.gameData = new GameData();
 
     addUiThemeOverrides();
@@ -1287,6 +1289,9 @@ export class BattleScene extends SceneBase {
    * @returns The newly created `Battle` instance.
    */
   public newBattle(fromSession?: SessionSaveData): Battle {
+    this.inputController?.refreshFromOverrides();
+    this.turnCommandManager.refreshFromOverrides();
+
     const props = this.getNewBattleProps(fromSession);
     const { waveIndex, mysteryEncounterType } = props;
     const resolved: NewBattleInitialProps = { waveIndex, mysteryEncounterType };

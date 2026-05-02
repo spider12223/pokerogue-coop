@@ -8,21 +8,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 describe("Inputs", () => {
   let phaserGame: Phaser.Game;
   let game: GameManager;
-  let originalDocument: Document;
 
   beforeAll(() => {
-    originalDocument = window.document;
     phaserGame = new Phaser.Game({
       type: Phaser.HEADLESS,
     });
   });
 
   afterEach(() => {
-    Object.defineProperty(window, "document", {
-      value: originalDocument,
-      configurable: true,
-      writable: true,
-    });
+    game.inputsHandler?.destroy();
   });
 
   beforeEach(() => {

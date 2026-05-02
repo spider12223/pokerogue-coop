@@ -34,6 +34,10 @@ export class SwitchPhase extends BattlePhase {
     this.doReturn = doReturn;
   }
 
+  getFieldIndex(): number {
+    return this.fieldIndex;
+  }
+
   start() {
     super.start();
 

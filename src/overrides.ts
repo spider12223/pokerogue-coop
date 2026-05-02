@@ -51,7 +51,14 @@ import type { IntClosedRange, TupleOf } from "type-fest";
  * }
  * ```
  */
-const overrides = {} satisfies Partial<InstanceType<OverridesType>>;
+const overrides = {
+  LOCAL_HOTSEAT_OVERRIDE: true,
+  BATTLE_STYLE_OVERRIDE: "double",
+  BATTLE_TYPE_OVERRIDE: BattleType.WILD,
+  DISABLE_STANDARD_TRAINERS_OVERRIDE: true,
+  STARTING_LEVEL_OVERRIDE: 100,
+  STARTING_WAVE_OVERRIDE: 1,
+} satisfies Partial<InstanceType<OverridesType>>;
 
 /**
  * If you need to add Overrides values for local testing do that inside {@linkcode overrides}
@@ -343,6 +350,8 @@ class DefaultOverrides {
 
   /** Force all random trainer types to be the provided type. */
   readonly RANDOM_TRAINER_OVERRIDE: RandomTrainerOverride | null = null;
+
+  readonly LOCAL_HOTSEAT_OVERRIDE: boolean = false;
 }
 
 export const defaultOverrides = new DefaultOverrides();

@@ -33,14 +33,11 @@ export class UiInputs {
   }
 
   detectInputMethod(evt): void {
-    if (evt.controller_type === "keyboard") {
-      //if the touch property is present and defined, then this is a simulated keyboard event from the touch screen
-      if (Object.hasOwn(evt, "isTouch") && evt.isTouch) {
-        globalScene.inputMethod = "touch";
-      } else {
-        globalScene.inputMethod = "keyboard";
-      }
-    } else if (evt.controller_type === "gamepad") {
+    if (evt.sourceKind === "touch") {
+      globalScene.inputMethod = "touch";
+    } else if (evt.sourceKind === "keyboard") {
+      globalScene.inputMethod = "keyboard";
+    } else if (evt.sourceKind === "gamepad") {
       globalScene.inputMethod = "gamepad";
     }
   }
@@ -50,6 +47,10 @@ export class UiInputs {
       "input_down",
       event => {
         this.detectInputMethod(event);
+
+        if (!globalScene.turnCommandManager.shouldAcceptInput(event)) {
+          return;
+        }
 
         const actions = this.getActionsKeyDown();
         if (!Object.hasOwn(actions, event.button)) {
@@ -63,6 +64,10 @@ export class UiInputs {
     this.events.on(
       "input_up",
       event => {
+        if (!globalScene.turnCommandManager.shouldAcceptInput(event)) {
+          return;
+        }
+
         const actions = this.getActionsKeyUp();
         if (!Object.hasOwn(actions, event.button)) {
           return;

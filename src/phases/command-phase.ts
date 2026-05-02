@@ -1,6 +1,7 @@
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import type { FieldSlotRole, PlayerSlot } from "#app/multiplayer/input-role";
 import { speciesStarterCosts } from "#balance/starters";
 import { TrappedTag } from "#data/battler-tags";
 import { getDailyEventSeedBoss } from "#data/daily-seed/daily-run";
@@ -186,15 +187,12 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
-    if (
-      globalScene.currentBattle.isBattleMysteryEncounter()
-      && globalScene.currentBattle.mysteryEncounter?.skipToFightInput
-    ) {
-      globalScene.ui.clearText();
-      globalScene.ui.setMode(UiMode.FIGHT, this.fieldIndex);
-    } else {
-      globalScene.ui.setMode(UiMode.COMMAND, this.fieldIndex);
-    }
+    const role: FieldSlotRole = {
+      kind: "field-slot",
+      fieldIndex: this.fieldIndex as PlayerSlot,
+    };
+    const source = globalScene.turnCommandManager.getCommandSource(role);
+    source.requestCommand(this);
   }
 
   /**

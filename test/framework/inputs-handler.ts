@@ -19,22 +19,52 @@ export class InputsHandler {
   public log: LogEntry[] = [];
   public logUp: LogEntry[] = [];
   private fakePad: Fakepad;
-  private fakeMobile: FakeMobile;
+  private fakeMobile: FakeMobile | null = null;
+  private readonly onDownListener: (event: any) => void;
+  private readonly onUpListener: (event: any) => void;
 
   constructor(scene: BattleScene) {
     this.scene = scene;
     this.inputController = this.scene.inputController;
     this.fakePad = new Fakepad(PAD_XBOX360);
-    this.fakeMobile = new FakeMobile();
     this.scene.input.gamepad?.gamepads.push(this.fakePad);
+    this.onDownListener = event => {
+      this.log.push({ type: "input_down", button: event.button });
+    };
+    this.onUpListener = event => {
+      this.logUp.push({ type: "input_up", button: event.button });
+    };
     this.init();
+  }
+
+  destroy(): void {
+    this.events?.off("input_down", this.onDownListener);
+    this.events?.off("input_up", this.onUpListener);
+    const gamepads = this.scene.input.gamepad?.gamepads;
+    if (gamepads) {
+      const idx = gamepads.indexOf(this.fakePad);
+      if (idx >= 0) {
+        gamepads.splice(idx, 1);
+      }
+    }
+    this.fakeMobile?.destroy();
+    this.fakeMobile = null;
+  }
+
+  private getFakeMobile(): FakeMobile {
+    if (!this.fakeMobile) {
+      this.fakeMobile = new FakeMobile();
+      new TouchControl();
+    }
+    return this.fakeMobile;
   }
 
   pressTouch(button: string, duration: number): Promise<void> {
     return new Promise(async resolve => {
-      this.fakeMobile.touchDown(button);
+      const mobile = this.getFakeMobile();
+      mobile.touchDown(button);
       await holdOn(duration);
-      this.fakeMobile.touchUp(button);
+      mobile.touchUp(button);
       resolve();
     });
   }
@@ -66,21 +96,8 @@ export class InputsHandler {
   }
 
   listenInputs(): void {
-    this.events.on(
-      "input_down",
-      event => {
-        this.log.push({ type: "input_down", button: event.button });
-      },
-      this,
-    );
-
-    this.events.on(
-      "input_up",
-      event => {
-        this.logUp.push({ type: "input_up", button: event.button });
-      },
-      this,
-    );
+    this.events.on("input_down", this.onDownListener);
+    this.events.on("input_up", this.onUpListener);
   }
 }
 
@@ -97,12 +114,24 @@ class Fakepad extends Phaser.Input.Gamepad.Gamepad {
 }
 
 class FakeMobile {
+  private readonly originalDocument: Document;
+
   constructor() {
+    this.originalDocument = window.document;
     const fakeMobilePage = fs.readFileSync("./test/utils/fakeMobile.html", { encoding: "utf8", flag: "r" });
     const dom = new JSDOM(fakeMobilePage);
     Object.defineProperty(window, "document", {
       value: dom.window.document,
       configurable: true,
+      writable: true,
+    });
+  }
+
+  destroy(): void {
+    Object.defineProperty(window, "document", {
+      value: this.originalDocument,
+      configurable: true,
+      writable: true,
     });
   }
 

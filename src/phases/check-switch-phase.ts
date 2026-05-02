@@ -19,6 +19,10 @@ export class CheckSwitchPhase extends BattlePhase {
     this.useName = useName;
   }
 
+  getFieldIndex(): number {
+    return this.fieldIndex;
+  }
+
   start() {
     super.start();
 

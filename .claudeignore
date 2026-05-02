@@ -1,0 +1,14 @@
+public/images/
+public/audio/
+public/battle-anims/
+public/fonts/
+public/sounds/
+node_modules/
+dist/
+.git/
+*.png
+*.jpg
+*.jpeg
+*.mp3
+*.ogg
+*.wav
