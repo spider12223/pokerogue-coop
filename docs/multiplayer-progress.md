@@ -20,7 +20,7 @@ This document is the single source of truth for the co-op multiplayer effort. It
 | **M1** | Hot-seat 2-player local: input gating in dual battles via two keyboard schemes, no networking | ✅ SHIPPED at commit `ef4041da` |
 | **M2a** | Co-op lobby pipe: title menu entry, room codes, Trystero handshake, "Connected" state. NO battle integration. | ✅ SHIPPED at commit `c49a105f` |
 | **M2b** | Public deploy of the fork so cross-machine smoke testing becomes possible | ✅ SHIPPED 2026-05-02 to `https://pokerogue-coop.netlify.app` (commit `714182bd86f` enabled guest mode; pivoted to Netlify after hitting Cloudflare Pages' 20,000-file deploy cap) |
-| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders via minimum-viable command panel | 🟢 FUNCTIONALLY SHIPPED — M2c.1-M2c.5 + M2c.6 phase A complete. Local dev two-tab co-op battle works end-to-end (joiner picks, host resolves, turn advances). Phases B (local prod build), C (netlify deploy), D (cross-internet) pending. Latest: `57ee83e0fc7` |
+| **M2c** | Networked play: NetworkCommandSource for joiner's slot, host pushes state snapshots, joiner renders via minimum-viable command panel | ✅ SHIPPED 2026-05-03. M2c.1–M2c.5 + M2c.6 phases A/B/C/D all passed. Cross-internet WebRTC verified across separate ISPs. Production HEAD: `57ee83e0fc7` |
 | **M2d** | Full visual mirror on joiner side (real Phaser BattleScene render, sprites, animations, HP bars, weather, modifiers) — see Section 10 planning notes | NOT STARTED |
 
 ---
@@ -60,7 +60,7 @@ Live at **`https://pokerogue-coop.netlify.app`** as of 2026-05-02. Two-tab cross
 
 **Side note:** the asset pipeline trick is in [src/plugins/vite/vite-minify-json-plugin.ts:93-100](../src/plugins/vite/vite-minify-json-plugin.ts#L93). Despite its name, the plugin recursively copies `./assets/` and `./locales/` into `dist/` during build. Vite's `publicDir` is set to `false` for the build command, so Vite's normal public copy doesn't fire.
 
-### M2c — Networked play (FUNCTIONALLY SHIPPED, smoke phases B/C/D pending)
+### M2c — Networked play (SHIPPED)
 
 **Phase commits:**
 | Phase | Commit | Scope |
@@ -94,11 +94,22 @@ Live at **`https://pokerogue-coop.netlify.app`** as of 2026-05-02. Two-tab cross
 | M2c.5 | 4463 | 453 |
 | **Current** | **4463** | **453** |
 
-**Remaining for M2c "shipped" tag:**
-1. **Phase B** — Local production build (`pnpm build` + `pnpm preview` at `localhost:4173`). Re-run phase A. Catches build-mode-only bugs (tree-shaking, name mangling, env var differences).
-2. **Phase C** — Netlify deploy verification. Push triggers auto-deploy to `https://pokerogue-coop.netlify.app`. Re-run phase A on the deployed URL.
-3. **Phase D** — Cross-internet smoke test. Send the netlify URL to a friend on a different ISP. Connect, play, confirm Trystero/Nostr handshake works across real WebRTC.
-4. **Final commit** — `M2c shipped: networked co-op battle play.` after D passes.
+**M2c.6 phases B/C/D — All passed 2026-05-03:**
+- **Phase B** — `pnpm build` + `pnpm preview` at `localhost:4173`: full co-op flow ran on the production bundle. No build-mode-only regressions surfaced.
+- **Phase C** — Netlify auto-deploy from `git push`: deployed build at `https://pokerogue-coop.netlify.app` ran the co-op flow end-to-end.
+- **Phase D** — Cross-internet smoke: tested with a peer on a different ISP. Trystero/Nostr WebRTC handshake completed; full battle round-trip worked.
+
+**Cross-internet validation:** the default Nostr relay set in Trystero v0.24 carried signaling correctly across real-world networks without any custom `relayUrls` configuration. Open question on `relayUrls` fallback (Section 9) can stay open as a hardening item but is no longer pressing — no reliability pain in the smoke window.
+
+**Wins for M2c:**
+- Networked co-op battles work end-to-end: joiner picks → host resolves → both tabs advance turn.
+- Single discriminated-union envelope architecture grew from 4 message types (M2a) to 9 (M2c) with zero schema-side regressions. Every received message still funnels through `envelopeSchema.safeParse`.
+- Pure-function `projectSnapshot()` keeps Phaser dependencies out of the wire layer — unit-testable and future-proof for the M2d swap to a richer mirror payload.
+- 60s command timeout + bot-fill fallback means a stuck or disconnected joiner never blocks the host's turn.
+- Run-end + disconnect protocols handle "joiner left mid-run" cleanly: host continues solo with a banner; joiner returns to title (per M2c.S10).
+- Title UI bleed-through bug caught and fixed in phase A before any deploy. Defensive `clear()` in `TitlePhase.start()` CONNECTED branch covers post-run safety.
+- Cross-internet WebRTC validated end-to-end with no relay tuning needed.
+- Test count: 4333 (M2a) → 4463 (M2c.5) across 446 → 453 files. No regressions through any phase.
 
 **M2c scope: FIGHT and RUN only for joiner.** Switch/Pokémon command, Pokeball, Tera, Mega all deferred to M2d (see Section 4 sub-decision M2c.S5 and Section 10 planning notes).
 
@@ -265,32 +276,19 @@ UI is at `(0, scaledCanvas.height)` inside `uiContainer`. `uiContainer` has `set
 
 ## SECTION 5 — IMMEDIATE NEXT STEPS FOR NEW CHAT
 
-**Current phase: M2c.1 Foundation.** Tests can be written test-first; production code requires user spec-approval before being written.
+**M2c is shipped (2026-05-03).** The next milestone is **M2d — full visual mirror.** Detailed planning notes in Section 10.
 
-### M2c.1 — Foundation (CURRENT)
+**Before any M2d code:**
+1. Read Section 10 in full, especially the two open scope decisions captured 2026-05-03 — joiner role in `ModifierSelectPhase` (lean: Option A for M2d.1) and trainer-battle compatibility risk (verify early in M2d.1's first dev cycle).
+2. Spec the M2d.1 phase in detail — `MirrorBattleScene` vs branched `BattleScene`, snapshot extension fields, asset-loading flow on joiner.
+3. Get explicit user approval on the spec before writing production code.
+4. Tests-first; one phase per commit; no jumping ahead.
 
-Wire-format and skeleton work. After this phase: all the new types compile, but no production behavior changes (the `coopMode` field defaults to `"single"`, the override defaults to `false`, so nothing actually triggers the new code paths until M2c.5 lights them up).
+The detailed M2c.1–M2c.6 phase plans previously in this section are preserved in the commit history (see commits `b95cfcaccc1` through `57ee83e0fc7`) and in Section 2's phase table. They no longer apply to active work.
 
-**Production code planned in M2c.1:**
-- `src/multiplayer/network/messages.ts` — add new envelope schemas: `state-snapshot` (placeholder payload, refined in M2c.2), `request-command`, `choose-command`, `cancel-command-request`, `start-run`. Extend `envelopeSchema` discriminated union. **Do NOT bump `COOP_PROTOCOL_VERSION` in this phase** — wait until M2c.5 when the integration code lights up the new types in real connections (see Section 4 sub-decision: bump on integration, not on plumbing).
-- `src/multiplayer/network/network-command-source.ts` — NEW. Skeleton class implementing `CommandSource`. `requestCommand()` is a no-op stub in this phase; real send/await machinery comes in M2c.3. Constructor takes `(playerSlot, session, opts)`. Has `cancelPending()` that clears any timer and zeroes pending state.
-- `src/turn-command-manager.ts` — add `initCoopHost()` and `initCoopJoiner()` methods. Extend `refreshFromOverrides()` to route through a `resolveCoopMode()` helper that prefers `globalScene.coopMode` runtime field, then `Overrides.COOP_NETWORKED_OVERRIDE`, then `Overrides.LOCAL_HOTSEAT_OVERRIDE`, then default single-player.
-- `src/battle-scene.ts` — add `coopMode: "single" | "host" | "joiner"` field, default `"single"`. Reset to `"single"` in `BattleScene.reset()` (parallel to existing reset behavior).
-- `src/overrides.ts` — add `COOP_NETWORKED_OVERRIDE: false | "host" | "joiner"` (default `false`) and `COOP_BOT_FILL_JOINER: boolean` (default `false`).
+### Pre-M2d empirical testing (in flight)
 
-**Test-first files for M2c.1:**
-- `test/tests/multiplayer/network/messages.test.ts` — extend with round-trip + reject-malformed tests for the 5 new envelope types.
-- `test/tests/multiplayer/network/network-command-source.test.ts` — NEW. Skeleton tests: constructor accepts the right args; `kind === "network"`; `playerSlot` exposed; `cancelPending()` clears state. Behavioral tests come in M2c.3 (don't try to write request/response tests here — the methods are no-op stubs).
-- `test/tests/multiplayer/turn-command-manager.test.ts` — NEW. `initCoopHost` registers `LocalUiCommandSource` for slot 0 and `NetworkCommandSource` for slot 1. `initCoopJoiner` registers `LocalUiCommandSource` for slot 1 only. `refreshFromOverrides` routing: coopMode runtime → init methods; override second; hotseat third; single-player default.
-
-**M2c.1 done criteria:**
-- Full suite green (target: 449+ test files, 4350+ tests).
-- Spec-approved before any production file is touched (test-first allowed without preview).
-- One commit, message format `M2c.1: foundation — envelope types, NetworkCommandSource skeleton, TurnCommandManager coop init`.
-
-### After M2c.1
-
-Phases M2c.2 → M2c.6 follow per the table in Section 2. Each its own commit, tests green before next phase. Don't skip.
+Zayed is running cross-machine sessions with a friend before M2d planning begins, to surface any edge cases the smoke phases didn't catch (long sessions, weird wild encounters, modifier interactions, etc.). Capture findings here before kicking off M2d.1.
 
 ---
 
@@ -330,7 +328,7 @@ Phases M2c.2 → M2c.6 follow per the table in Section 2. Each its own commit, t
 
 Items resolved during M2c planning (2026-05-02) are now in Section 4 sub-decisions M2c.S1–M2c.S11. Remaining open questions:
 
-- **Explicit `relayUrls` fallback.** Trystero's default Nostr relay list may have outages. Should we pin a specific subset for reliability? Or detect failure and rotate? Decision can wait until cross-internet smoke testing during M2c.6 surfaces real reliability data on the deployed site.
+- **Explicit `relayUrls` fallback.** Trystero's default Nostr relay list may have outages. M2c.6 cross-internet smoke (2026-05-03) showed no reliability pain — default relays carried signaling fine across separate ISPs. Question stays open as a long-term hardening item but is no longer pressing; revisit only if M2d / M2e cross-internet sessions surface real outages.
 - **Backdrop full-canvas coverage edge case** (handoff Section 6 visual seam on the lobby's right edge). Is it an alpha-blend artifact, a coordinate rounding issue, or actually a different handler peeking through? Worth ~30 min of investigation in a quiet moment. Not blocking M2c.
 - **Reconnect after peer drop mid-battle.** Per M2c.S10, M2c continues solo on disconnect. M2d should reconsider: trystero supports manual relay reconnection — should we attempt to reconnect for a grace period (e.g. 30s) before falling back to solo? UX question for M2d, not M2c.
 - **Snapshot diffing** (M2d). Current decision (M2c.S2) is full snapshots every event. If M2c.6 cross-internet smoke shows latency or bandwidth pain, M2d should add diff-based updates. Open architecture work.
@@ -403,6 +401,32 @@ The hardest problems in M2d, in roughly likely-to-bite order:
    - **Mystery Encounters:** non-battle UI flows. Joiner currently skips entirely (M2c.S8). M2d would need joiner to render the ME UI in observer mode.
    - **Dialogue boxes:** host-driven message flow. Joiner currently sees only the last 5 messages in `recentLog`; M2d needs full message playback.
 
+### Joiner role in item rewards (ModifierSelectPhase) — open scope decision (captured 2026-05-03)
+
+After M2c ships, `ModifierSelectPhase` still has no joiner-side UI. Three options on the table for M2d:
+
+- **Option A — host picks alone, joiner watches via snapshot.** Simplest, ~1 day of work. Joiner sees the picked items reflected in the next state-snapshot but has no input on the choice. Default for M2d.1.
+- **Option B — joiner suggests, host picks.** Collaborative, ~3 days. Joiner gets a non-binding pick UI; their suggestion appears on the host's modifier-select screen as a hint; host has the final click. Polish goal for after M2d.1 ships.
+- **Option C — joiner gets own pick (parallel selection from a separate pool).** Changes game balance — runs effectively get double the modifier velocity. Not recommended; flagged here only so it's not re-litigated. Skip unless an explicit design pivot says otherwise.
+
+**Decision (lean):** M2d.1 ships with Option A. Option B added later as a polish item once core rendering is stable. Option C off the table.
+
+### Trainer battle compatibility — risk to verify early in M2d.1 (captured 2026-05-03)
+
+PokéRogue has two battle kinds:
+- **Wild encounters** — validated in the M2c.6 smoke phases. Co-op dual mode works.
+- **Trainer battles** — UNVERIFIED for co-op dual mode.
+
+**Risk:** trainer battles may auto-summon two of the host's pokémon (slots 0 and 1 both belong to host), leaving the joiner's intended slot 1 pokémon stuck on the bench. The joiner's `NetworkCommandSource` would then fire `requestCommand` for a pokémon that isn't on the field, or never fire at all because slot 1 is host-owned.
+
+**Verify early in M2d.1's first dev cycle:**
+1. Build, run a co-op session.
+2. Force-progress to a trainer battle (existing dev override or in-game progression).
+3. Confirm slot 1 on the field is the joiner's pokémon, not host's pokémon #2.
+4. Confirm `NetworkCommandSource.requestCommand` fires for the joiner's pokémon and the round-trip works identically to wild battles.
+
+If broken, fix before any other M2d.1 work — this is foundational and will block all trainer-battle play. Likely culprits: dual-battle slot-assignment logic in `EncounterPhase` or `SummonPhase`, or trainer-party generation paths that pre-date `coopMode` and don't respect it.
+
 ### Likely M2d phases
 
 Detailed design discussion needed before code. Tentative phasing (subject to revision):
@@ -439,4 +463,4 @@ Same workflow as M2c: spec → approval → tests-first → impl → run suite �
 
 ---
 
-*Document last updated 2026-05-02, after M2c.6 phase A passed local dev two-tab smoke. M2c functionally shipped; phases B (local prod build), C (netlify deploy), D (cross-internet) pending. Latest commit `57ee83e0fc7`. Next chat: complete M2c.6 B/C/D OR start M2d planning per Section 10 above.*
+*Document last updated 2026-05-03, after M2c.6 phases B/C/D all passed and M2c shipped. Production HEAD `57ee83e0fc7`. Next chat: M2d planning per Section 10 above — start with the two open scope items (joiner role in ModifierSelectPhase, trainer-battle compatibility risk) before phasing M2d.1.*
