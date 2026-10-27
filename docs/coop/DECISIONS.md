@@ -40,7 +40,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | Topic | Sections |
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
-| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import |
+| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both |
 | Battles | D6 battle shape, D7 party and control, D8 commands |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
 | Feel | D16 cosmetic channel, D17 AFK and take over, D27 pacing |
@@ -203,6 +203,8 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
   - starter luck, carried per starter.
 - **Writes** (dex, candy, catches) are credited to the current owner's account. The partner only marks "seen" (D4a).
 - A saved run can be continued only with the same two accounts (D21).
+- The snapshot of `ready` is taken while the starter select shows both players' Pokémon (D32), so it holds what the
+  player picked from: the egg moves, forms and shinies of both accounts.
 
 ## D4a. Account writes and run end
 
@@ -766,7 +768,7 @@ step; the screens would not.
   `data_<user>.prsv` (the system data, AES with the public `saveKey`). Here, the co-op menu's "Import PokéRogue data"
   (it first says where the file comes from) or Manage Data > Import Data reads it, and after a confirm it replaces this
   browser's account and reloads the page. The starter select and the co-op lobby then have the player's own Pokémon,
-  candies, eggs and vouchers.
+  candies, eggs and vouchers, and the partner's co-op starter select has them too (D32).
 - **Where it is offered:** Import Data is shown with local accounts (`bypassLogin`, as this fork's deploy builds), as in
   dev, beta and app builds; a build with a PokéRogue server account stays as upstream.
 - **Not during a co-op run:** the import reloads the page, so it is refused while a co-op session is open (checked when
@@ -781,6 +783,30 @@ step; the screens would not.
   a system save, or that would fail the check every save makes, is refused.
 - **The notes** before the confirm go on by themselves (no key prompt): the import is asked from a menu, whose handler
   would take the key.
+
+## D32. The starter select of both players
+
+- **Shared points:** the two parties share 15 starter points (`COOP_STARTER_POINTS` in `src/coop/protocol.ts`; a solo
+  classic run has 10 for a party of six). A player may spend what the partner's party leaves (D7: up to three each).
+- **Shared collection:** the co-op starter select shows the Pokémon of both players, so a player whose account is new can
+  pick what the partner has caught.
+  - On entering the lobby each player sends a `LOBBY` `collection`: the caught species of the dex (caught and seen forms,
+    natures, IVs) and the starters with something unlocked (abilities, passive, cost reductions, egg moves, classic wins).
+    Candies and counts are not sent. A collection with `ask` is answered with the receiver's own, so both arrive whoever
+    enters first. The starter select opens once the partner's is there (or after 15 s without it, with the player's own
+    Pokémon only).
+  - While the lobby is open, `gameData.dexData` and `starterData` are a merge of both (`src/coop/shared-collection.ts`):
+    the forms, shinies, genders, natures, abilities, egg moves and passives either player has, the better IV of each stat,
+    the bigger cost reduction. Candies, friendship, counts, ribbons and the custom moveset are the player's own.
+  - **Nothing of the partner's is saved to the player's account.** The system save writes the account's own data while
+    the merge is in place. In a merged entry, what the screen changes is written to the player's own entry: candies spent,
+    a passive or cost reduction bought (the next one after the bigger of the two), the custom moveset. A passive only the
+    partner unlocked can be turned on and off there; that choice lasts until the lobby closes.
+  - The merge comes off when the lobby closes (`closeStarterLobby`): the run starts, or the players leave.
+- **In the run:** the account snapshot of `ready` comes from the merge (D4), so the simulation reads the egg moves and
+  dex of what was picked; the host's dex count (critical captures) is the count of both. Account writes during the run
+  are as D4a: a Pokémon picked from the partner's collection earns its candy and dex entries on its owner's account.
+- `COOP_PROTOCOL_VERSION` is 5: a page of the earlier version refuses to pair with this one.
 
 ## See also
 

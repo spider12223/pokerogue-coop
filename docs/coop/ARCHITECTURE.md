@@ -116,7 +116,8 @@ duplicates and reorders frames from a seed, and `test/coop/manual-link.ts` lets 
   the co-op log, the seat token).
 - **The starter select** is `starter-lobby.ts` (a state machine without UI: live picks, a shared point budget, ready,
   then the host's `START` with the run seed, both parties and both account snapshots) and `starter-select-coop.ts` (its
-  view in the upstream screen).
+  view in the upstream screen). `shared-collection.ts` exchanges both players' collections on entering the lobby and
+  puts their merge in place of the account's dex and starter data until the lobby closes (D32).
 - **`rejoin.ts`**: a tab that loads with a seat token in `localStorage` (`seat-store.ts`) takes its seat back at boot
   (D20), and the host's "Continue" opens a new room for the run in its co-op slot (D21).
 
@@ -350,6 +351,8 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `lobby.ts` | The title screen's Co-op entry: host or join, the code, the handshake, `beginSession`, leaving | D1, D20 | no |
 | `starter-lobby.ts` | The co-op starter select as a state machine: live picks, shared points, ready, `START` | D3, D4, D7 | yes |
 | `starter-select-coop.ts` | The partner's picks, the shared limit and ready on the starter select screen | D3, D7 | no |
+| `collection-data.ts` | `CollectionData`: a player's collection on the wire, and its validation | D32 | yes |
+| `shared-collection.ts` | `CollectionExchange`, the merge of both collections, `poolCollection`, `ownAccountData` (what the save writes) | D32 | yes |
 | `display-name.ts` | The player's display name, stored locally | D1 | yes |
 | `clipboard.ts` | `copyText`, for the lobby's "Copy code" button | | yes |
 
@@ -459,7 +462,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
 | `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double | D6 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |
-| `src/system/game-data.ts` | `loadCoopSession`; the run history entry with both names | D4a, D13, D19 |
+| `src/system/game-data.ts` | `loadCoopSession`; the run history entry with both names; the system save writes the account's own data while the starter select shows both players' (`ownAccountData`) | D4a, D13, D19, D32 |
 | `src/ui/handlers/message-ui-handler.ts` | `showPrompt` reports each line to the pacer | D27 |
 | `plugins/vite/coop-build-identity.ts`, `plugins/vite/require-source-url.ts` | The build identity; a production build without `VITE_SOURCE_URL` fails | D1, D25 |
 

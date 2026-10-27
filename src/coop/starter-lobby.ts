@@ -203,6 +203,9 @@ export class StarterLobby {
         this.partnerReady = null;
         this.resetNotice = true;
         break;
+      case "collection":
+        // The partner's Pokémon: `CollectionExchange` takes them
+        return;
     }
     this.changed();
   }

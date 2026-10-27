@@ -266,6 +266,14 @@ export async function pickAndReady(client: Client, moveRight: number): Promise<v
  * host or join (D1), so a spec that needs them sets them here, on both clients.
  */
 export async function startLinkedRun(host: Client, guest: Client, afterLinked?: () => Promise<void>): Promise<void> {
+  await linkClients(host, guest);
+  await afterLinked?.();
+  await Promise.all([pickAndReady(host, 0), pickAndReady(guest, 1)]);
+  await untilWaveOne(host, guest);
+}
+
+/** From the title screen of both clients to the co-op starter select: the host creates a room, the guest joins it */
+export async function linkClients(host: Client, guest: Client): Promise<void> {
   // The host: Co-op -> Host a game -> a join code
   await openCoopMenu(host);
   await press(host, "ACTION");
@@ -296,11 +304,10 @@ export async function startLinkedRun(host: Client, guest: Client, afterLinked?: 
   }
   expect(await host.page.evaluate(() => (window as any).__coop.seat)).toBe("host");
   expect(await guest.page.evaluate(() => (window as any).__coop.seat)).toBe("guest");
+}
 
-  await afterLinked?.();
-  await Promise.all([pickAndReady(host, 0), pickAndReady(guest, 1)]);
-
-  // The run starts on both
+/** Both players are ready: the run starts on both */
+export async function untilWaveOne(host: Client, guest: Client): Promise<void> {
   for (const client of [host, guest]) {
     await expect
       .poll(() => client.page.evaluate(() => (window as any).__coop.phase?.wave ?? 0), {

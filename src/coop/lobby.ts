@@ -30,13 +30,14 @@ import {
 } from "#coop/link";
 import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
-import { keyId, otherSeat, type Seat } from "#coop/protocol";
+import { COOP_STARTER_POINTS, keyId, otherSeat, type Seat } from "#coop/protocol";
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
 import { askAndReport, setReportButtonVisible } from "#coop/report-button";
 import { installResync, registerLeaveHandler } from "#coop/resync-run";
 import { forgetSeat, saveSeat } from "#coop/seat-store";
 import { type CoopSession, endCoopSession, getCoopSession, startCoopSession } from "#coop/session";
+import { CollectionExchange, captureCollection, poolCollection, unpoolCollection } from "#coop/shared-collection";
 import { StarterLobby } from "#coop/starter-lobby";
 import { setTouchEmoteVisible } from "#coop/touch-emote";
 import { RelayError } from "#coop/transport/relay-ws";
@@ -45,7 +46,6 @@ import { coopStore, currentCoopSlot } from "#coop/wave-save";
 import { GameDataType } from "#enums/game-data-type";
 import { UiMode } from "#enums/ui-mode";
 import type { OptionSelectItem, OptionSelectModeConfig } from "#types/ui-types";
-import { getRunValueLimit } from "#ui/starter-select-ui-utils";
 import { randomString } from "#utils/common";
 import i18next from "i18next";
 
@@ -70,6 +70,10 @@ export interface CoopTitleCallbacks {
 }
 
 let starterLobby: StarterLobby | null = null;
+/** Sends this player's collection and gets the partner's, while the lobby is open (D32) */
+let collectionExchange: CollectionExchange | null = null;
+/** How long the lobby waits for the partner's collection before opening the starter select without it */
+const COLLECTION_TIMEOUT_MS = 15_000;
 let joinCode: string | null = null;
 /** Stops the resync of the session (D13) */
 let stopResync: (() => void) | null = null;
@@ -100,10 +104,13 @@ export function getStarterLobby(): StarterLobby | null {
   return getCoopSession() === null ? null : starterLobby;
 }
 
-/** Forget the lobby: the run started, or the players left. */
+/** Forget the lobby: the run started, or the players left. The starter select shows this player's own Pokémon again. */
 export function closeStarterLobby(): void {
   starterLobby?.dispose();
   starterLobby = null;
+  collectionExchange?.dispose();
+  collectionExchange = null;
+  unpoolCollection();
   joinCode = null;
 }
 
@@ -453,14 +460,32 @@ export function beginSession(
   return session;
 }
 
-function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopTitleCallbacks): void {
+async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopTitleCallbacks): Promise<void> {
   closeStarterLobby();
-  starterLobby = new StarterLobby({
+  const lobby = new StarterLobby({
     seat: session.seat,
     link,
-    sharedLimit: getRunValueLimit(),
+    sharedLimit: COOP_STARTER_POINTS,
     makeRunSeed: () => session.runSeed,
   });
+  starterLobby = lobby;
+  // The starter select shows the Pokémon of both players (D32): it opens once the partner's are here
+  const exchange = new CollectionExchange(link, captureCollection(globalScene.gameData));
+  collectionExchange = exchange;
+  const partner = await exchange.partnerCollection(COLLECTION_TIMEOUT_MS);
+  if (starterLobby !== lobby) {
+    // Left while waiting
+    return;
+  }
+  if (partner === null) {
+    coopLog().warn("lobby", "no collection from the partner: only this player's Pokémon on the starter select");
+  } else {
+    poolCollection(globalScene.gameData, partner);
+    coopLog().info("lobby", "partner's collection", {
+      species: Object.keys(partner.dex).length,
+      starters: Object.keys(partner.starters).length,
+    });
+  }
   globalScene.ui.setMode(UiMode.MESSAGE);
   // The battle message box, whatever the screen is, and its typing too: else "Connecting…" shows again when the run starts
   globalScene.ui.getMessageHandler().showText("", 0);
@@ -524,7 +549,7 @@ async function hostGame(callbacks: CoopTitleCallbacks): Promise<void> {
       return;
     }
     const session = beginSession(established.link, "host", overlay);
-    enterLobby(session, established.link, callbacks);
+    await enterLobby(session, established.link, callbacks);
   } catch (error) {
     if (!cancelled) {
       room?.cancel();
@@ -577,7 +602,7 @@ export async function joinGame(rawCode: string, callbacks: CoopTitleCallbacks): 
       );
       return;
     }
-    enterLobby(session, established.link, callbacks);
+    await enterLobby(session, established.link, callbacks);
   } catch (error) {
     showFailure(error, callbacks);
   }

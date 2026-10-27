@@ -25,7 +25,10 @@ import { getCoopSession, type WaitStats } from "#coop/session";
 import { sourceUrlOf } from "#coop/source-link";
 import { type StallDump, stalls, startStallDetector } from "#coop/stall-detector";
 import { currentCoopSlot } from "#coop/wave-save";
+import { AbilityAttr } from "#enums/ability-attr";
 import { Button } from "#enums/buttons";
+import { DexAttr } from "#enums/dex-attr";
+import { Nature } from "#enums/nature";
 import { UiMode } from "#enums/ui-mode";
 import {
   getPlayerShopModifierTypeOptionsForWave,
@@ -187,6 +190,15 @@ export interface CoopDebugApi {
   press(button: keyof typeof Button): boolean;
   /** Type a join code into the open join form and submit it */
   submitJoinCode(code: string): boolean;
+  /** The species under the cursor of the starter select, or `null` */
+  readonly starterCursor: number | null;
+  /** Whether the account has this species caught: in the co-op lobby, the Pokémon of both players (D32) */
+  hasCaught(speciesId: number): boolean;
+  /**
+   * Give this browser's account a species, caught as a starter of a new account is (not saved). Outside a co-op session
+   * only: the test of the shared collection (D32).
+   */
+  catchSpecies(speciesId: number): boolean;
 }
 
 function api(): CoopDebugApi {
@@ -427,6 +439,29 @@ function api(): CoopDebugApi {
         return false;
       }
       handler.submitCode(code);
+      return true;
+    },
+    get starterCursor() {
+      if (globalScene.ui.mode !== UiMode.STARTER_SELECT) {
+        return null;
+      }
+      const handler = globalScene.ui.handlers[UiMode.STARTER_SELECT] as unknown as { lastStarterId?: number };
+      return handler.lastStarterId ?? null;
+    },
+    hasCaught: speciesId => !!globalScene.gameData.dexData[speciesId]?.caughtAttr,
+    catchSpecies: speciesId => {
+      const { dexData, starterData } = globalScene.gameData;
+      if (getCoopSession() !== null || dexData[speciesId] === undefined) {
+        return false;
+      }
+      const caught = DexAttr.NON_SHINY | DexAttr.MALE | DexAttr.FEMALE | DexAttr.DEFAULT_VARIANT | DexAttr.DEFAULT_FORM;
+      dexData[speciesId].seenAttr |= caught;
+      dexData[speciesId].caughtAttr |= caught;
+      dexData[speciesId].natureAttr |= 1 << (Nature.HARDY + 1);
+      dexData[speciesId].ivs = [15, 15, 15, 15, 15, 15];
+      if (starterData[speciesId] !== undefined) {
+        starterData[speciesId].abilityAttr |= AbilityAttr.ABILITY_1;
+      }
       return true;
     },
   };

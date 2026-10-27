@@ -19,9 +19,10 @@ import {
   isAccountSnapshot,
   isCoopAccountSnapshot,
 } from "#coop/account-snapshot";
+import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 4;
+export const COOP_PROTOCOL_VERSION = 5;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -395,6 +396,9 @@ export function isCoopStarter(value: unknown): value is CoopStarter {
 /** How many starters a seat brings (D7: an equal share of a party of six). */
 export const STARTERS_PER_SEAT_MAX = 3;
 
+/** The starter points both players share (D32): a solo classic run has 10 for one party */
+export const COOP_STARTER_POINTS = 15;
+
 /**
  * `START`, host to guest: everything both clients need to build the same run (D3, D4).
  * - `runSeed`: host-generated; both clients assign it to `globalScene.seed`
@@ -435,12 +439,14 @@ export function isStartPayload(value: unknown): value is StartPayload {
  * - `ready`: the sender confirmed these starters, with the account the run will use
  * - `unready`: the sender took the confirmation back
  * - `reset`: host to guest, both parties were confirmed but together cost more than the shared budget: nobody is ready
+ * - `collection`: the sender's Pokémon, for the starter select of both (D32); `ask` asks for the partner's in return
  */
 export type LobbyMessage =
   | { t: "picks"; picks: CoopStarter[]; cost: number }
   | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot }
   | { t: "unready" }
-  | { t: "reset" };
+  | { t: "reset" }
+  | { t: "collection"; collection: CollectionData; ask: boolean };
 
 export function isLobbyMessage(value: unknown): value is LobbyMessage {
   if (typeof value !== "object" || value === null) {
@@ -459,6 +465,8 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
     case "unready":
     case "reset":
       return true;
+    case "collection":
+      return isCollectionData(message["collection"]) && typeof message["ask"] === "boolean";
     default:
       return false;
   }

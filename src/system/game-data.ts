@@ -24,6 +24,7 @@ import {
   systemImportNotes,
 } from "#coop/import-account";
 import { checkSessionSaveBlock, isCoop, requireCoopSession } from "#coop/session";
+import { ownAccountData } from "#coop/shared-collection";
 import { EntryHazardTag } from "#data/arena-tag";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed-utils";
 import { allMoves } from "#data/data-lists";
@@ -163,14 +164,16 @@ export class GameData {
   }
 
   public getSystemSaveData(): SystemSaveData {
+    // The co-op starter select shows both players' Pokémon (D32): the save keeps this account's own
+    const { dexData, starterData } = ownAccountData(this);
     return {
       trainerId: this.trainerId,
       secretId: this.secretId,
       // TODO: save some settings (such as player gender) separately, outside of system data
       // The persisted value: a co-op settings overlay must never reach the saved system data.
       gender: settings.persistedGeneral.playerGender,
-      dexData: this.dexData,
-      starterData: this.starterData,
+      dexData,
+      starterData,
       gameStats: this.gameStats,
       unlocks: this.unlocks,
       achvUnlocks: this.achvUnlocks,

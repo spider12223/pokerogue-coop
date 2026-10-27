@@ -25,8 +25,9 @@ import { getPartyValue } from "#ui/starter-select-ui-utils";
 import { addTextObject } from "#ui/text";
 
 /**
- * Co-op on the starter select screen (DECISIONS D3, D4, D7). The screen is the solo one with three changes:
- * - a player picks at most {@linkcode STARTERS_PER_SEAT_MAX} starters, and the 10-point budget is shared: a player's limit
+ * Co-op on the starter select screen (DECISIONS D3, D4, D7, D32). The screen is the solo one with these changes:
+ * - it shows the Pokémon of both players (`shared-collection.ts`)
+ * - a player picks at most {@linkcode STARTERS_PER_SEAT_MAX} starters, and the 15-point budget is shared: a player's limit
  *   is what the partner's party left
  * - the partner's picks show in the team slots after the player's own, on a band in the partner's color, faded until they
  *   are ready; the status line names the partner

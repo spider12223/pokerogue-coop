@@ -40,6 +40,8 @@ runs the game.
 - **Checks.** Each game hashes its state at fixed points; a difference reloads both games from the host's save of the
   current wave.
 - **Ownership.** Every Pokémon belongs to one player; the field slot, the party screen, rewards and catches follow from that.
+- **Starters.** The starter select shows the Pokémon of both players, and the two parties share 15 points. What a player
+  borrows from the partner's collection is never saved to their own account.
 - **Reconnects.** A player who drops comes back into the same room; both games continue from the start of the wave.
 
 The full design (every rule and why) is in [docs/coop/DECISIONS.md](docs/coop/DECISIONS.md); the code map is in

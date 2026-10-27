@@ -17,7 +17,8 @@ the background runs slowly.
 2. **One of you hosts:** **Host a game**. A six-character code appears; **Copy code** puts it in the clipboard. Send it to
    your friend.
 3. **The other joins:** **Join a game** and paste the code.
-4. The starter select opens for both. Pick up to three starters each; the usual 10-point budget is shared, and you see your
+4. The starter select opens for both, with **the Pokémon of both of you**: you can pick anything your friend has caught,
+   with their shinies, forms, IVs and unlocks. Pick up to three starters each; you share **15 points**, and you see your
    friend's picks as they make them. When both press ready, the run starts.
 
 The host's Pokémon fight on the left, the guest's on the right.
@@ -57,6 +58,8 @@ lone wild Pokémon is made stronger and gives double experience and money.
 - **Menu > Egg Gacha** works in the middle of a run; your friend waits while you are in the machine.
 - What you catch is added to **your own** account (your starter select), and your account is saved at the start of every
   wave.
+- Your friend's Pokémon are only borrowed on the co-op starter select: they are never added to your account, and candies
+  you spend there are your own.
 
 ## Bringing your own Pokémon from pokerogue.net
 
