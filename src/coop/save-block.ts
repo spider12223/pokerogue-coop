@@ -35,6 +35,20 @@ export interface CoopSaveBlock {
   accounts: CoopAccountSnapshot;
   /** The timed events of the run (D33); a save of an earlier version has none, and its run has no event */
   events?: string[];
+  /** The trainer types the run has met (D34); a save of an earlier version has none */
+  trainers?: number[];
+}
+
+/** At most this many trainer types are saved (D34): more than the game has */
+const MET_TRAINERS_MAX = 1000;
+
+/** @returns Whether `value` is a saved list of the trainer types a run has met (D34) */
+export function isTrainerTypeList(value: unknown): value is number[] {
+  return (
+    Array.isArray(value)
+    && value.length <= MET_TRAINERS_MAX
+    && value.every(type => Number.isInteger(type) && (type as number) >= 0)
+  );
 }
 
 /** Why a co-op save cannot be used here. The message is for the player. */
@@ -67,6 +81,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
     && (block["trades"] as number) >= 0
     && isCoopAccountSnapshot(block["accounts"])
     && (block["events"] === undefined || isTimedEventNames(block["events"]))
+    && (block["trainers"] === undefined || isTrainerTypeList(block["trainers"]))
   );
 }
 

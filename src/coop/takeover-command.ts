@@ -89,12 +89,14 @@ export function takeoverTargetLabel(user: Pokemon, target: Pokemon | undefined):
 
 /**
  * Ask the player what `pokemon`, in field slot `slot`, does this turn.
- * @returns The command, or `null` if the player went back
+ * @param isOver - Whether the wait ended meanwhile (the partner's own command came): no further menu opens then
+ * @returns The command, or `null` if the player went back or the wait ended
  */
 export async function askCommandFor(
   pokemon: PlayerPokemon,
   slot: number,
   onOpen: (close: () => void) => void = () => undefined,
+  isOver: () => boolean = () => false,
 ): Promise<TurnCommandsPayload | null> {
   const name = getPokemonNameWithAffix(pokemon);
   const title = coopText("takeOverCommand", "Take over for {{pokemonName}}: which move?", { pokemonName: name });
@@ -121,6 +123,9 @@ export async function askCommandFor(
       cursor = usable[chosen];
       moveId = moveset[cursor].moveId;
       await pause(60);
+      if (isOver()) {
+        return null;
+      }
     }
 
     // a random target (Outrage) is drawn as the command phase draws it, not from the battle's stream (`commandTargetPick`)
@@ -138,6 +143,9 @@ export async function askCommandFor(
           return null;
         }
         await pause(60);
+        if (isOver()) {
+          return null;
+        }
         continue;
       }
       moveTargets = [targets[picked]];

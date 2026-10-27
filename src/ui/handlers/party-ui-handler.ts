@@ -123,6 +123,8 @@ export class PartyUiHandler extends MessageUiHandler {
   private optionPrefixes: (Phaser.GameObjects.Sprite | Phaser.GameObjects.Text | null)[] = [];
 
   private transferMode: boolean;
+  /** Co-op (D28): the party changed while another screen was over this one */
+  private coopStale = false;
   private transferOptionCursor: number;
   private transferCursor: number;
   /** Current quantity selection for every item held by the pokemon selected for the transfer */
@@ -282,6 +284,11 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   show(args: any[]): boolean {
+    if (this.active && this.coopStale && args.length === 0) {
+      // Co-op (D28): back from a screen over this one (the summary, a rename, a confirm), and the party changed meanwhile
+      this.coopStale = false;
+      this.coopRefresh();
+    }
     if (args.length === 0 || this.active) {
       return false;
     }
@@ -1970,6 +1977,10 @@ export class PartyUiHandler extends MessageUiHandler {
     if (!this.active) {
       return;
     }
+    if (this.transferMode) {
+      // The slots are drawn again: the item being moved may not be where it was
+      this.clearTransfer();
+    }
     this.clearOptions();
     this.clearPartySwitchSelection();
     this.clearPartySlots();
@@ -2129,6 +2140,42 @@ export class PartyUiHandler extends MessageUiHandler {
     this.moveInfoOverlay.clear();
     this.partyContainer.setVisible(false);
     this.clearPartySlots();
+    if (isCoop()) {
+      this.resetForCoop();
+    }
+  }
+
+  /**
+   * Co-op: the screen is also closed by the partner's decision, a take-over or a resync, not only by the player's Cancel, so
+   * nothing it had open may carry over to its next `show()`: the options menu, an item transfer begun, the transfer button, a
+   * message waiting for a press
+   */
+  private resetForCoop(): void {
+    this.optionsMode = false;
+    this.optionsScroll = false;
+    this.optionsScrollCursor = 0;
+    this.optionsScrollTotal = 0;
+    this.options.splice(0, this.options.length);
+    this.optionsContainer.removeAll(true);
+    this.eraseOptionsCursor();
+    for (const optionPrefix of this.optionPrefixes) {
+      optionPrefix?.destroy();
+    }
+    this.optionPrefixes = [];
+    this.partyMessageBox.setSize(262, 30);
+    this.transferMode = false;
+    this.transferAll = false;
+    this.awaitingActionInput = false;
+    this.onActionInput = null;
+    this.partyDiscardModeButton.clear();
+    this.coopStale = false;
+  }
+
+  /** Co-op (D28): the party changed while a screen was over this one; it is drawn again when this one is back on top */
+  public markCoopStale(): void {
+    if (this.active) {
+      this.coopStale = true;
+    }
   }
 
   clearPartySlots() {

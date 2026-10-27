@@ -38,6 +38,7 @@ import {
   type SidePickPayload,
   type TurnCommandsPayload,
 } from "#coop/turn-commands";
+import { clearWaitingLine } from "#coop/waiting-line";
 import { getPokeballName } from "#data/pokeball";
 import { Command } from "#enums/command";
 import type { PokeballType } from "#enums/pokeball";
@@ -138,7 +139,12 @@ export class CoopTurnSyncPhase extends Phase {
           pre: commandToWire(battle.preTurnCommands[part.slot]),
         };
         // (unless the partner took over for this Pokémon while its player was away, D17)
+        const late = sequencer.hasDecision(part.key);
         proposeUnlessLate(link, part.key, payload);
+        if (late) {
+          // The partner chose for it and has its check mark already: this player's late choice is not what runs
+          continue;
+        }
         // The partner sees a check mark on this Pokémon, with what it was told to do (D8, D16)
         const chosen = battle.turnCommands[part.slot];
         sendIntent(
@@ -154,6 +160,7 @@ export class CoopTurnSyncPhase extends Phase {
     const decisions = await this.collect(
       waits,
       () => arrived === participants.length,
+      () => participants.some(part => part.controller !== me && !arrivedKeys.has(keyId(part.key))),
       watcher => void this.takeOverCommands(participants, arrivedKeys, watcher).catch(reportBridgeError),
     );
     session.openWindow = session.openWindow.filter(open => !participants.some(part => part.key === open));
@@ -227,10 +234,15 @@ export class CoopTurnSyncPhase extends Phase {
         continue;
       }
       // The menus close if the partner's own commands arrive meanwhile (the watcher stops)
-      const payload = await askCommandFor(part.pokemon, part.slot, close => watcher.markOverlay(close));
+      const arrivedNow = (): boolean => arrivedKeys.has(keyId(part.key));
+      const payload = await askCommandFor(part.pokemon, part.slot, close => watcher.markOverlay(close), arrivedNow);
       watcher.markOverlay(null);
       if (payload === null) {
-        watcher.keepWaiting();
+        if (!arrivedNow()) {
+          // Back from the take-over menus: the line says again what this player waits for
+          showWaitingForPartner();
+          watcher.keepWaiting();
+        }
         return;
       }
       proposeUnlessLate(link, part.key, payload, { takeover: true });
@@ -240,10 +252,13 @@ export class CoopTurnSyncPhase extends Phase {
   /**
    * Wait for the partner's commands; say so if they are not there yet, and note how long it took. A long wait is
    * watched (D17): a hint, then the offer to take over.
+   * @param partnerMissing - Whether a command of the partner's is not there yet. The guest's own commands come back from
+   * the host a round trip later: waiting only for those is no wait for the partner, and says nothing
    */
   private async collect<T>(
     waits: Promise<T>[],
     allArrived: () => boolean,
+    partnerMissing: () => boolean,
     onTakeOver: (watcher: AfkWatcher) => void,
   ): Promise<T[]> {
     const session = requireCoopSession();
@@ -252,7 +267,7 @@ export class CoopTurnSyncPhase extends Phase {
     const started = performance.now();
     const instant = allArrived();
     let watcher: AfkWatcher | null = null;
-    if (!instant) {
+    if (!instant && partnerMissing()) {
       showWaitingForPartner();
       const afk: AfkWatcher = new AfkWatcher({ onTakeOver: () => onTakeOver(afk) });
       afk.start();
@@ -263,6 +278,7 @@ export class CoopTurnSyncPhase extends Phase {
       results = await Promise.all(waits);
     } finally {
       watcher?.stop();
+      clearWaitingLine();
     }
     const waited = instant ? 0 : performance.now() - started;
     session.waits.turns++;

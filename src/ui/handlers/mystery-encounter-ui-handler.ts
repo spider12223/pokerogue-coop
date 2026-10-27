@@ -2,7 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { isLinked } from "#coop/bridge";
 import { MARK_COLORS } from "#coop/cosmetic-tag";
 import { getCosmeticView, sendMeCursor } from "#coop/cosmetic-view";
-import { coopMeetsRequirements, showChooserWaiting } from "#coop/me-run";
+import { coopMeetsRequirements, refreshChooserWaiting, showChooserWaiting, viewPartyBackToOptions } from "#coop/me-run";
 import { getCoopSession } from "#coop/session";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
@@ -147,7 +147,13 @@ export class MysteryEncounterUiHandler extends UiHandler {
             slideInDescription: false,
           };
           globalScene.ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {
-            globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings);
+            if (!viewPartyBackToOptions()) {
+              // Co-op (D29): the partner chose meanwhile and the encounter went on
+              globalScene.ui.setMode(UiMode.MESSAGE);
+              return;
+            }
+            // Co-op (D29): the waiting line went into the party screen's box; it is said again under the options
+            globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, overrideSettings).then(() => refreshChooserWaiting());
             setTimeout(() => {
               this.setCursor(this.viewPartyIndex);
               this.unblockInput();

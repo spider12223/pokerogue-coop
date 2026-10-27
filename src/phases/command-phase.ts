@@ -3,8 +3,10 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { isLinked, mySeat } from "#coop/bridge";
+import { getLink, isLinked, mySeat } from "#coop/bridge";
 import { controllerOf, isAllowedSwitch } from "#coop/control";
+import { getCosmeticView } from "#coop/cosmetic-view";
+import { turnCommandsKey } from "#coop/decision-keys";
 import { isCoop } from "#coop/session";
 import { simAccount } from "#coop/sim-account";
 import { commandTargetPick } from "#coop/sim-rng";
@@ -197,6 +199,13 @@ export class CommandPhase extends FieldPhase {
       // A Pokémon commanding its ally skips that (`checkCommander`)
       if (!this.isCommanding() && !globalScene.currentBattle.turnCommands[this.fieldIndex]?.skip) {
         this.clearUnusableMoves();
+      }
+      // The partner may have chosen while this player was still reading: the cosmetic "ready" was dropped then (D16), the
+      // sequenced command is here
+      const { waveIndex, turn } = globalScene.currentBattle;
+      const pokemon = this.getPokemon();
+      if (getLink()?.sequencer.hasDecision(turnCommandsKey(waveIndex, turn, pokemon.id)) === true) {
+        getCosmeticView()?.markReady(pokemon.id);
       }
       this.end();
       return;

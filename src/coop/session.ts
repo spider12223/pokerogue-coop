@@ -182,6 +182,8 @@ export class CoopSession {
   private ended = false;
   /** The timed events of the run (D33) */
   private events: string[] = [];
+  /** The trainer types of the run's trainer battles so far (D34) */
+  private trainers: number[] = [];
 
   constructor(init: CoopSessionInit) {
     this.seat = init.seat;
@@ -233,6 +235,23 @@ export class CoopSession {
     this.events = [...names];
   }
 
+  /** The trainer types the run has met (D34): a biome's next trainer is another one while it has one */
+  public get metTrainers(): readonly number[] {
+    return this.trainers;
+  }
+
+  /** A wave's trainer battle was generated (D34) */
+  public noteTrainer(type: number): void {
+    if (!this.trainers.includes(type)) {
+      this.trainers.push(type);
+    }
+  }
+
+  /** A new run starts: it has met no trainer yet */
+  public clearMetTrainers(): void {
+    this.trainers = [];
+  }
+
   public get accountIds(): Record<Seat, string> {
     if (this.explicitAccountIds !== null) {
       return this.explicitAccountIds;
@@ -281,6 +300,7 @@ export class CoopSession {
       trades: this.trades,
       accounts: this.accountSnapshot,
       events: [...this.events],
+      trainers: [...this.trainers],
     };
   }
 
@@ -297,6 +317,7 @@ export class CoopSession {
     this.rewardPickCount = saved.rewardPickCount;
     this.trades = saved.trades;
     this.events = saved.events ?? [];
+    this.trainers = saved.trainers ?? [];
   }
 
   /**

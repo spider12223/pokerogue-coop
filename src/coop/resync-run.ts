@@ -230,7 +230,8 @@ export function applyResync(session: CoopSession, message: ResyncMessage): void 
     updateSlotEpoch(message.epoch, message.seq);
   }
   // A handler of the old phase reads that phase when it clears (the move list reads the command phase that opened it), so
-  // the screen goes back to the message window while that phase is still the current one
+  // the screen goes back to the message window while that phase is still the current one, with every screen under it
+  globalScene.ui.clearScreensUnder();
   void globalScene.ui.setMode(UiMode.MESSAGE).catch((error: unknown) => {
     console.warn("co-op: clearing the screen before the reload failed:", error);
     coopLog().warn("resync", "clearing the screen before the reload failed", error);

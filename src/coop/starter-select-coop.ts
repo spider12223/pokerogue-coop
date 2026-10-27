@@ -275,6 +275,13 @@ export class CoopStarterSelectController {
     return true;
   }
 
+  /** The question before the player leaves the starter select, which leaves the room */
+  leaveQuestion(): string {
+    return coopText("confirmLeaveLobby", "Leave the co-op game? It ends for {{partner}} too.", {
+      partner: partnerName(),
+    });
+  }
+
   destroy(): void {
     this.unsubscribe();
     this.view.destroy();

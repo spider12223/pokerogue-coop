@@ -11,6 +11,7 @@ import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { PokemonFormChangeItemModifier } from "#modifiers/modifier";
+import type { UiHandler } from "#ui/ui-handler";
 
 /**
  * The game's side of party edits (DECISIONS D28): which of them the party screen offers in a linked run, how an edit is
@@ -126,10 +127,18 @@ export async function applyPartyEdit(edit: PartyEdit): Promise<void> {
   refreshPartyScreen();
 }
 
-/** The party screen, if it is open on either client, shows the party as it is now */
+/**
+ * The party screen, if it is open on either client, shows the party as it is now; under another screen (the summary, a
+ * rename, a confirm), it does once it is back on top
+ */
 function refreshPartyScreen(): void {
-  if (globalScene.ui.mode !== UiMode.PARTY) {
-    return;
+  // The party screen's type is not imported: it imports this module
+  const party = globalScene.ui.handlers[UiMode.PARTY] as
+    | (UiHandler & { coopRefresh(): void; markCoopStale(): void })
+    | undefined;
+  if (globalScene.ui.mode === UiMode.PARTY) {
+    party?.coopRefresh();
+  } else {
+    party?.markCoopStale();
   }
-  (globalScene.ui.getHandler() as { coopRefresh?: () => void }).coopRefresh?.();
 }

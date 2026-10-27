@@ -105,8 +105,14 @@ export function showReconnectScreen(screen: ReconnectScreen): void {
   clearShown();
   shown = { text, closeMenu: null, timer: null };
   const { ui } = globalScene;
-  void ui.setMode(UiMode.MESSAGE);
-  ui.showText(text, null, undefined, null, false);
+  // Every screen the player had open closes; the line waits for the message box, or it would be written into the closing
+  // screen's own box (the party's) and go with it
+  ui.clearScreensUnder();
+  void ui.setMode(UiMode.MESSAGE).then(() => {
+    if (shown?.text === text) {
+      ui.showText(text, null, undefined, null, false);
+    }
+  });
   if (!screen.back) {
     offerEnd(screen);
   }

@@ -42,7 +42,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
 | Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both |
 | Events | D33 timed events (Halloween and the others) |
-| Battles | D6 battle shape, D7 party and control, D8 commands |
+| Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
 | Feel | D16 cosmetic channel, D17 AFK and take over, D27 pacing |
 | Saving and reconnecting | D19 saving, D20 disconnect and rejoin, D21 resume later |
@@ -698,8 +698,8 @@ step; the screens would not.
 - **On in co-op.** The co-op game mode has them. The spawn, the pick and the set-up are seeded as in solo, so both
   clients meet the same encounter.
 - **Who decides: the host,** for every choice of an encounter:
-  - the option, the Pokémon it asks for (one of the host's own: the party screen offers only those), the menu after it
-    (a move, an item, a nature…), the follow-up menus (Safari Zone), and its yes/no prompts.
+  - the option, the Pokémon it asks for (any Pokémon of the party, the guest's too, as in solo play; the guest sees the
+    pick), the menu after it (a move, an item, a nature…), the follow-up menus (Safari Zone), and its yes/no prompts.
   - Each is a sequenced decision `ME_CHOICE`, `ref = "${n}"`, where `n` counts the encounter decisions of the wave.
     Both clients run the same encounter, so they count the same `n`.
   - Both clients then run the encounter's own code with that choice, so whatever it draws, it draws on both.
@@ -831,6 +831,23 @@ wrong date). So a co-op run does not read the clock:
 - `COOP_PROTOCOL_VERSION` is 6 (`START` and `ready` changed).
 - **Pictures and music** of an event (the title banner and logo, image replacements) are loaded at boot by the clock,
   as upstream: they are only what each player sees.
+
+## D34. Trainers the run has met
+
+A biome has few trainer types (a cave has two common ones and four uncommon ones, three gym leaders), so upstream meets
+the same ones again and again. A co-op run prefers the ones it has not met:
+
+- **Remembered:** the trainer type of every wave's trainer battle (`generateNewBattleTrainer`), once, in the session.
+  The trainers an encounter offers (Mysterious Challengers) are not.
+- **The pick** (`Arena.randomTrainerType`, `src/coop/trainer-variety.ts`): the tier is drawn as upstream. A trainer of
+  that tier is drawn as upstream (`randSeedItem`'s one integer, or none for a single trainer); if the run has met it,
+  it is swapped, without a draw, for an unmet one of that tier or of the closest lower tier of the same kind (a gym
+  leader only for a gym leader). Only when the run has met all of them does the drawn one come back. The stream moves
+  exactly as upstream's, whatever the run has met.
+- **Kept:** the `coop` block of the save has them (`trainers`), so a reload, a rejoin and a continued run pick the same.
+  A save of an earlier version has none. A new run starts with none.
+- **Hashed** (D13), like the timed events.
+- Solo play picks as upstream.
 
 ## See also
 

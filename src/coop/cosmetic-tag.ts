@@ -150,8 +150,17 @@ export function addTag(
     Math.max(y, -top + 2) - globalScene.scaledCanvas.height,
   );
   tag.setAlpha(options.dim ? 0.82 : 1);
-  globalScene.fieldUI.add(tag);
+  addUnderPanels(tag);
   return tag;
+}
+
+/**
+ * Add a co-op mark to the field's UI over the battle and its dimming overlays, but under the trainer's portrait and the
+ * panels that open over the battle (a catch's info, the ability bar): added last, it was drawn over all of them
+ */
+function addUnderPanels(mark: Phaser.GameObjects.GameObject): void {
+  globalScene.fieldUI.add(mark);
+  globalScene.fieldUI.moveBelow<Phaser.GameObjects.GameObject>(mark, globalScene.charSprite);
 }
 
 /** The pointer over a target: a triangle pointing down */
@@ -180,7 +189,7 @@ export function addTargetPointer(pokemon: Pokemon, color: number, bob = false): 
   }
   drawPixels(graphics, POINTER, left, top, color);
   pointer.setPosition(Math.round(pokemon.x), battlerBox(pokemon).top - 3 - globalScene.scaledCanvas.height);
-  globalScene.fieldUI.add(pointer);
+  addUnderPanels(pointer);
   if (bob) {
     globalScene.tweens.add({ targets: pointer, y: pointer.y - 2, duration: 420, yoyo: true, repeat: -1 });
   }

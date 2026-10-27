@@ -33,6 +33,7 @@ import {
  * | --- | --- | --- |
  * | 1 | the host's account has Mew; the guest's has only the starters of a new account | only the host has Mew |
  * | 2 | both are on the co-op starter select | the guest has Mew there too |
+ * | 2b | the guest presses Cancel with no starter picked, then Cancel, then again Cancel and Enter | each time it asks before leaving the room, starts on "No", and the guest stays |
  * | 3 | the guest picks Mew (5) and Charmander (3), the host Bulbasaur (3): 11 points, more than a solo run's 10 | the run starts with Mew in the guest's half of the party, without a desync |
  * | 4 | the run has started | the guest's own account does not have Mew |
  * | 5 | the run has started | both games have the timed events both clocks had on (D33), and the same one in effect |
@@ -95,6 +96,15 @@ test.describe("co-op: the starter select of both players", () => {
       }
       await guest.page.waitForTimeout(1000);
       expect(await hasCaught(guest, MEW)).toBe(true);
+
+      // Leaving the starter select leaves the room, so it asks first, on "No": one Backspace too many, or a held one, and an
+      // Enter after it all keep the player in
+      await pressUntil(guest, "CANCEL", "CONFIRM");
+      await pressUntil(guest, "CANCEL", "STARTER_SELECT");
+      await pressUntil(guest, "CANCEL", "CONFIRM");
+      await guest.page.waitForTimeout(700);
+      await pressUntil(guest, "ACTION", "STARTER_SELECT");
+      await guest.page.waitForTimeout(300);
 
       const guestPicks = async (): Promise<void> => {
         await addSpecies(guest, MEW);

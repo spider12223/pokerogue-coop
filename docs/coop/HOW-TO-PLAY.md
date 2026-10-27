@@ -19,7 +19,8 @@ the background runs slowly.
 3. **The other joins:** **Join a game** and paste the code.
 4. The starter select opens for both, with **the Pokémon of both of you**: you can pick anything your friend has caught,
    with their shinies, forms, IVs and unlocks. Pick up to three starters each; you share **15 points**, and you see your
-   friend's picks as they make them. When both press ready, the run starts.
+   friend's picks as they make them. When both press ready, the run starts. Leaving the starter select (Cancel with no
+   starter picked) asks first, with the cursor on **No**: leaving ends the game for both of you.
 
 The host's Pokémon fight on the left, the guest's on the right.
 
@@ -48,9 +49,15 @@ The host's Pokémon fight on the left, the guest's on the right.
 ## Mystery Encounters
 
 They appear as in single player. The host makes every choice of an encounter; the guest's cursor follows the host's (and the
-guest can still move it to read another option). A Pokémon the encounter asks for is the chooser's own. Encounters that only
-one Pokémon can enter first ask the host who goes: the host, the guest, or nobody. Encounter battles are two against two; a
-lone wild Pokémon is made stronger and gives double experience and money.
+guest can still move it to read another option). A Pokémon the encounter asks for (training, a trade, a part-time job…)
+can be any Pokémon of the party, yours or your friend's. Encounters that only one Pokémon can enter first ask the host who
+goes: the host, the guest, or nobody; the one who goes picks one of their own Pokémon. Encounter battles are two against
+two; a lone wild Pokémon is made stronger and gives double experience and money.
+
+## Trainers
+
+A run remembers the trainers it has fought. A biome's next trainer is one you have not fought yet, as long as the biome has
+one left (a gym leader for a gym leader); only then does one come back.
 
 ## Eggs, vouchers and your account
 

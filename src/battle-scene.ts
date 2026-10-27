@@ -31,6 +31,7 @@ import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import { arrangeCoopParty } from "#coop/arrange";
 import { withCoopDoubleVariant } from "#coop/doubles";
 import { getCoopSession } from "#coop/session";
+import { noteTrainerMet } from "#coop/trainer-variety";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { getDailyMysteryEncounter } from "#data/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
@@ -1464,6 +1465,7 @@ export class BattleScene extends SceneBase {
    */
   private generateNewBattleTrainer(waveIndex: number): Trainer {
     const trainerType = activeOverrides.RANDOM_TRAINER_OVERRIDE?.trainerType ?? this.arena.randomTrainerType(waveIndex);
+    noteTrainerMet(trainerType);
     const config = trainerConfigs[trainerType];
 
     let doubleTrainer: boolean;

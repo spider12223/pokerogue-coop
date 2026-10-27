@@ -4,6 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { NIGHT_TIME } from "#constants/game-constants";
+import { pickCoopTrainer } from "#coop/trainer-variety";
 import type { ArenaTag, ArenaTagTypeMap } from "#data/arena-tag";
 import { getArenaTag } from "#data/arena-tag";
 import { biomeBgmLoopPoints } from "#data/biome-bgm-loop-points";
@@ -532,7 +533,10 @@ export class Arena {
     }
 
     const tierPool = this.trainerPool[tier];
-    return tierPool.length > 0 ? randSeedItem(tierPool) : TrainerType.BREEDER;
+    // Co-op (D34): a trainer the run has met comes back only when the biome has no other
+    return tierPool.length > 0
+      ? (pickCoopTrainer(this.trainerPool, tier) ?? randSeedItem(tierPool))
+      : TrainerType.BREEDER;
   }
 
   // #endregion Trainers

@@ -80,6 +80,8 @@ export async function coopDecideSwitch(options: {
               && slotIndex < 6
               && isAllowedSwitch(fieldIndex, slotIndex, reason);
             resolve({ partyIndex: valid ? slotIndex : null, baton: option === PartyOption.PASS_BATON });
+            // The party screen goes now, as in solo play; it does not wait for the decision to come back
+            void globalScene.ui.setMode(UiMode.MESSAGE);
           },
           coopSwitchFilter(fieldIndex, reason, PartyUiHandler.FilterNonFainted),
         );

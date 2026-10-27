@@ -25,8 +25,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 /**
  * Mystery Encounters in a linked run (DECISIONS D29): the host makes the encounter's choices as sequenced decisions and both
- * clients carry them out; encounter battles are two against two (a lone wild Pokémon against two is made stronger); a
- * Pokémon the chooser picks is one of their own.
+ * clients carry them out; encounter battles are two against two (a lone wild Pokémon against two is made stronger); the
+ * chooser picks from the whole party, but in a one-Pokémon encounter only from the goer's own.
  */
 
 const SIX = [
@@ -174,39 +174,34 @@ describe("Co-op: Mystery Encounters in a linked run (D29)", () => {
     expect(requireCoopSession().meLoneEnemy).toBeNull();
   });
 
-  it("the chooser picks one of their own Pokémon; the partner's are refused on the screen", async () => {
+  it("the chooser picks any Pokémon of the party, the partner's too", async () => {
     const r = await encounter(MysteryEncounterType.PART_TIMER);
     await pickOption(r, 0);
     const { scene } = r.ctx.game;
     await until(r, "showed the party", () => scene.ui.mode === UiMode.PARTY);
     const party = scene.ui.getHandler() as PartyUiHandler;
-    const pickSlot = (slot: number): void => {
-      party.setCursor(slot);
-      party.processInput(Button.ACTION);
-      party.processInput(Button.ACTION);
-    };
-    const theirs = scene.getPlayerParty().indexOf(own(r, "guest")[1]);
-    pickSlot(theirs);
-    // still asking: the partner's Pokémon cannot be the one, and the screen says why
-    expect(requireCoopSession().meQuestion?.k).toBe("pokemon");
-    await until(r, "said that one is the partner's", () => {
-      const message = party as unknown as { awaitingActionInput: boolean };
-      return message.awaitingActionInput;
-    });
+    const theirs = own(r, "guest")[1];
+    party.setCursor(scene.getPlayerParty().indexOf(theirs));
     party.processInput(Button.ACTION);
-    const mine = own(r, "host")[1];
-    await until(r, "showed the party again", () => scene.ui.mode === UiMode.PARTY);
-    pickSlot(scene.getPlayerParty().indexOf(mine));
-    await until(r, "cut the PP", () => mine.moveset.every(move => move.getMovePp() - move.ppUsed <= 2));
-    expect(own(r, "guest")[1].moveset.some(move => move.getMovePp() - move.ppUsed > 2)).toBe(true);
+    party.processInput(Button.ACTION);
+    await until(r, "cut the PP", () => theirs.moveset.every(move => move.getMovePp() - move.ppUsed <= 2));
+    expect(own(r, "host")[1].moveset.some(move => move.getMovePp() - move.ppUsed > 2)).toBe(true);
   });
 
-  it("the guest carries out the host's Pokémon pick; a pick of the guest's Pokémon is illegal on both (D24)", async () => {
+  it("the guest carries out the host's pick of one of the guest's Pokémon", async () => {
+    const r = await encounter(MysteryEncounterType.PART_TIMER, "guest");
+    await partnerChooses(r, { k: "option", index: 0 });
+    const theirs = own(r, "guest")[0];
+    await partnerChooses(r, { k: "pokemon", pokemonId: theirs.id });
+    await until(r, "cut the PP", () => theirs.moveset.every(move => move.getMovePp() - move.ppUsed <= 2));
+  });
+
+  it("a pick of a Pokémon outside the party is illegal on both (D24)", async () => {
     const r = await encounter(MysteryEncounterType.PART_TIMER, "guest");
     const desyncs: string[] = [];
     r.link.sequencer.onDesync(error => desyncs.push(error.message));
     await partnerChooses(r, { k: "option", index: 0 });
-    await partnerChooses(r, { k: "pokemon", pokemonId: own(r, "guest")[0].id });
+    await partnerChooses(r, { k: "pokemon", pokemonId: 987_654 });
     await until(r, "found the pick illegal", () => desyncs.length > 0);
     expect(desyncs[0]).toMatch(/illegal decision.*may not be chosen/);
   });
@@ -257,5 +252,25 @@ describe("Co-op: Mystery Encounters in a linked run (D29)", () => {
     // the guest's pick counts now
     await pickOption(r, 1);
     await advance(r, ["SelectModifierPhase"]);
+  });
+
+  it("who goes: the one who goes picks among their own Pokémon", async () => {
+    const r = await encounter(MysteryEncounterType.FUN_AND_GAMES, "guest", firstAnswer({ k: "who", seat: "guest" }));
+    const { scene } = r.ctx.game;
+    // the game costs money
+    scene.money = 1_000_000;
+    await openUi(r.ctx, "MysteryEncounterPhase");
+    await pickOption(r, 0);
+    await until(r, "showed the party", () => scene.ui.mode === UiMode.PARTY);
+    const party = scene.ui.getHandler() as PartyUiHandler;
+    party.setCursor(scene.getPlayerParty().indexOf(own(r, "host")[0]));
+    party.processInput(Button.ACTION);
+    party.processInput(Button.ACTION);
+    // still asking: the host's Pokémon cannot go, and the screen says why
+    await until(r, "said that one is the partner's", () => {
+      const message = party as unknown as { awaitingActionInput: boolean };
+      return message.awaitingActionInput;
+    });
+    expect(requireCoopSession().meQuestion?.k).toBe("pokemon");
   });
 });

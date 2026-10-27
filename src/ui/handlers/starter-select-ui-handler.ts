@@ -60,6 +60,7 @@ import type {
   OptionSelectModeConfig,
   StarterSelectCallback,
 } from "#types/ui-types";
+import { ConfirmUiHandler } from "#ui/confirm-ui-handler";
 import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, SortCriteria } from "#ui/dropdown";
 import { FilterBar } from "#ui/filter-bar";
 import { MessageUiHandler } from "#ui/message-ui-handler";
@@ -3372,6 +3373,19 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       noHandler: cancelExit,
       yOffset: 29,
     };
+    if (this.coopUi !== null) {
+      // Co-op: leaving ends the game for both, so the question says so, starts on "No" and takes no answer for half a
+      // second (one Backspace too many, or a held one, must not leave the room)
+      ui.showText(this.coopUi.leaveQuestion(), null, () => {
+        ui.setModeWithoutClear(UiMode.CONFIRM, { ...options, inputDelay: 500, canBypassInputDelay: true }).then(() => {
+          const handler = ui.getHandler();
+          if (handler instanceof ConfirmUiHandler) {
+            handler.setCursor(1);
+          }
+        });
+      });
+      return;
+    }
     ui.showText(i18next.t("starterSelectUiHandler:confirmExit"), null, () => {
       ui.setModeWithoutClear(UiMode.CONFIRM, options);
     });

@@ -205,19 +205,30 @@ export async function meDecide<K extends MeChoiceKind>(
   }
 }
 
-/** The chooser's Pokémon that `filter` allows */
+/**
+ * @returns Whose Pokémon the chooser picks from: anyone's (`null`), as in solo play; in a one-Pokémon encounter only the
+ * player's who goes, who then plays the one they pick
+ */
+function pickableOwner(chooser: Seat): Seat | null {
+  const encounter = globalScene.currentBattle.mysteryEncounter;
+  return encounter != null && isOnePokemonEncounter(encounter.encounterType) ? chooser : null;
+}
+
+/** The Pokémon the chooser may pick that `filter` allows */
 function choosablePokemon(chooser: Seat, filter?: PokemonSelectFilter): number[] {
   const { ownership } = requireCoopSession();
+  const owner = pickableOwner(chooser);
   return globalScene
     .getPlayerParty()
-    .filter(pokemon => ownership.get(pokemon.id) === chooser && (filter?.(pokemon) ?? null) === null)
+    .filter(pokemon => (owner === null || ownership.get(pokemon.id) === owner) && (filter?.(pokemon) ?? null) === null)
     .map(pokemon => pokemon.id);
 }
 
-/** The party screen filter of a co-op choice: the chooser's own Pokémon, and what the encounter allows of them */
+/** The party screen filter of a co-op choice: what the encounter allows, of the goer's own in a one-Pokémon encounter */
 function chooserFilter(chooser: Seat, filter?: PokemonSelectFilter): PokemonSelectFilter {
+  const owner = pickableOwner(chooser);
   return (pokemon: PlayerPokemon) => {
-    if (requireCoopSession().ownership.get(pokemon.id) !== chooser) {
+    if (owner !== null && requireCoopSession().ownership.get(pokemon.id) !== owner) {
       // The taker of a choice (D17) picks among the chooser's, not its own
       return chooser === mySeat()
         ? notYourPokemonText(pokemon)
@@ -243,6 +254,39 @@ function askPokemon(chooser: Seat, filter?: PokemonSelectFilter): Promise<Choice
       chooserFilter(chooser, filter),
     );
   });
+}
+
+/**
+ * The screen a Pokémon pick goes back to: where the encounter was. The waiting player may be looking at the party (View
+ * Party) when the pick starts; the party is not where the encounter goes on
+ */
+function exitMode(): UiMode {
+  const { mode } = globalScene.ui;
+  return mode === UiMode.PARTY ? UiMode.MYSTERY_ENCOUNTER : mode;
+}
+
+/**
+ * The player leaves View Party of an encounter's options. The encounter goes on meanwhile in co-op (D29): its options come
+ * back only while one of its choices is open, else the message box.
+ * @returns Whether to show the options again
+ */
+export function viewPartyBackToOptions(): boolean {
+  const session = getCoopSession();
+  if (session === null || !isCoop()) {
+    return true;
+  }
+  const question = session.meQuestion?.k;
+  return question === "option" || question === "pokemon" || question === "optionPokemon";
+}
+
+/** Back on the encounter's options while the partner chooses: who the player waits for is said again under them */
+export function refreshChooserWaiting(): void {
+  const session = getCoopSession();
+  const question = session?.meQuestion?.k;
+  if (session == null || question == null || session.meChooser === mySeat()) {
+    return;
+  }
+  showChooserWaiting(question === "option" ? "option" : "pokemon");
 }
 
 /** A menu of the chooser's (the encounter's entries and "Cancel"): resolves with the entry, or `null` for cancel */
@@ -278,7 +322,7 @@ function askMenu(
 }
 
 /**
- * `selectPokemonForOption` in a linked run: the chooser picks one of their own Pokémon (one decision); both clients run
+ * `selectPokemonForOption` in a linked run: the chooser picks a Pokémon of the party (one decision); both clients run
  * `onPokemonSelected` with it, and if it offers a menu, the chooser picks from that (a second decision) and both run the
  * entry's handler. Going back at either step is `false`, as in solo play.
  */
@@ -288,7 +332,7 @@ export async function coopSelectPokemonForOption(
   onPokemonNotSelected?: () => void,
   selectablePokemonFilter?: PokemonSelectFilter,
 ): Promise<boolean> {
-  const modeToSetOnExit = globalScene.ui.mode;
+  const modeToSetOnExit = exitMode();
   const chooser = meChooser();
   const picked = await meDecide(
     { k: "pokemon", pokemon: choosablePokemon(chooser, selectablePokemonFilter) },
@@ -335,7 +379,7 @@ export async function coopSelectPokemonForOption(
 }
 
 /**
- * `selectOptionThenPokemon` in a linked run: the chooser picks an entry, then one of their own Pokémon, as one decision;
+ * `selectOptionThenPokemon` in a linked run: the chooser picks an entry, then a Pokémon of the party, as one decision;
  * both clients run the entry's handler with them.
  * @returns The party index and the entry, or `null` if the chooser went back
  */
@@ -345,7 +389,7 @@ export async function coopSelectOptionThenPokemon(
   selectablePokemonFilter?: PokemonSelectFilter,
   onHoverOverCancelOption?: () => void,
 ): Promise<{ selectedPokemonIndex: number; selectedOptionIndex: number } | null> {
-  const modeToSetOnExit = globalScene.ui.mode;
+  const modeToSetOnExit = exitMode();
   const chooser = meChooser();
   const choice = await meDecide(
     {

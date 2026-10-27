@@ -157,7 +157,11 @@ function catchUp(active: Pacer): void {
   }
   const { ui } = globalScene;
   if (TEXT_MODES.has(ui.mode)) {
-    follow(active, ui.getHandler());
+    // A panel of more than one step (the level-up stats, then their totals) closes in one go, instead of showing each
+    // step for a tick; a shared line moves the guest's position, so the loop ends there by itself
+    for (let step = 0; step < 3 && active.session.pace.behind && follow(active, ui.getHandler()); step++) {
+      // closed one step
+    }
     return;
   }
   const action = active.onBehind;

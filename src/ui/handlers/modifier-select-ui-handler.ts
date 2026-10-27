@@ -58,6 +58,13 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   /** Co-op (D16): the partner's cursor, and the option it is on */
   private partnerCursorObj: Phaser.GameObjects.Image | null = null;
   private partnerTarget: ModifierOption | null = null;
+  /**
+   * Co-op: counts the screen's openings. A reroll opens it again while the last opening may still be animating; the
+   * callbacks of that opening see the count has moved on and stop, so they do not draw over the new rewards
+   */
+  private openingCount = 0;
+  /** Co-op (D16): the bubbles of the partner's pings, removed with the screen */
+  private readonly pingBubbles = new Set<Phaser.GameObjects.Text>();
   private checkButtonContainer: Phaser.GameObjects.Container;
   private continueButtonContainer: Phaser.GameObjects.Container;
   private rerollCostText: Phaser.GameObjects.Text;
@@ -224,6 +231,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         this.onActionInput = args[2];
       }
       this.moveInfoOverlay.active = this.moveInfoOverlayActive;
+      // Co-op (D16): back from the party, the partner's cursor is where they have moved it meanwhile
+      getCosmeticView()?.drawCursor();
       return false;
     }
 
@@ -234,6 +243,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     }
 
     super.show(args);
+    const opening = ++this.openingCount;
+    /** Co-op: this opening was left (the screen closed, or opened again by a reroll) while it was animating */
+    const left = (): boolean => getCoopSession() !== null && (!this.active || opening !== this.openingCount);
 
     this.coopLabel.setText(typeof args[4] === "string" ? args[4] : "").setVisible(typeof args[4] === "string");
     this.modifierContainer.bringToTop(this.coopLabel);
@@ -361,6 +373,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       ease: "Sine.easeIn",
       duration: 1250,
       onUpdate: t => {
+        if (left()) {
+          return;
+        }
         // The bang here is safe, as `getValue()` only returns null if the tween has been destroyed (which obviously isn't the case inside onUpdate)
         const value = t.getValue()!;
         const index = Math.floor(value * typeOptions.length);
@@ -386,6 +401,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     /** Holds promises that resolve once each shop item has finished animating */
     const shopAnimPromises: Promise<void>[] = [];
     globalScene.time.delayedCall(1000 + maxUpgradeCount * 2000, () => {
+      if (left()) {
+        return;
+      }
       for (const shopOption of this.shopOptionsRows.flat()) {
         // It is safe to skip awaiting the `show` method here,
         // as the promise it returns is also part of the promise appended to `shopAnimPromises`,
@@ -396,9 +414,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     tweenPromise.then(() => {
       globalScene.time.delayedCall(500, () => {
-        if (getCoopSession() !== null && !this.active) {
-          // Co-op (D20): the screen was left while it was opening (the partner went away, a reload): it does not draw itself again
-          // over the waiting screen
+        if (left()) {
+          // Co-op (D20): the screen was left while it was opening (the partner went away, a reload, a reroll): it does not
+          // draw itself again over what replaced it
           return;
         }
         if (partyHasHeldItem) {
@@ -443,7 +461,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         // have completed, (which, among other things, would allow the GameObjects to be destroyed
         // before the animations have completed, causing errors).
         Promise.allSettled([...shopAnimPromises, ...rewardAnimAllSettledPromises]).then(() => {
-          if (getCoopSession() !== null && !this.active) {
+          if (left()) {
             return;
           }
           const updateCursorTarget = () => {
@@ -468,6 +486,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           updateCursorTarget();
 
           handleTutorial(Tutorial.SELECT_ITEM).then(res => {
+            if (left()) {
+              return;
+            }
             if (res) {
               updateCursorTarget();
             }
@@ -836,6 +857,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.getUi().getMessageHandler().hideNameText();
     this.eraseCursor();
     this.erasePartnerCursor();
+    for (const bubble of this.pingBubbles) {
+      bubble.destroy();
+    }
+    this.pingBubbles.clear();
 
     // Reset cursor positions
     this.cursor = 0;
@@ -1041,7 +1066,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     });
     bubble.setOrigin(0.5, shop ? 0 : 1);
     this.modifierContainer.add(bubble);
+    this.pingBubbles.add(bubble);
     globalScene.time.delayedCall(2500, () => {
+      if (!this.pingBubbles.delete(bubble)) {
+        // The screen closed and took the bubble with it
+        return;
+      }
       bubble.destroy();
       if (this.partnerTarget !== option) {
         option.setPartnerTint(null);

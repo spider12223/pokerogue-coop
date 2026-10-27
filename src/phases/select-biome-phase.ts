@@ -6,6 +6,7 @@ import { biomeKey } from "#coop/decision-keys";
 import { type BiomePayload, isBiomePayload } from "#coop/prompt-payloads";
 import { DesyncError } from "#coop/sequencer";
 import { requireCoopSession } from "#coop/session";
+import { showWaitingLine } from "#coop/waiting-line";
 import { getDailyForcedBiomes } from "#data/daily-seed/daily-run";
 import { allBiomes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
@@ -139,15 +140,12 @@ export class SelectBiomePhase extends BattlePhase {
             yOffset: 48,
           } satisfies OptionSelectModeConfig);
         }),
-      wait: () => {
-        globalScene.ui.setMode(UiMode.MESSAGE);
-        globalScene.ui.showText(
+      wait: () =>
+        showWaitingLine(
           coopText("partnerChoosesBiome", "{{partner}} is choosing the next biome…", {
             partner: requireCoopSession().partnerName,
           }),
-          null,
-        );
-      },
+        ),
       isPayload: isBiomePayload,
     })
       .then(({ payload, key, seq }) => {

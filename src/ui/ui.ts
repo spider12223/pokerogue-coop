@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { isCoop } from "#coop/session";
 import type { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { PlayerGender } from "#enums/player-gender";
@@ -128,6 +129,12 @@ export class UI extends Phaser.GameObjects.Container {
   private tooltipContent: Phaser.GameObjects.Text;
 
   private overlayActive: boolean;
+  /**
+   * Co-op: the mode change that is fading the screen out and in, if any. The next change waits for it: the partner's
+   * decisions and reloads start changes at any moment, and two fades at once fight over the overlay (and the first one's
+   * mode would land last)
+   */
+  private coopTransition: Promise<void> | null = null;
 
   public handlers: UiHandler[];
 
@@ -533,6 +540,9 @@ export class UI extends Phaser.GameObjects.Container {
     chainMode: boolean,
     args: any[],
   ): Promise<void> {
+    if (this.coopTransition !== null) {
+      return this.coopTransition.then(() => this.setModeInternal(mode, clear, forceTransition, chainMode, args));
+    }
     return new Promise(resolve => {
       if (this._mode === mode && !forceTransition) {
         resolve();
@@ -563,12 +573,23 @@ export class UI extends Phaser.GameObjects.Container {
           && !noTransitionModes.includes(mode))
         || (chainMode && !noTransitionModes.includes(mode))
       ) {
-        this.fadeOut(250).then(() => {
-          globalScene.time.delayedCall(100, () => {
-            doSetMode();
-            this.fadeIn(250);
+        const transition = this.fadeOut(250).then(
+          () =>
+            new Promise<void>(faded => {
+              globalScene.time.delayedCall(100, () => {
+                doSetMode();
+                this.fadeIn(250).then(faded);
+              });
+            }),
+        );
+        if (isCoop()) {
+          this.coopTransition = transition;
+          void transition.finally(() => {
+            if (this.coopTransition === transition) {
+              this.coopTransition = null;
+            }
           });
-        });
+        }
       } else {
         doSetMode();
       }
@@ -594,6 +615,19 @@ export class UI extends Phaser.GameObjects.Container {
   public resetModeChain(): void {
     this._modeChain = [];
     globalScene.updateGameInfo();
+  }
+
+  /**
+   * Co-op: clear every screen still open under the one on top (and the message box's own). A decision of the partner, a
+   * take-over or a reload can end what the player had opened screens over (the rewards, then the party, then a summary);
+   * changing the mode clears only the top one, so the rest would stay drawn, and would not draw again when next shown.
+   */
+  public clearScreensUnder(): void {
+    for (const [mode, handler] of this.handlers.entries()) {
+      if (mode !== this._mode && mode !== UiMode.MESSAGE && handler?.active) {
+        handler.clear();
+      }
+    }
   }
 
   public revertMode(): Promise<boolean> {

@@ -110,7 +110,8 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
       delay = 20;
     }
     // Co-op (D27): the host is past this line already, so the guest's screen shows it at once and moves on
-    if (prompt && coopTextAtOnce()) {
+    const coopAtOnce = !!prompt && coopTextAtOnce();
+    if (coopAtOnce) {
       delay = 0;
     }
 
@@ -260,6 +261,12 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
       });
     } else {
       this.message.setText(text);
+      const lastCharVar = [...charVarMap.values()].at(-1);
+      if (coopAtOnce && lastCharVar !== undefined) {
+        // Co-op (D27): typed out, the line would have changed the speaker's expression as it went; at once, it ends on the
+        // last one
+        globalScene.charSprite.setVariant(lastCharVar);
+      }
       if (prompt) {
         this.pendingPrompt = true;
       }

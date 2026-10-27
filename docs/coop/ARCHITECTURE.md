@@ -385,6 +385,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `party-edit-run.ts` | Which edits the party screen offers, `proposePartyEdit`, `applyPartyEdit` | D28 | no |
 | `me-choice.ts` | `MeChoice`, `MeQuestion`, `checkMeChoice`, `meChoiceKey` | D29 | yes |
 | `me-run.ts` | `meDecide`, the co-op encounter selection helpers, the seeded requirement check, who goes, the 2v2 battles, `passOwnership` | D29 | no |
+| `trainer-variety.ts` | `pickCoopTrainer`: a biome's next trainer is one the run has not met; `noteTrainerMet` | D34 | no |
 | `retry.ts` | The `RETRY` payload of a wipe (`isRetryPayload`) | D4a, D13 | yes |
 | `save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
 
@@ -427,6 +428,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `touch-emote.ts` | The touch screen's ping and emote buttons (`#coopEmoteTouch`, `#coopPingTouch` in `index.html`) | D16 | yes |
 | `takeover.ts` | `takeoverPlan` (what a take over decides per kind), `canTakeOver`, `AfkClock`, the default timers | D17 | yes |
 | `afk.ts` | `AfkWatcher`: the hint at 30 s and the offer at 90 s | D17 | no |
+| `waiting-line.ts` | The waiting player's line ("Waiting for your partner…", the AFK hints): it goes when the wait is over | D17 | no |
 | `overlay.ts` | `showOverlayMenu`: a small menu over whatever is on screen (the take over offer and menus, the emote wheel) | D16, D17 | no |
 | `takeover-command.ts` | The menus that choose a move and a target for the partner's Pokémon | D17 | no |
 | `pace.ts` | `PaceTracker`: positions in the text, shared lines, whether the guest is behind, whether a press fits | D27 | yes |
@@ -460,11 +462,14 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `src/phases/game-over-phase.ts`, `post-game-over-phase.ts` | The shared run end and the retry after a wipe | D4a |
 | `src/phases/egg-lapse-phase.ts`, `egg-summary-phase.ts`, `trainer-victory-phase.ts`, `victory-phase.ts` | Eggs, vouchers, the rewards of a lone encounter enemy | D29, D30 |
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
-| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double | D6 |
+| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`) | D6, D34 |
+| `src/field/arena.ts` | `randomTrainerType` asks `pickCoopTrainer` in co-op | D34 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |
 | `src/timed-event-manager.ts` | `isActive` reads the run's events in co-op, the clock in solo; `eventsByClock` is what a player brings to the run | D33 |
 | `src/system/game-data.ts` | `loadCoopSession`; the run history entry with both names; the system save writes the account's own data while the starter select shows both players' (`ownAccountData`) | D4a, D13, D19, D32 |
-| `src/ui/handlers/message-ui-handler.ts` | `showPrompt` reports each line to the pacer | D27 |
+| `src/ui/handlers/message-ui-handler.ts` | `showPrompt` reports each line to the pacer; a line shown at once takes the speaker's last expression | D27 |
+| `src/ui/ui.ts` | `clearScreensUnder`: what a partner's decision, a take-over or a reload closes under the top screen; a co-op mode change waits for the fade that is running | D17, D20 |
+| `src/ui/handlers/party-ui-handler.ts`, `modifier-select-ui-handler.ts` | Nothing of a screen closed by the partner carries over to its next opening (menus, a transfer begun, the transfer button, an opening still animating, ping bubbles); the party is drawn again after a partner's edit under a summary | D9, D28 |
 | `plugins/vite/coop-build-identity.ts`, `plugins/vite/require-source-url.ts` | The build identity; a production build without `VITE_SOURCE_URL` fails | D1, D25 |
 
 ## Where to start

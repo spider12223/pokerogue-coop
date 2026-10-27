@@ -11,6 +11,7 @@ import type { Seat } from "#coop/protocol";
 import { DesyncError } from "#coop/sequencer";
 import { getCoopSession } from "#coop/session";
 import { writesForSeat } from "#coop/sim-account";
+import { showWaitingLine } from "#coop/waiting-line";
 import { SubstituteTag } from "#data/battler-tags";
 import { Gender } from "#data/gender";
 import {
@@ -477,15 +478,12 @@ export class AttemptCapturePhase extends PokemonPhase {
                       answer = resolve;
                       promptRelease();
                     }),
-                  wait: () => {
-                    ui.setMode(UiMode.MESSAGE);
-                    ui.showText(
+                  wait: () =>
+                    showWaitingLine(
                       coopText("partnerDecidesCatch", "{{partner}} is deciding about the catch…", {
                         partner: getCoopSession()?.partnerName ?? "",
                       }),
-                      null,
-                    );
-                  },
+                    ),
                   isPayload: isCatchReleasePayload,
                 })
                   .then(({ payload, key, seq }) => {

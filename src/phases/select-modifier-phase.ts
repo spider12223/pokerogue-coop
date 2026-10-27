@@ -1,7 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
-import { AfkWatcher, showTookOver } from "#coop/afk";
+import { AfkWatcher, tookOverText } from "#coop/afk";
 import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
 import { coopRewardOptionsReady } from "#coop/checkpoints";
 import { endTurnCosmetics, getCosmeticView } from "#coop/cosmetic-view";
@@ -641,8 +641,9 @@ export class SelectModifierPhase extends BattlePhase {
         this.sendPartyEdit();
       }
       if (decision.takeover === true && decision.author !== mySeat()) {
-        // The partner chose for this player, who was away (D17)
-        showTookOver();
+        // The partner chose for this player, who was away (D17). Said on the screen: a reroll or a lock keeps it open, so it
+        // must not give way to the message box
+        this.rewardHandler()?.setCoopLabel(tookOverText());
       }
       if (decision.key.kind === "TRADE_REQUEST") {
         // Either player asked for a trade after this screen (D11): the screen stays as it is, the button says so
@@ -1108,11 +1109,11 @@ export class SelectModifierPhase extends BattlePhase {
   /** The screen is over (a pick, a skip or a reroll): nothing is proposed or applied from now on. */
   private closeScreen(): void {
     this.closed = true;
-    const handler = this.rewardHandler();
-    if (globalScene.ui.mode !== UiMode.MODIFIER_SELECT && handler.active) {
+    if (globalScene.ui.mode !== UiMode.MODIFIER_SELECT) {
       // The decision came while this player was in the party screen opened from this one (Check Team, a shop target, Manage
-      // Items): leaving that screen will not close this one, so its items and buttons would stay drawn into the next battle
-      handler.clear();
+      // Items), maybe with a summary or a prompt over it: leaving the top screen will not close this one or those between,
+      // so their items and buttons would stay drawn into the next battle
+      globalScene.ui.clearScreensUnder();
     }
     if (isLinked()) {
       requireCoopSession().rewardLegality = null;

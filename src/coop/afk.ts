@@ -10,6 +10,7 @@ import { showOverlayMenu } from "#coop/overlay";
 import { getCoopSession } from "#coop/session";
 import { AfkClock, DEFAULT_AFK_TIMERS } from "#coop/takeover";
 import { coopText, pingHint } from "#coop/text";
+import { noteWaitingLine } from "#coop/waiting-line";
 import { UiMode } from "#enums/ui-mode";
 import i18next from "i18next";
 
@@ -119,6 +120,8 @@ export class AfkWatcher {
       this.options.showText(text);
     } else if (globalScene.ui.mode === UiMode.MESSAGE) {
       globalScene.ui.showText(text, null, undefined, null, false);
+      // It goes with the wait (D17)
+      noteWaitingLine(text);
     }
   }
 
@@ -186,18 +189,25 @@ export class AfkWatcher {
   }
 }
 
-/** "{partner} took over." for the player whose decision was made for them (D17) */
-export function showTookOver(): void {
+/**
+ * "{partner} took over." for the player whose decision was made for them (D17): every screen they had open for it closes.
+ * @returns Resolves once the line has been read, so that what comes next does not draw over it
+ */
+export async function showTookOver(): Promise<void> {
   const { ui } = globalScene;
-  void ui.setMode(UiMode.MESSAGE).then(() => {
-    ui.showText(
-      coopText("tookOver", "{{partner}} took over for you.", {
-        partner: getCoopSession()?.partnerName ?? "Your partner",
-      }),
-      null,
-      undefined,
-      1800,
-    );
+  ui.clearScreensUnder();
+  await ui.setMode(UiMode.MESSAGE);
+  await new Promise<void>(resolve => {
+    ui.showText(tookOverText(), null, resolve, 1800);
+    // A line shown over this one drops its callback: the decision must not wait for it
+    globalScene.time.delayedCall(3500, resolve);
+  });
+}
+
+/** "{partner} took over for you." */
+export function tookOverText(): string {
+  return coopText("tookOver", "{{partner}} took over for you.", {
+    partner: getCoopSession()?.partnerName ?? "Your partner",
   });
 }
 

@@ -14,6 +14,7 @@ import { type Decision, DesyncError, ProposalRejectedError, type ProposeOptions 
 import { getCoopSession, requireCoopSession } from "#coop/session";
 import { canTakeOver, takeoverPlan } from "#coop/takeover";
 import { coopText } from "#coop/text";
+import { clearWaitingLine, showWaitingLine } from "#coop/waiting-line";
 import { UiMode } from "#enums/ui-mode";
 
 /** The text of the co-op UI is in `text.ts` (a leaf); the phases still read it from here */
@@ -56,11 +57,9 @@ export async function coopGate(): Promise<void> {
   await getCoopSession()?.beforeDecision?.();
 }
 
-/** "Waiting for your partner…" in the message box, for the side that does not decide. */
+/** "Waiting for your partner…" in the message box, for the side that does not decide; it goes when the wait is over. */
 export function showWaitingForPartner(): void {
-  const { ui } = globalScene;
-  ui.setMode(UiMode.MESSAGE);
-  ui.showText(coopText("waitingForPartner", "Waiting for your partner…"), null, undefined, null, false);
+  showWaitingLine(coopText("waitingForPartner", "Waiting for your partner…"));
 }
 
 export interface BridgeRequest<P> {
@@ -103,9 +102,15 @@ export function proposeUnlessLate(link: CoopLink, key: DecisionKey, payload: unk
 
 /**
  * While this client waits for the partner's decision (D17): hint, then offer to take over.
+ * @param onScreen - Called when the take-over opens the decision's own screen on this client
  * @returns The watcher to stop when the decision comes, or `null` for a decision nobody can take over
  */
-function watchForTakeover<P>(link: CoopLink, request: BridgeRequest<P>, ask: () => Promise<P>): AfkWatcher | null {
+function watchForTakeover<P>(
+  link: CoopLink,
+  request: BridgeRequest<P>,
+  ask: () => Promise<P>,
+  onScreen: () => void,
+): AfkWatcher | null {
   const { key } = request;
   if (!canTakeOver(key.kind)) {
     return null;
@@ -117,6 +122,9 @@ function watchForTakeover<P>(link: CoopLink, request: BridgeRequest<P>, ask: () 
       return;
     }
     // Nothing to choose (the default), or the same screen the partner would have had
+    if (plan.mode !== "payload") {
+      onScreen();
+    }
     const payload = plan.mode === "payload" ? plan.payload : await ask();
     proposeUnlessLate(link, key, payload, { takeover: true });
   };
@@ -146,6 +154,8 @@ export async function coopDecide<P>(request: BridgeRequest<P>): Promise<Decision
   const pending = link.sequencer.awaitDecision<P>(key, authors === undefined ? {} : { authors });
   const mine = decider === "either" || decider === session.seat;
   let watcher: AfkWatcher | null = null;
+  /** This player took over and has the decision's screen open (D17) */
+  let takeoverScreen = false;
   // The lines of the question are this player's own, not the run's: the partner does not see them (D27)
   const leavePrivate: (() => void)[] = [];
   const ask = (): Promise<P> => {
@@ -163,10 +173,20 @@ export async function coopDecide<P>(request: BridgeRequest<P>): Promise<Decision
         .catch(error => reportBridgeError(error));
     } else {
       (request.wait ?? showWaitingForPartner)();
-      watcher = watchForTakeover(link, request, ask);
+      watcher = watchForTakeover(link, request, ask, () => {
+        takeoverScreen = true;
+      });
     }
     const decision = await pending;
     watcher?.stop();
+    if (!mine) {
+      clearWaitingLine();
+    }
+    if (takeoverScreen && decision.author !== session.seat) {
+      // This player was taking over, but the partner answered first: the screen the take-over opened has nothing to decide
+      globalScene.ui.clearScreensUnder();
+      await globalScene.ui.setMode(UiMode.MESSAGE);
+    }
     if (!request.isPayload(decision.payload)) {
       throw new DesyncError("a sequenced decision has a payload this client cannot read", {
         actual: decision.key,
@@ -175,7 +195,7 @@ export async function coopDecide<P>(request: BridgeRequest<P>): Promise<Decision
     }
     if (mine && decision.takeover === true && decision.author !== session.seat) {
       // The partner decided for this player while they were still choosing: the question goes away (D17)
-      showTookOver();
+      await showTookOver();
     }
     return decision;
   } finally {
