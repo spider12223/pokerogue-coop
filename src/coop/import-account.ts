@@ -57,6 +57,10 @@ export type SystemImportRefusal =
   | "unreadable"
   /** JSON, but not an account (no dex, no starters, no timestamp or no version) */
   | "notSystemData"
+  /** A saved run (Manage Data → Export Session), not the account */
+  | "sessionData"
+  /** The run history (Manage Data → Export Run History), not the account */
+  | "runHistory"
   /** An account the game would throw away at its next save (`GameData.validateSystemData`) */
   | "corrupt";
 
@@ -148,7 +152,7 @@ export function prepareSystemImport(
     || typeof raw["gameVersion"] !== "string"
     || !VERSION_PATTERN.test(raw["gameVersion"])
   ) {
-    return { ok: false, reason: "notSystemData" };
+    return { ok: false, reason: otherSaveKind(raw) ?? "notSystemData" };
   }
   const fromVersion = raw["gameVersion"];
   const order = compareVersions(fromVersion, catalog.version);
@@ -219,6 +223,65 @@ export function systemImportNotes(result: SystemImportAccepted): string[] {
     );
   }
   return notes;
+}
+
+/**
+ * What the player is told when the file is refused: which file it is, and which one to bring instead. Every refusal used to
+ * read "may be corrupted", while the usual cause is the wrong file from pokerogue.net's Manage Data menu.
+ */
+export function systemImportRefusalText(reason: SystemImportRefusal): string {
+  const exportData = coopText(
+    "importUseExportData",
+    "On pokerogue.net use Manage Data > Export Data (data_<name>.prsv).",
+  );
+  switch (reason) {
+    case "sessionData":
+      return `${coopText("importIsSession", "That file is a saved run, not your account.")} ${exportData}`;
+    case "runHistory":
+      return `${coopText("importIsRunHistory", "That file is your run history, not your account.")} ${exportData}`;
+    case "notSystemData":
+      return `${coopText("importNotAccount", "That file is not PokéRogue account data.")} ${exportData}`;
+    case "unreadable":
+      return `${coopText("importUnreadable", "That file can't be read as a PokéRogue save.")} ${exportData}`;
+    case "corrupt":
+      return coopText(
+        "importCorruptAccount",
+        "This account fails the game's own save check, so it can't be loaded. It may be corrupted.",
+      );
+  }
+}
+
+/**
+ * The session import was given an account (Import Session instead of Import Data)
+ * @param dataStr - The file as the session import decoded it
+ * @returns What to tell the player, or `null` if the file is not an account
+ */
+export function sessionImportHint(dataStr: string): string | null {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(dataStr);
+  } catch {
+    return null;
+  }
+  if (!systemImportAvailable() || !isRecord(raw) || !("dexData" in raw)) {
+    return null;
+  }
+  return coopText("importIsAccount", "That file is your account, not a saved run: use Import Data instead.");
+}
+
+/** @returns Which other save a refused file is, if it is one */
+function otherSaveKind(raw: unknown): "sessionData" | "runHistory" | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  if (Array.isArray(raw["party"]) && (Array.isArray(raw["enemyParty"]) || typeof raw["waveIndex"] === "number")) {
+    return "sessionData";
+  }
+  const entries = Object.values(raw);
+  if (entries.length > 0 && entries.every(entry => isRecord(entry) && "entry" in entry && "isVictory" in entry)) {
+    return "runHistory";
+  }
+  return null;
 }
 
 /** How long a note stays before the next one, in ms (it is read, not answered) */

@@ -8,7 +8,7 @@ import { saveKey } from "#app/constants";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import * as appConstants from "#constants/app-constants";
 import { COOP_SLOT_VERSION, writeCoopSlot } from "#coop/coop-slot";
-import { importInCoopText, systemImportNotes } from "#coop/import-account";
+import { importInCoopText, sessionImportHint, systemImportNotes, systemImportRefusalText } from "#coop/import-account";
 import { localAccountId, showCoopTitleMenu } from "#coop/lobby";
 import { endCoopSession, startCoopSession } from "#coop/session";
 import { removeCoopSlot } from "#coop/wave-save";
@@ -170,6 +170,20 @@ describe("Co-op: importing a pokerogue.net account", () => {
       expect(reason(JSON.stringify({ ...accountJson(), gameVersion: "next" }))).toBe("notSystemData");
     });
 
+    it("tells a saved run or the run history from an account: the usual wrong file of Manage Data", () => {
+      const reason = (json: unknown) => {
+        const result = gameData.readSystemImport(AES.encrypt(JSON.stringify(json), saveKey).toString());
+        return result.ok ? "accepted" : result.reason;
+      };
+      // Export Session: a classic run, as `sessionData_<name>.prsv`
+      expect(reason({ party: [], enemyParty: [], waveIndex: 12, timestamp: 1, gameMode: 0 })).toBe("sessionData");
+      // Export Run History
+      const run = { entry: {}, isVictory: false, isFavorite: false };
+      expect(reason({ "1700000000000": run, "1700000000001": run })).toBe("runHistory");
+      expect(systemImportRefusalText("sessionData")).toMatch(/saved run.*Export Data/);
+      expect(systemImportRefusalText("runHistory")).toMatch(/run history.*Export Data/);
+    });
+
     it("refuses an account the next save would throw away (starter data without a dex entry)", () => {
       const json = accountJson();
       json["gameVersion"] = version;
@@ -300,6 +314,34 @@ describe("Co-op: importing a pokerogue.net account", () => {
       expect(notes[0]).toContain(version);
       expect(notes[1]).toContain("1 of its Pokémon");
       expect(notes[1]).toContain("1 of its eggs");
+    });
+
+    it("a saved run given to Import Data says which file to bring instead, and asks nothing", async () => {
+      const texts: string[] = [];
+      vi.spyOn(game.scene.ui, "showText").mockImplementation((text, _delay, callback) => {
+        texts.push(text);
+        callback?.();
+      });
+      const setOverlayMode = vi.spyOn(game.scene.ui, "setOverlayMode").mockImplementation(async () => undefined);
+      const createElement = vi.spyOn(document, "createElement");
+
+      gameData.importData(GameDataType.SYSTEM);
+      const at = createElement.mock.calls.findIndex(([tag]) => tag === "input");
+      const input = createElement.mock.results[at].value as HTMLInputElement;
+      const session = { party: [], enemyParty: [], waveIndex: 12, timestamp: 1, gameMode: 0 };
+      const file = AES.encrypt(JSON.stringify(session), saveKey).toString();
+      Object.defineProperty(input, "files", { value: [new File([file], "sessionData_Guest.prsv")] });
+      input.dispatchEvent(new Event("change"));
+      await vi.waitFor(() => expect(texts.length).toBeGreaterThan(0));
+
+      expect(texts[0]).toBe(systemImportRefusalText("sessionData"));
+      expect(setOverlayMode).not.toHaveBeenCalled();
+    });
+
+    it("an account given to Import Session says to use Import Data", () => {
+      expect(sessionImportHint(JSON.stringify(accountJson()))).toMatch(/Import Data/);
+      expect(sessionImportHint(JSON.stringify({ party: [], enemyParty: [] }))).toBeNull();
+      expect(sessionImportHint("not json")).toBeNull();
     });
 
     it("the chosen file goes through the notes to the import's question", async () => {

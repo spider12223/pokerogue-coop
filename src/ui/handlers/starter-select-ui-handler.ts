@@ -645,10 +645,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         iconPosition: i => [teamWindowX + 7, calcStarterIconY(i)],
         slotIcons: this.partyIcons,
         // The free strip at the top, between the species number and the filter bar (the grid has icons in every row)
-        statusPosition: [speciesContainerX - 3, 2],
-        statusWidth: 58,
+        statusPosition: [speciesContainerX - 3, 1],
+        statusWidth: 62,
         // Above the team column and the starter grid, below the panels, overlays and message box drawn after them
         drawBelow: this.starterSummary,
+        teamWindow: { x: teamWindowX, y: teamWindowY, width: teamWindowWidth, height: teamWindowHeight },
+        teamColumn: this.partyColumn,
       },
       () => this.tryUpdateValue(),
     );

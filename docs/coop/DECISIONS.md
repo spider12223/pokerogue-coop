@@ -782,7 +782,9 @@ step; the screens would not.
   only in such a form keeps its first form), movesets with moves it does not have; a starter the save lacks gets an
   empty entry; the version is stamped with this build's. The player is told both versions and how many Pokémon (that
   they had something of) and eggs were left out. An older save is migrated on load like any other. A file that is not
-  a system save, or that would fail the check every save makes, is refused.
+  a system save, or that would fail the check every save makes, is refused, and the player is told which file it is: a
+  saved run (Export Session) or the run history is the usual mistake, so those are named, with where the account's
+  export is (Manage Data > Export Data). An account given to Import Session says to use Import Data.
 - **The notes** before the confirm go on by themselves (no key prompt): the import is asked from a menu, whose handler
   would take the key.
 

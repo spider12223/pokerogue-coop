@@ -12,6 +12,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { coopText } from "#coop/bridge";
 import { coopLog } from "#coop/coop-log";
+import { drawPixels, MARK_COLORS, MARK_ICONS, type MarkIcon } from "#coop/cosmetic-tag";
 import { returnToTitle } from "#coop/lobby";
 import { type CoopStarter, STARTERS_PER_SEAT_MAX } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
@@ -23,13 +24,14 @@ import type { Starter } from "#types/save-data";
 import type { StarterSpeciesId } from "#types/starter-species-id";
 import { getPartyValue } from "#ui/starter-select-ui-utils";
 import { addTextObject } from "#ui/text";
+import { addWindow } from "#ui/ui-theme";
 
 /**
  * Co-op on the starter select screen (DECISIONS D3, D4, D7, D32). The screen is the solo one with these changes:
  * - it shows the Pokémon of both players (`shared-collection.ts`)
  * - a player picks at most {@linkcode STARTERS_PER_SEAT_MAX} starters, and the 15-point budget is shared: a player's limit
  *   is what the partner's party left
- * - the partner's picks show in the team slots after the player's own, on a band in the partner's color, faded until they
+ * - the partner's picks show in the team slots after the player's own, in a window of their own, faded until they
  *   are ready; the status line names the partner
  * - confirming makes the player ready instead of starting the run, and cancel takes the ready back; the run starts
  *   when both are ready. If the partner leaves, cancel goes back to the title
@@ -81,12 +83,16 @@ export interface CoopStarterSelectLayout {
   iconPosition(index: number): [x: number, y: number];
   /** The screen's own team slot icons (0-5); the free ones show the empty-slot placeholder */
   slotIcons: readonly Phaser.GameObjects.Sprite[];
-  /** Right edge and top of the status text, in a free part of the screen */
+  /** Right edge and top of the status plate, in a free part of the screen */
   statusPosition: [x: number, y: number];
-  /** How wide the status text may be before it wraps (it has room for two lines) */
+  /** How wide the status plate may be before its text wraps (it has room for two lines) */
   statusWidth: number;
   /** The co-op objects are drawn just below this child of the container, so the screen's later layers cover them */
   drawBelow: Phaser.GameObjects.GameObject;
+  /** The team column's window */
+  teamWindow: { x: number; y: number; width: number; height: number };
+  /** The container of the team column (its windows, cursors and icons) */
+  teamColumn: Phaser.GameObjects.Container;
 }
 
 /** The color of the partner on the co-op screens: their team slots here, their cursor on the reward screen (D16) */
@@ -97,36 +103,110 @@ function partnerName(): string {
   return getCoopSession()?.partnerName || coopText("yourPartner", "your partner");
 }
 
+/** What the status says: the partner picks or is ready, this player is ready, or something went wrong */
+export type StatusTone = "picking" | "ready" | "self" | "warn";
+
+/** How far the partner's team slots sit below their place in solo play, for the edge of their window */
+const PARTNER_SLOT_SHIFT = 3;
+
+/** The accent of a warning on the status plate */
+const WARN_COLOR = 0xf0a048;
+
 /**
- * Draws the partner's picks as icons in the team slots after the player's own, on a band in the partner's color that marks
- * those slots as theirs, and the status as text.
+ * The status, on a plate in the colours of the battle's co-op tags (D16): the window's body and edge, a bar on the left in
+ * the colour of what it says, and a pixel icon (dots while the partner picks, a check once ready)
+ */
+class StatusPlate {
+  readonly object: Phaser.GameObjects.Container;
+  private readonly graphics: Phaser.GameObjects.Graphics;
+  private readonly text: Phaser.GameObjects.Text;
+
+  /**
+   * @param right - Where its right edge goes
+   * @param top - Where its top goes
+   * @param maxWidth - How wide it may grow before the text wraps
+   */
+  constructor(
+    private readonly right: number,
+    private readonly top: number,
+    maxWidth: number,
+  ) {
+    this.graphics = globalScene.add.graphics();
+    this.text = addTextObject(0, 0, "", TextStyle.TOOLTIP_CONTENT, {
+      fontSize: "42px",
+      wordWrap: { width: (maxWidth - 14) * 6 },
+      // Two lines fit above the summary's move list
+      lineSpacing: -12,
+    }).setOrigin(0, 0);
+    this.object = globalScene.add.container(0, 0, [this.graphics, this.text]);
+  }
+
+  set(text: string, tone: StatusTone): void {
+    this.text.setText(text);
+    let icon: MarkIcon = "bang";
+    if (tone === "ready" || tone === "self") {
+      icon = "check";
+    } else if (tone === "picking") {
+      icon = "dots";
+    }
+    let accent: number = MARK_COLORS.ready;
+    if (tone === "warn") {
+      accent = WARN_COLOR;
+    } else if (tone === "picking") {
+      accent = PARTNER_COLOR;
+    }
+    const iconWidth = MARK_ICONS[icon][0].length + 2;
+    const width = Math.ceil(2 + 3 + iconWidth + this.text.displayWidth + 3);
+    const height = Math.max(11, Math.ceil(this.text.displayHeight) + 2);
+    const left = this.right - width;
+    const g = this.graphics.clear();
+    g.fillStyle(MARK_COLORS.shadow, 0.5).fillRect(left, this.top + 1, width + 1, height + 1);
+    g.fillStyle(MARK_COLORS.edge, 1).fillRect(left - 1, this.top - 1, width + 2, height + 2);
+    g.fillStyle(MARK_COLORS.body, 0.94).fillRect(left, this.top, width, height);
+    g.fillStyle(accent, 1).fillRect(left, this.top, 2, height);
+    drawPixels(g, MARK_ICONS[icon], left + 5, Math.round(this.top + height / 2 - 2.5), accent);
+    this.text.setPosition(left + 5 + iconWidth, this.top + 1);
+  }
+}
+
+/**
+ * Draws the partner's picks as icons in the team slots after the player's own, in a window of their own (the team column is
+ * split in two, in the player's window style), and the status on a plate.
  */
 class PartnerView {
   private readonly icons: Phaser.GameObjects.Sprite[] = [];
   /** The placeholders under {@linkcode icons}, hidden while a partner pick covers them */
   private readonly placeholders: Phaser.GameObjects.Sprite[];
-  private readonly band: Phaser.GameObjects.Rectangle;
-  private readonly status: Phaser.GameObjects.Text;
+  /** The window of the partner's half of the team column */
+  private readonly window: Phaser.GameObjects.NineSlice;
+  private readonly plate: StatusPlate;
 
   constructor(container: Phaser.GameObjects.Container, layout: CoopStarterSelectLayout, firstSlot: number) {
     this.placeholders = layout.slotIcons.slice(firstSlot, firstSlot + STARTERS_PER_SEAT_MAX);
+    // The partner's slots move down a little, to make room for their window's top edge under the player's last slot
+    for (const placeholder of this.placeholders) {
+      placeholder.y += PARTNER_SLOT_SHIFT;
+    }
     for (let i = 0; i < STARTERS_PER_SEAT_MAX; i++) {
       const [x, y] = layout.iconPosition(firstSlot + i);
-      this.icons.push(globalScene.add.sprite(x, y, "pokemon_icons_0").setScale(0.5).setOrigin(0).setVisible(false));
+      this.icons.push(
+        globalScene.add
+          .sprite(x, y + PARTNER_SLOT_SHIFT, "pokemon_icons_0")
+          .setScale(0.5)
+          .setOrigin(0)
+          .setVisible(false),
+      );
     }
-    const [bandX, bandTop] = layout.iconPosition(firstSlot);
-    const [, bandLast] = layout.iconPosition(firstSlot + STARTERS_PER_SEAT_MAX - 1);
-    this.band = globalScene.add
-      .rectangle(bandX - 4, bandTop - 1, 28, bandLast - bandTop + 17, PARTNER_COLOR, 0.18)
-      .setOrigin(0)
-      .setStrokeStyle(1, PARTNER_COLOR, 0.45);
+    const [, firstPartner] = layout.iconPosition(firstSlot);
+    const team = layout.teamWindow;
+    // The edge sits in the empty top of the partner's first icon
+    const top = firstPartner + PARTNER_SLOT_SHIFT - 2;
+    this.window = addWindow(team.x, top, team.width, team.y + team.height - top);
+    // Under the icons of the column, so the placeholders of the partner's free slots show on it
+    layout.teamColumn.addAt(this.window, layout.teamColumn.getIndex(layout.slotIcons[0]));
     const [x, y] = layout.statusPosition;
-    this.status = addTextObject(x, y, "", TextStyle.TOOLTIP_CONTENT, {
-      fontSize: "42px",
-      align: "right",
-      wordWrap: { width: layout.statusWidth * 6 },
-    }).setOrigin(1, 0);
-    container.addAt([this.band, ...this.icons, this.status], container.getIndex(layout.drawBelow));
+    this.plate = new StatusPlate(x, y, layout.statusWidth);
+    container.addAt([...this.icons, this.plate.object], container.getIndex(layout.drawBelow));
   }
 
   /** The partner's party is drawn faded until they are ready. */
@@ -152,8 +232,8 @@ class PartnerView {
     }
   }
 
-  setStatus(text: string): void {
-    this.status.setText(text);
+  setStatus(text: string, tone: StatusTone): void {
+    this.plate.set(text, tone);
   }
 
   destroy(): void {
@@ -162,9 +242,10 @@ class PartnerView {
     }
     for (const placeholder of this.placeholders) {
       placeholder.setVisible(true);
+      placeholder.y -= PARTNER_SLOT_SHIFT;
     }
-    this.band.destroy();
-    this.status.destroy();
+    this.window.destroy();
+    this.plate.object.destroy();
   }
 }
 
@@ -297,21 +378,17 @@ export class CoopStarterSelectController {
     this.view.setPartner(partner.picks, partner.ready);
     const vars = { partner: partnerName() };
     if (this.lobby.closed) {
-      this.view.setStatus(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars));
+      this.view.setStatus(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars), "warn");
     } else if (this.lobby.localReady) {
-      this.view.setStatus(
-        coopText("waitingForPartnerReady", "Ready! Waiting for {{partner}} (Cancel to change)", vars),
-      );
+      this.view.setStatus(coopText("waitingForPartnerReady", "Ready! Waiting for {{partner}}", vars), "self");
     } else if (this.overLimit) {
-      this.view.setStatus(coopText("notEnoughPoints", "Not enough points"));
+      this.view.setStatus(coopText("notEnoughPoints", "Not enough points"), "warn");
     } else if (this.lobby.wasReset) {
-      this.view.setStatus(coopText("pointsReset", "Too many points together: pick again"));
+      this.view.setStatus(coopText("pointsReset", "Too many points together: pick again"), "warn");
+    } else if (partner.ready) {
+      this.view.setStatus(coopText("partnerIsReady", "{{partner}} is ready", vars), "ready");
     } else {
-      this.view.setStatus(
-        partner.ready
-          ? coopText("partnerIsReady", "{{partner}} is ready", vars)
-          : coopText("partnerIsPicking", "{{partner}} is picking", vars),
-      );
+      this.view.setStatus(coopText("partnerIsPicking", "{{partner}} is picking", vars), "picking");
     }
     if (limitChanged) {
       this.onLimitChange();

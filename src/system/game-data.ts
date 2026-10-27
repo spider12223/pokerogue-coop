@@ -20,8 +20,10 @@ import {
   importInCoopText,
   prepareSystemImport,
   type SystemImportResult,
+  sessionImportHint,
   showImportNotes,
   systemImportNotes,
+  systemImportRefusalText,
 } from "#coop/import-account";
 import { checkSessionSaveBlock, isCoop, requireCoopSession } from "#coop/session";
 import { ownAccountData } from "#coop/shared-collection";
@@ -1464,6 +1466,8 @@ export class GameData {
           let dataStr: string;
           /** What the player is told before the question (`systemImportNotes`) */
           let notes: string[] = [];
+          /** Co-op: why the file is refused, when the game can tell (the wrong file of pokerogue.net's Manage Data) */
+          let refusal: string | null = null;
           if (dataType === GameDataType.SYSTEM) {
             // Co-op: decrypted in `readSystemImport`, where a file that is not a save is refused instead of throwing here
             dataStr = saveData;
@@ -1482,10 +1486,15 @@ export class GameData {
                 if (result.ok) {
                   dataStr = result.dataStr;
                   notes = systemImportNotes(result);
+                } else {
+                  console.warn("Account import refused:", result.reason);
+                  refusal = systemImportRefusalText(result.reason);
                 }
                 break;
               }
               case GameDataType.SESSION: {
+                // Co-op: an account given to the session import says so (it would throw below)
+                refusal = sessionImportHint(dataStr);
                 const sessionData = this.parseSessionData(dataStr);
                 valid = !!sessionData.party && !!sessionData.enemyParty && !!sessionData.timestamp;
                 break;
@@ -1513,6 +1522,10 @@ export class GameData {
             globalScene.ui.showText(error, null, () => globalScene.ui.showText("", 0), fixedInt(1500));
 
           if (!valid) {
+            if (refusal !== null) {
+              // Longer than the usual line: it says which file to bring instead
+              return globalScene.ui.showText(refusal, null, () => globalScene.ui.showText("", 0), fixedInt(5000));
+            }
             return displayError(i18next.t("menuUiHandler:importCorrupt", { dataName }));
           }
 
