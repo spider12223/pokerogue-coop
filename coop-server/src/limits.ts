@@ -6,6 +6,7 @@
 
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
+import { normalizeIp } from "./untrusted.ts";
 
 /**
  * The relay's per-IP limits (DECISIONS D23). Memory only: nothing here outlives the process, and nothing keeps a message.
@@ -23,8 +24,17 @@ export interface RelayLimits {
   messagesPerSecond: number;
   /** How many messages one IP may send at once before the steady rate applies */
   messageBurst: number;
-  /** Dropped messages of one socket after which it is closed (1008) */
+  /** Bytes per second one IP may send, over all of its sockets (a steady rate) */
+  bytesPerSecond: number;
+  /** How many bytes one IP may send at once before the steady rate applies */
+  byteBurst: number;
+  /**
+   * Dropped messages of one socket after which it is closed (1008), and frames dropped in a row for a socket that does not
+   * read (see `maxBufferedBytes`) after which it is cut
+   */
   maxDropsPerSocket: number;
+  /** Bytes that may wait to be sent to one socket: a frame for a socket with more waiting is dropped */
+  maxBufferedBytes: number;
   /** Rooms the relay holds in all */
   maxRooms: number;
   /** A room without a game frame for this long is closed */
@@ -37,7 +47,10 @@ export const DEFAULT_LIMITS: RelayLimits = {
   roomsPerMinute: 10,
   messagesPerSecond: 120,
   messageBurst: 400,
+  bytesPerSecond: 2 * 1_048_576,
+  byteBurst: 16 * 1_048_576,
   maxDropsPerSocket: 200,
+  maxBufferedBytes: 4 * 1_048_576,
   maxRooms: 1000,
   idleRoomMs: 30 * 60_000,
 };
@@ -56,14 +69,18 @@ export class TokenBucket {
     this.last = now;
   }
 
-  /** @returns Whether the event is allowed (a token was left) */
-  take(now: number): boolean {
+  /**
+   * @param amount - The tokens the event costs; one that costs more than the capacity costs the capacity, so it can pass
+   * @returns Whether the event is allowed (enough tokens were left)
+   */
+  take(now: number, amount = 1): boolean {
     this.tokens = Math.min(this.capacity, this.tokens + (now - this.last) * this.perMs);
     this.last = now;
-    if (this.tokens < 1) {
+    const cost = Math.min(amount, this.capacity);
+    if (this.tokens < cost) {
       return false;
     }
-    this.tokens -= 1;
+    this.tokens -= cost;
     return true;
   }
 
@@ -78,6 +95,7 @@ interface IpState {
   connect: TokenBucket;
   rooms: TokenBucket;
   messages: TokenBucket;
+  bytes: TokenBucket;
 }
 
 export type AdmitResult = "ok" | "tooManySockets" | "tooManyAttempts";
@@ -106,6 +124,7 @@ export class IpLimiter {
         connect: new TokenBucket(this.limits.connectionsPerMinute, this.limits.connectionsPerMinute / 60_000, now),
         rooms: new TokenBucket(this.limits.roomsPerMinute, this.limits.roomsPerMinute / 60_000, now),
         messages: new TokenBucket(this.limits.messageBurst, this.limits.messagesPerSecond / 1000, now),
+        bytes: new TokenBucket(this.limits.byteBurst, this.limits.bytesPerSecond / 1000, now),
       };
       this.ips.set(ip, state);
     }
@@ -137,16 +156,27 @@ export class IpLimiter {
     return this.state(ip).rooms.take(this.now());
   }
 
-  /** @returns Whether this IP may send one more message now */
-  allowMessage(ip: string): boolean {
-    return this.state(ip).messages.take(this.now());
+  /**
+   * @param bytes - The size of the message
+   * @returns Whether this IP may send one more message of this size now
+   */
+  allowMessage(ip: string, bytes = 0): boolean {
+    const state = this.state(ip);
+    const now = this.now();
+    return state.messages.take(now) && (bytes === 0 || state.bytes.take(now, bytes));
   }
 
   /** Forget the IPs that hold no socket and whose buckets are full again */
   sweep(): void {
     const now = this.now();
     for (const [ip, state] of this.ips) {
-      if (state.sockets === 0 && state.connect.idle(now) && state.rooms.idle(now) && state.messages.idle(now)) {
+      if (
+        state.sockets === 0
+        && state.connect.idle(now)
+        && state.rooms.idle(now)
+        && state.messages.idle(now)
+        && state.bytes.idle(now)
+      ) {
         this.ips.delete(ip);
       }
     }
@@ -181,8 +211,14 @@ export function isPrivateAddress(address: string): boolean {
  * - `"private"` (the default): the same as a count, but worked out from the addresses: a connection that comes from the
  *   machine itself or a private network is a proxy of the deploy (the platform's, a tunnel's, nginx), and the client is the
  *   first address from the right that is not private. A client on the internet cannot pass itself off as another this way.
+ *
+ * The address comes out as {@linkcode normalizeIp} makes it (an IPv6 client is its /64), before any limit or log tag sees it.
  */
 export function clientIp(request: IncomingMessage, trustProxy: number | "private"): string {
+  return normalizeIp(clientAddress(request, trustProxy));
+}
+
+function clientAddress(request: IncomingMessage, trustProxy: number | "private"): string {
   if (trustProxy === "private") {
     const socket = request.socket.remoteAddress ?? "unknown";
     const header = request.headers["x-forwarded-for"];

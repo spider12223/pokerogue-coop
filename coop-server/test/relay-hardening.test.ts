@@ -6,6 +6,7 @@
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet, type IncomingHttpHeaders } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -96,6 +97,65 @@ const controls = (messages: string[]): Control[] =>
 const closeOf = (socket: WebSocket): Promise<{ code: number; reason: string }> =>
   new Promise(resolve => socket.once("close", (code, reason) => resolve({ code, reason: reason.toString() })));
 
+const sleep = (ms: number): Promise<void> => new Promise(resolve => setTimeout(resolve, ms));
+
+/** Send `request` as it is over a plain TCP socket; resolves with what the server answered once it closed (or 2 s passed) */
+function raw(server: RelayServer, request: string): Promise<string> {
+  return new Promise(resolve => {
+    let text = "";
+    const socket = connect(server.port, "127.0.0.1");
+    const done = (): void => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(text);
+    };
+    const timer = setTimeout(done, 2000);
+    socket.setEncoding("latin1");
+    socket.on("data", chunk => {
+      text += chunk;
+    });
+    socket.on("error", done);
+    socket.on("close", done);
+    socket.write(request, "latin1");
+  });
+}
+
+/** A WebSocket upgrade request for `target`; `headers` replace the usual ones */
+function upgradeRequest(target: string, headers: Record<string, string> = {}, method = "GET"): string {
+  const all: Record<string, string> = {
+    Host: "127.0.0.1",
+    Connection: "Upgrade",
+    Upgrade: "websocket",
+    "Sec-WebSocket-Version": "13",
+    "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ==",
+    ...headers,
+  };
+  const lines = Object.entries(all).map(([name, value]) => `${name}: ${value}\r\n`);
+  return `${method} ${target} HTTP/1.1\r\n${lines.join("")}\r\n`;
+}
+
+/** How many more sockets the limiter would let 127.0.0.1 open now (it gives them back at once) */
+function freeSlots(server: RelayServer): number {
+  let free = 0;
+  while (free < 1000 && server.limiter.admit("127.0.0.1") === "ok") {
+    free++;
+  }
+  for (let i = 0; i < free; i++) {
+    server.limiter.release("127.0.0.1");
+  }
+  return free;
+}
+
+/** A host and a guest paired in a room */
+async function pairedRoom(server: RelayServer) {
+  const host = await open(server, "role=host");
+  await waitFor(() => controls(host.messages).length > 0, "the room");
+  const code = (controls(host.messages)[0] as Extract<Control, { t: "relay:created" }>).code;
+  const guest = await open(server, `code=${code}`);
+  await waitFor(() => controls(guest.messages).some(m => m.t === "relay:paired"), "the pairing");
+  return { host, guest, code };
+}
+
 describe("the limits of the relay (D23)", () => {
   it("answers 429 to the connection that is over the sockets one IP may hold, and takes the next one once one closes", async () => {
     const server = await start({ limits: { maxConnectionsPerIp: 2 } });
@@ -170,6 +230,21 @@ describe("the limits of the relay (D23)", () => {
     expect(arrived.length).toBeGreaterThan(0);
     expect(arrived.length).toBeLessThanOrEqual(6);
     expect(arrived).toEqual(arrived.map((_, i) => `frame ${i}`));
+  });
+
+  it("drops the bytes over the rate of an IP the same way: a few large frames count as much as many small ones", async () => {
+    const server = await start({
+      limits: { bytesPerSecond: 1, byteBurst: 10_000, maxDropsPerSocket: 3, connectionsPerMinute: 100 },
+    });
+    const { host, guest } = await pairedRoom(server);
+    const closed = closeOf(guest.socket);
+    for (let i = 0; i < 20; i++) {
+      guest.socket.send(`frame ${i} ${"x".repeat(1000)}`);
+    }
+    expect((await closed).code).toBe(1008);
+    const arrived = host.messages.filter(text => text.startsWith("frame "));
+    expect(arrived.length).toBeGreaterThan(0);
+    expect(arrived.length).toBeLessThanOrEqual(10);
   });
 
   it("closes a room that was silent for the idle time, and tells both players; a room with traffic stays", async () => {
@@ -293,6 +368,166 @@ describe("the logs (D23)", () => {
     expect(log).not.toContain(joined.token);
     expect(log).not.toContain("127.0.0.1");
   });
+
+  it("write nothing a client sent as it is: a code that is not a code, an Origin with control characters", async () => {
+    const lines: string[] = [];
+    const server = await start({ log: line => lines.push(line), limits: { connectionsPerMinute: 100 } });
+    // a line break in the code would forge a line of its own, an escape sequence would reach the operator's terminal
+    const forged = "AB\n2026-01-01T00:00:00.000Z coop relay: room FAKE99 created\u001b[2J";
+    const refused = await open(server, `code=${encodeURIComponent(forged)}`);
+    await waitFor(() => controls(refused.messages).length > 0, "the refusal");
+    const origin = `https://evil.example/\u009b2J{"src":"client","msg":"forged"}${"x".repeat(2000)}`;
+    expect((await attempt(server, "role=host", { origin })).status).toBe(403);
+    await waitFor(() => lines.length >= 2, "both lines");
+
+    const log = lines.join("\n");
+    expect(
+      lines.every(line => /^[\x20-\x7e]*$/.test(line)),
+      log,
+    ).toBe(true);
+    expect(log).not.toContain("FAKE99");
+    expect(log).toContain("(invalid)");
+    expect(log).not.toContain("{");
+    expect(log).toContain("evil.example");
+    expect(Math.max(...lines.map(line => line.length))).toBeLessThan(400);
+  });
+
+  it("log so many refusals a minute one by one, and count the rest", async () => {
+    let time = 1_000_000;
+    const lines: string[] = [];
+    const server = await start({
+      now: () => time,
+      log: line => lines.push(line),
+      limits: { connectionsPerMinute: 1000, maxConnectionsPerIp: 1000 },
+    });
+    const refuse = async () => {
+      const result = await open(server, "code=ABCDEF"); // no such room
+      await waitFor(() => controls(result.messages).length > 0, "the refusal");
+    };
+    for (let i = 0; i < 30; i++) {
+      await refuse();
+    }
+    expect(lines.filter(line => line.includes("rejected ABCDEF: notFound"))).toHaveLength(20);
+    time += 60_000;
+    await refuse();
+    expect(lines.some(line => line.includes("10 more refusals") && line.includes("notFound 10"))).toBe(true);
+    expect(lines.filter(line => line.includes("rejected ABCDEF: notFound"))).toHaveLength(21);
+  });
+});
+
+describe("a request target that `new URL(target, base)` cannot read (D23)", () => {
+  // Each of these threw inside the request or upgrade listener: one anonymous request took the process and every room down
+  const targets = ["//", "///", "//:", "//:99999", "//[", "http://", "http://["];
+  const get = (target: string): string => `GET ${target} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`;
+
+  it("is answered (400, or 404 for a path that is not there) as a request and as an upgrade, and the rooms go on", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "coop-dist-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "index.html"), "<!doctype html>");
+    for (const server of [await start({ limits: { connectionsPerMinute: 1000 } }), await start({ staticDir: dir })]) {
+      const room = await pairedRoom(server);
+      for (const target of targets) {
+        expect(await raw(server, get(target)), target).toMatch(/^HTTP\/1\.1 40[04] /);
+        expect(await raw(server, upgradeRequest(target)), `upgrade ${target}`).toMatch(/^HTTP\/1\.1 40[04] /);
+      }
+      const health = await fetch(`http://127.0.0.1:${server.port}/healthz`);
+      expect(health.status).toBe(200);
+      // the room is still there and still forwards
+      room.host.socket.send("still here");
+      await waitFor(() => room.guest.messages.includes("still here"), "the frame");
+    }
+  });
+
+  it("is answered 400 when it is no URL at all", async () => {
+    const server = await start();
+    for (const target of ["http://", "http://[", "*"]) {
+      expect(await raw(server, get(target)), target).toMatch(/^HTTP\/1\.1 400 /);
+      expect(await raw(server, upgradeRequest(target)), `upgrade ${target}`).toMatch(/^HTTP\/1\.1 400 /);
+    }
+  });
+});
+
+describe("a partner that does not read (D23)", () => {
+  const frame = (i: number): string => `${String(i).padStart(6, "0")}${"x".repeat(64 * 1024)}`;
+  const isFrame = (text: string): boolean => /^\d{6}x/.test(text);
+
+  /** A paired room whose guest has stopped reading its socket */
+  async function stalledRoom(limits: Partial<RelayLimits>) {
+    const server = await start({
+      limits: { messagesPerSecond: 100_000, messageBurst: 100_000, bytesPerSecond: 1e10, byteBurst: 1e10, ...limits },
+    });
+    const room = await pairedRoom(server);
+    room.guest.socket.pause();
+    return { server, ...room };
+  }
+
+  it("drops the frames for it over the cap instead of keeping them without bound; what gets through is in order", async () => {
+    const { host, guest } = await stalledRoom({ maxBufferedBytes: 256 * 1024, maxDropsPerSocket: 1_000_000 });
+    const total = 512; // 32 MiB: far more than the cap and what the system's socket buffers hold
+    for (let i = 0; i < total; i++) {
+      host.socket.send(frame(i));
+    }
+    await waitFor(() => host.socket.bufferedAmount === 0, "the host's frames to leave", 10_000);
+    await sleep(300);
+    guest.socket.resume();
+    let seen = -1;
+    await waitFor(
+      () => {
+        const now = guest.messages.length;
+        const settled = now === seen;
+        seen = now;
+        return settled;
+      },
+      "the guest to have read everything",
+      10_000,
+    );
+    const numbers = guest.messages.filter(isFrame).map(text => Number(text.slice(0, 6)));
+    expect(numbers.length).toBeGreaterThan(0);
+    expect(numbers.length).toBeLessThan(total);
+    expect(numbers).toEqual([...numbers].sort((a, b) => a - b));
+  });
+
+  it("cuts it once frames keep being dropped for it; its seat is kept for it to take back", async () => {
+    const { server, host, code } = await stalledRoom({ maxBufferedBytes: 256 * 1024, maxDropsPerSocket: 20 });
+    for (let i = 0; i < 512; i++) {
+      host.socket.send(frame(i));
+    }
+    await waitFor(() => controls(host.messages).some(m => m.t === "relay:peerLeft"), "the guest to be cut", 10_000);
+    expect(server.stats().sockets).toBe(1);
+    expect(server.registry.isReserved(code, "guest")).toBe(true);
+  });
+});
+
+describe("the IP's count of sockets (D23)", () => {
+  it("gets the slot back when the handshake fails after the IP was counted", async () => {
+    const server = await start({ limits: { maxConnectionsPerIp: 2, connectionsPerMinute: 1000 } });
+    for (let i = 0; i < 4; i++) {
+      expect(await raw(server, upgradeRequest("/coop?role=host", { "Sec-WebSocket-Key": "not-a-key" }))).toMatch(
+        /^HTTP\/1\.1 400 /,
+      );
+      expect(await raw(server, upgradeRequest("/coop?role=host", { "Sec-WebSocket-Version": "7" }))).toMatch(
+        /^HTTP\/1\.1 400 /,
+      );
+      expect(await raw(server, upgradeRequest("/coop?role=host", {}, "POST"))).toMatch(/^HTTP\/1\.1 405 /);
+    }
+    await waitFor(() => freeSlots(server) === 2, "both slots");
+    await open(server, "role=host");
+    await open(server, "role=host");
+    expect((await attempt(server, "role=host")).status).toBe(429);
+  });
+
+  it("gives back one slot for a socket that closes, not two", async () => {
+    const server = await start({ limits: { maxConnectionsPerIp: 2, connectionsPerMinute: 1000 } });
+    const a = await open(server, "role=host");
+    await open(server, "role=host");
+    expect(freeSlots(server)).toBe(0);
+    const closed = closeOf(a.socket);
+    a.socket.close();
+    await closed;
+    await waitFor(() => freeSlots(server) === 1, "the slot");
+    await sleep(100);
+    expect(freeSlots(server)).toBe(1);
+  });
 });
 
 describe("GET /healthz (D22)", () => {
@@ -399,6 +634,25 @@ describe("the files of the production build (D22)", () => {
     const head = await get(server, "/index.html", {}, "HEAD");
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
+  });
+
+  it("closes the file of a download the browser gave up on", async () => {
+    const dir = site();
+    writeFileSync(join(dir, "big.bin"), Buffer.alloc(32 * 1_048_576)); // more than the socket buffers take at once
+    const server = await start({ staticDir: dir });
+    const during = await new Promise<number>((resolve, reject) => {
+      const request = httpGet(`http://127.0.0.1:${server.port}/big.bin`, response => {
+        response.on("error", () => {});
+        response.once("data", () => {
+          const open = server.stats().downloads;
+          request.destroy();
+          resolve(open);
+        });
+      });
+      request.on("error", error => (request.destroyed ? undefined : reject(error)));
+    });
+    expect(during).toBe(1);
+    await waitFor(() => server.stats().downloads === 0, "the file to be closed");
   });
 
   it("serves the game and the relay on one port", async () => {

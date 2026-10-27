@@ -170,6 +170,11 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | `ME_CHOICE` | the host, or the player who goes in a one-Pokémon encounter | 0 | `"${n}"`, counting the encounter decisions of the wave | D29 |
 | `RETRY` | the host | 0 | `NO_REF` | D4a |
 
+- **A prompt asked again in a wave** (an evolution cancelled and offered again at the next level, a declined TM picked
+  again) gets a key of its own: the `LEARN_MOVE` and `EVOLUTION_CANCEL` refs carry `:n` from the second time
+  (`CoopSession.nextOccurrence`, counted alike on both clients, from the first again in a new wave or epoch). A key the
+  simulation already took is never awaited again: that is a `DesyncError`, not a wait that never ends.
+
 ## D3. Determinism
 
 - **Run seed.** The host generates it and sends it in `START`.
@@ -337,6 +342,7 @@ Pinned in co-op to the host's values and enforced on both clients (the guest rec
 - **Biome** (Map item): the picker of the most recent reward screen decides.
 - **Catch:** each seat has a cap of 3. A thrower with fewer than 3 adds the catch and owns it. A thrower with 3 releases
   one of their own, or declines the catch (`CATCH_RELEASE`).
+- **Nincada's Shedinja** is the Nincada owner's, within the same cap: an owner who has three gets none.
 
 ## D11. Trade
 
@@ -401,6 +407,11 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   host sends `RESYNC` with `stop: true`. Both clients save (the co-op slot already has the wave start), show an error,
   and offer a downloadable report: both phase traces (each client sends its own with the stop) and the two mismatching
   checkpoints. The run can be continued later (D21).
+- **A decision's code that fails** (an exception in the phase that waits for it) reloads the wave like a desync, instead
+  of leaving the phase hung; that phase counts as a safe point. A wave start that does not load (a save this build
+  refuses) tells the player why and offers only Back to the title screen.
+- **The hash** also covers each Pokémon's friendship, Tera type and Pokérus, the owner as the owner map has it (a member
+  without one shows), the ball counts, the Lock Capsule, the battles left of a timed boost, and the run's seed.
 - Not implemented: catching up by replaying the decision log live. A resync always reloads the wave start.
 
 ## D14. Tests
@@ -470,6 +481,13 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 | Mystery Encounter choice | chooses with the chooser's screens (D29) |
 
 - Nobody takes over a trade request, a trade proposal or its cancel, or a party edit: nobody waits for those.
+- **The host enforces it:** a guest's `takeover` is refused for a kind that cannot be taken over (and for trade
+  proposals and accepts), must carry the plan's default where the plan has one, and is held until the host's own player
+  has had the question for the hint's time (30 s); the host's own answer, if it comes first, wins. Once one take-over of
+  a screen went through, the next steps of that screen are not held again. A modified client can no longer answer the
+  host's questions for it.
+- On a Mystery Encounter's screen the hint goes under the options and the offer may come over them. The trade screen's
+  hint names no key (the ping keys do nothing there).
 
 ## D18. Epochs
 
@@ -502,6 +520,8 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   the run gave it (caught Pokémon, which the starter select shows; candies, eggs, vouchers) survives a closed tab. The
   menu's **Save and Quit** in a co-op run saves the account and then ends the session as "End session" does (D20); the
   run itself is the wave-start save.
+- **Host a game** over a saved run asks first: the new run's first wave replaces the slot. A wave-start save that does
+  not fit in local storage removes the slot of the earlier wave (Continue would silently take the run back to it).
 
 ## D20. Disconnect and rejoin
 
@@ -518,6 +538,15 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   own connection dropped does the same when it is back. Messages sent before the pairing never reach the new one: the
   remaining client stops sending when the partner leaves.
 - A host that was reloaded reads its co-op slot (D19); a guest that was reloaded receives the save from the host.
+- **Before the first wave** (the starter select) a drop is not the end: the partner shows as away, and when they are back
+  both send their picks and ready again, and the host its `START` (a duplicate changes nothing). There is no world to
+  reload yet, so the host waits for the first wave's save; the starter select is a safe point, so a guest whose `START`
+  was lost is brought into the run by that reload. A partner who left for good, or a closed room, ends it; leaving tells
+  the relay.
+- A guest that rejoined, or joined a continued run, waits for the reload like one in a decision: the reconnect screen,
+  and End session. A screen whose partner is back offers End session too, after three times the wait. A socket that
+  drops while a rejoin waits for the partner keeps the seat (a reload tries again); only the relay closing the room ends
+  it. A tab whose seat another tab took leaves that tab's seat in the store.
 
 ## D21. Resume later
 
@@ -528,8 +557,9 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   the slot is loaded.
 - After the handshake the host sequences a `RESYNC` at once: both load the wave-start save and continue, with the epoch
   after the slot's.
-- This is protocol version 4 (`COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts`). Any incompatible change to a message
-  shape bumps it.
+- **Continue** first checks that this build can load the slot; if it cannot, the host is told why and may delete it.
+- `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (7) is bumped by any incompatible change to a message shape. Two
+  builds pair only when they are the same commit anyway (D1).
 
 ## D22. Deploy shape
 
@@ -572,6 +602,8 @@ and an environment variable.
 | Connection attempts per IP | 60 per minute | `CONNECTIONS_PER_MINUTE` | `429`; this is also what makes guessing room codes pointless |
 | Room creations per IP | 10 per minute | `ROOMS_PER_MINUTE` | `relay:error rateLimited` |
 | Messages per IP | 120 per second, burst 400, over all of its sockets | `MESSAGES_PER_SECOND`, `MESSAGE_BURST`, `MAX_DROPS_PER_SOCKET` | the frame is dropped (the reliable layer resends); a socket that keeps going is closed (1008) |
+| Bytes per IP | 2 MiB per second, burst 16 MiB, over all of its sockets | `BYTES_PER_SECOND`, `BYTE_BURST` | as for messages (the same drop count); a frame larger than the burst costs the burst |
+| Backlog of a socket | 4 MiB waiting to be sent to it | `MAX_BUFFERED_BYTES` | a frame for it is dropped (the sender's reliable layer resends); after `MAX_DROPS_PER_SOCKET` in a row it is cut, and its seat is kept (D20) |
 | Rooms in all | 1000 | `MAX_ROOMS` | `relay:error busy` |
 | Idle room | 30 minutes without a game frame | `IDLE_ROOM_MS` | the room is closed (`relay:closed idle`); this also ends a wait for a partner who never comes back (D20) |
 | Frame | 1 MiB | | the connection is closed (1009) |
@@ -585,8 +617,22 @@ and an environment variable.
   client is the first address from the right of `X-Forwarded-For` that is not private; a client on the internet cannot
   pass itself off as another this way. `TRUST_PROXY=<n>` takes that many entries from the right instead, and
   `TRUST_PROXY=0` never reads the header.
+- **One address, one key:** before any limit or log tag sees it, an IPv6 address becomes its /64 (a home or a phone
+  gets a whole /64, so a new address in it costs nothing) and an IPv4-mapped one (`::ffff:a.b.c.d`) its IPv4
+  (`normalizeIp`, `coop-server/src/untrusted.ts`; the Worker does the same). The Worker's limits stay per instance
+  (D22): a limit over the whole relay there is the platform's (a WAF or Rate Limiting rule on `/coop`), not code.
+- **Requests:** a request target that is no URL is answered `400`, and `//` is a path (`new URL("//", base)`
+  throws); nothing a request carries may throw out of a listener. A request the HTTP parser refuses is dropped; the
+  headers must come within 15 s and the request within 30 s. A download the browser gives up on closes its file. The
+  socket count of an IP is given back when the connection closes, whether the handshake completed or not. A last
+  resort in `main.ts` logs an uncaught error and keeps the server (and every room) up.
 - **Logs:** room codes, seats, reasons and counts. Never a message, a token, or an IP address (a short salted hash
   stands in for it). The one exception is the client diagnostics log, when an operator turns it on (D26).
+  A code from a client is logged only if it has the shape of one (else `(invalid)`); any other text of a client (the
+  `Origin`) is clipped, and its control characters and braces are written out, so it cannot forge a line, reach the
+  terminal, or pass for a client line in `scripts/log-view.ts` (which escapes what it prints too). Refusals (origin,
+  `429`, `relay:error`) anyone can cause at will: the first 20 of a minute are logged one by one, the rest counted in
+  one line.
 
 ## D24. Payload validation
 
@@ -599,6 +645,14 @@ and an environment variable.
 - An illegal decision is **rejected the same way on both sides**: nothing is applied, a `DesyncError` ("illegal
   decision") is raised and logged with the key and the reason, and the run goes through the normal resync path (D13:
   resync, three strikes). It must never throw out of the apply, crash the phase, or leave a window open.
+- **The host checks a guest's proposal before sequencing it** (when its window is open): an illegal one is refused
+  (`REJECT invalid`), nothing is sequenced and nobody desyncs. Decisions the host sequences are still checked on both
+  sides. Legality covers the move's use mode, the targets of a spread move (all of them) and of a queued move, a Ball at
+  one live foe with the command phase's own rules (boss shields, encounters that forbid it), Run (a trapped Pokémon
+  cannot), and a Baton switch (only with a held Baton or a Baton Pass that worked).
+- **Bounds:** decision keys (wave and turn in range, a short ref), payload sizes, the frames a client holds for later,
+  the proposals the host parks (a full park refuses, it does not fail the run), a partner's checkpoints, display names
+  (no text-markup codes), and every field of a partner's collection.
 - The checks are pure functions of the decision and a small read-only view of the state (`checkDecisionLegal` in
   `src/coop/legal.ts`, the view in `src/coop/legal-view.ts`), so the same code runs in Node tests with illegal payloads
   of every kind. The host's validation is `validateProposal` in `src/coop/validate.ts`.
@@ -830,7 +884,8 @@ wrong date). So a co-op run does not read the clock:
   before `START` (the lobby) the list is empty. Everything else in the manager goes through it, so every reader of an
   event sees the same on both clients. In solo play the clock decides, as upstream.
 - **Hashed.** The list is part of the state hash (D13): a client that lost it is a desync, not a quiet difference.
-- `COOP_PROTOCOL_VERSION` is 6 (`START` and `ready` changed).
+- `COOP_PROTOCOL_VERSION` became 6 here (`START` and `ready` changed); it is 7 since `ready` and `reset` carry a
+  count (a reset answers one ready of the guest, and an older one is ignored).
 - **Pictures and music** of an event (the title banner and logo, image replacements) are loaded at boot by the clock,
   as upstream: they are only what each player sees.
 

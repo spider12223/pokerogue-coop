@@ -6,7 +6,8 @@
 
 import type { Envelope } from "#coop/protocol";
 import { createLoopbackPair } from "#coop/transport/loopback";
-import { ReliableTransport } from "#coop/transport/reliable";
+import { MAX_FRAME_CHARS, ReliableTransport } from "#coop/transport/reliable";
+import type { RawTransport } from "#coop/transport/transport";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 function message(n: number): Envelope {
@@ -120,6 +121,74 @@ describe("ReliableTransport", () => {
     a.send(message(4));
     await runUntil(() => a.pending === 0);
     expect(received).toEqual([1, 2, 3, 4]);
+  });
+
+  describe("a partner that floods it", () => {
+    /** A connection whose frames the test hands over itself */
+    class StubRaw implements RawTransport {
+      readonly isOpen = true;
+      readonly sent: string[] = [];
+      private readonly listeners = new Set<(frame: string) => void>();
+      send(frame: string): void {
+        this.sent.push(frame);
+      }
+      onFrame(listener: (frame: string) => void): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      }
+      onClose(): () => void {
+        return () => undefined;
+      }
+      close(): void {}
+      push(frame: string): void {
+        for (const listener of [...this.listeners]) {
+          listener(frame);
+        }
+      }
+    }
+    const data = (n: number): string => JSON.stringify({ n, b: message(n) });
+
+    it("holds back only frames close enough to the next one in order, and gets the rest when they come again", () => {
+      const raw = new StubRaw();
+      const transport = new ReliableTransport(raw, { maxHeld: 8 });
+      const received = collect(transport);
+      for (let n = 2; n <= 30; n++) {
+        raw.push(data(n));
+      }
+      // 2..8 are within 8 of the next one (1); the others are dropped, unacknowledged
+      expect(transport.stats.heldBack).toBe(7);
+      expect(transport.stats.tooFarAhead).toBe(22);
+      raw.push(data(1));
+      expect(received).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      // the sender sends again what was not acknowledged
+      for (let n = 9; n <= 30; n++) {
+        raw.push(data(n));
+      }
+      expect(received).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
+    });
+
+    it("holds back at most 256 frames by default, whatever numbers they carry", () => {
+      const raw = new StubRaw();
+      const transport = new ReliableTransport(raw);
+      collect(transport);
+      for (let n = 2; n <= 2000; n++) {
+        raw.push(data(n));
+      }
+      raw.push(data(10_000_000));
+      expect(transport.stats.heldBack).toBe(255);
+      expect(transport.stats.tooFarAhead).toBe(2000 - 1 - 255 + 1);
+    });
+
+    it("drops a frame longer than the relay forwards", () => {
+      const raw = new StubRaw();
+      const transport = new ReliableTransport(raw);
+      const received = collect(transport);
+      raw.push(JSON.stringify({ n: 1, b: { ...message(1), payload: "x".repeat(MAX_FRAME_CHARS) } }));
+      expect(transport.stats.malformed).toBe(1);
+      expect(received).toEqual([]);
+      raw.push(data(1));
+      expect(received).toEqual([1]);
+    });
   });
 
   it("refuses to send after close", () => {

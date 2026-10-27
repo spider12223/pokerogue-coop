@@ -119,9 +119,10 @@ describe("Co-op: the session save and its co-op block (D4, D7, D9)", () => {
     const { rewardPickCount } = session;
     const partyOrder = game.scene.getPlayerParty().map(p => p.id);
 
-    // forget what the save knows
+    // forget what the save knows; a guest that rejoined has only a placeholder for the run's seed
     session.ownership.retain([]);
     session.rewardPickCount = 0;
+    session.setRunSeed("pending");
     vi.spyOn(game.scene.gameData, "getSession").mockResolvedValue(loaded);
 
     await expect(game.scene.gameData.loadSession(0)).resolves.toBe(true);
@@ -129,6 +130,8 @@ describe("Co-op: the session save and its co-op block (D4, D7, D9)", () => {
     expect(isCoop()).toBe(true);
     expect(requireCoopSession().ownership.toJSON()).toEqual(owners);
     expect(requireCoopSession().rewardPickCount).toBe(rewardPickCount);
+    // the seeded draws of the simulation are keyed with the run's seed: the save's (D3)
+    expect(requireCoopSession().runSeed).toBe(loaded.seed);
     expect(game.scene.getPlayerParty().map(p => p.id)).toEqual(partyOrder);
     // the next reward screen is the next picker's, as if the run had never stopped
     expect(requireCoopSession().beginRewardScreen().index).toBe(rewardPickCount);

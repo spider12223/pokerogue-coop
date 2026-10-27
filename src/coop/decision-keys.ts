@@ -62,19 +62,39 @@ export function catchReleaseKey(wave: number, caughtId: number): DecisionKey {
   return { wave, turn: 0, kind: "CATCH_RELEASE", ref: caughtId };
 }
 
-/** Whether `pokemonId` learns `moveId` in place of one of its moves (or not). */
-export function learnMoveKey(wave: number, pokemonId: number, moveId: number): DecisionKey {
-  return { wave, turn: 0, kind: "LEARN_MOVE", ref: `${pokemonId}:${moveId}` };
+/**
+ * The part of a prompt's ref that tells apart the same prompt asked again in a wave (an evolution cancelled and offered
+ * again at the next level, a declined TM picked again): none the first time, `:n` from the second
+ * (`CoopSession.nextOccurrence`, counted alike on both clients)
+ */
+function occurrencePart(occurrence: number): string {
+  return occurrence > 1 ? `:${occurrence}` : "";
 }
 
-/** Whether the evolution of `pokemonId` into `speciesId` is cancelled. */
-export function evolutionCancelKey(wave: number, pokemonId: number, speciesId: number): DecisionKey {
-  return { wave, turn: 0, kind: "EVOLUTION_CANCEL", ref: `${pokemonId}:${speciesId}` };
+/**
+ * Whether `pokemonId` learns `moveId` in place of one of its moves (or not).
+ * @param occurrence - The how-manyth time this wave asks it (1 for the first)
+ */
+export function learnMoveKey(wave: number, pokemonId: number, moveId: number, occurrence = 1): DecisionKey {
+  return { wave, turn: 0, kind: "LEARN_MOVE", ref: `${pokemonId}:${moveId}${occurrencePart(occurrence)}` };
 }
 
-/** Whether evolutions are paused for `pokemonId` after the cancelled evolution into `speciesId`. */
-export function evolutionPauseKey(wave: number, pokemonId: number, speciesId: number): DecisionKey {
-  return { wave, turn: 0, kind: "EVOLUTION_CANCEL", ref: `${pokemonId}:${speciesId}:pause` };
+/**
+ * Whether the evolution of `pokemonId` into `speciesId` is cancelled.
+ * @param occurrence - The how-manyth time this wave offers that evolution (1 for the first)
+ */
+export function evolutionCancelKey(wave: number, pokemonId: number, speciesId: number, occurrence = 1): DecisionKey {
+  return { wave, turn: 0, kind: "EVOLUTION_CANCEL", ref: `${pokemonId}:${speciesId}${occurrencePart(occurrence)}` };
+}
+
+/** Whether evolutions are paused for `pokemonId` after the cancelled evolution into `speciesId` (its `occurrence`). */
+export function evolutionPauseKey(wave: number, pokemonId: number, speciesId: number, occurrence = 1): DecisionKey {
+  return {
+    wave,
+    turn: 0,
+    kind: "EVOLUTION_CANCEL",
+    ref: `${pokemonId}:${speciesId}${occurrencePart(occurrence)}:pause`,
+  };
 }
 
 /**

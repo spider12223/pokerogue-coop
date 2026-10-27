@@ -936,6 +936,10 @@ export class GameData {
     if (fromSession.coop) {
       // Before the party: the owners of its members are in the block
       requireCoopSession().restoreFromSaveBlock(fromSession.coop);
+      // The run's seed is the save's: a guest that rejoined or joined a continued run has only a placeholder (D3)
+      if (fromSession.seed) {
+        requireCoopSession().setRunSeed(fromSession.seed);
+      }
       globalScene.gameMode = createCoopGameMode();
     } else {
       globalScene.gameMode = getGameMode(fromSession.gameMode || GameModes.CLASSIC);

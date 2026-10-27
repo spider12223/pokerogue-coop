@@ -154,6 +154,16 @@ export function showChooserWaiting(what: "option" | "pokemon" = "option"): void 
   ui.showText(text, null, undefined, null, false);
 }
 
+/** A waiting player's hint of an encounter (D17): under the options on the encounter's screen, else the message box */
+function showMeWaitingText(text: string): void {
+  const { ui } = globalScene;
+  if (ui.mode === UiMode.MYSTERY_ENCOUNTER) {
+    (ui.getHandler() as MysteryEncounterUiHandler).setWaitingLine(text);
+  } else if (ui.mode === UiMode.MESSAGE) {
+    ui.showText(text, null, undefined, null, false);
+  }
+}
+
 /** Answers a test gives instead of the chooser's screens (tests only: the encounter tour, D29) */
 export interface MeAutoAnswers {
   /** The answer to an encounter question */
@@ -196,6 +206,9 @@ export async function meDecide<K extends MeChoiceKind>(
       ask: auto === null ? ask : async () => auto.choose(question) as ChoiceOf<K>,
       wait,
       isPayload: isMeChoiceOf(question.k),
+      // The waiting player may be on the encounter's own screen: the hint goes under its options, and the take-over
+      // offer may come over it (D17, D29)
+      watcher: { offerOver: [UiMode.MESSAGE, UiMode.MYSTERY_ENCOUNTER], showText: showMeWaitingText },
     });
     return payload;
   } finally {

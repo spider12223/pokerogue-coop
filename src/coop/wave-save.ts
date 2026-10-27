@@ -5,6 +5,7 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { coopLog } from "#coop/coop-log";
 import { COOP_SLOT_VERSION, type CoopSlot, clearCoopSlot, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
 import type { KeyValueStore } from "#coop/seat-store";
 import { getCoopSession } from "#coop/session";
@@ -79,7 +80,13 @@ export function saveCoopWaveStart(): boolean {
     session: json,
   };
   if (!writeCoopSlot(store, slot)) {
-    console.warn("co-op: the wave-start save did not fit in local storage");
+    // The slot of an earlier wave must not stay: "Continue" would silently take the run back to it (D19). Without a slot
+    // there is nothing to continue, which is what is true
+    clearCoopSlot(store);
+    console.warn("co-op: the wave-start save did not fit in local storage; the saved run is removed");
+    coopLog().error("save", "the wave-start save did not fit in local storage: the saved run is removed", {
+      wave: data.waveIndex,
+    });
   }
   // A full storage does not stop the run: the save in memory still serves a resync
   return true;

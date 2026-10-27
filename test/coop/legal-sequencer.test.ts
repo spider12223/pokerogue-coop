@@ -7,7 +7,7 @@
 import { EpochTransport } from "#coop/epoch";
 import { safeLegality } from "#coop/legal";
 import type { DecisionKey, DecisionKind, Seat } from "#coop/protocol";
-import { DesyncError, Sequencer } from "#coop/sequencer";
+import { DesyncError, type RejectReason, Sequencer } from "#coop/sequencer";
 import { describe, expect, it } from "vitest";
 import { fight, GUEST_MON, HOST_MON, key, TACKLE, turnKey, view } from "./legal-fixtures";
 import { createManualLink } from "./manual-link";
@@ -40,6 +40,17 @@ function pair() {
   };
   return { host, guest, hostChannel, guestChannel, settle };
 }
+
+/** The check both clients run, as if the decision's author were `author` */
+const sequenceAs = (author: Seat) => {
+  const check = safeLegality(
+    () => view(),
+    error => {
+      throw error;
+    },
+  );
+  return (decisionKey: DecisionKey, payload: unknown): string | null => check(decisionKey, payload, author);
+};
 
 const rewardKey = (kind: DecisionKind): DecisionKey => key(kind, "0:0");
 const tradeKey = (kind: DecisionKind): DecisionKey => key(kind, "0:1");
@@ -138,8 +149,29 @@ const ILLEGAL: { name: string; key: DecisionKey; payload: unknown; author: Seat 
 ];
 
 describe("an illegal decision on both clients (D24)", () => {
+  it.each(ILLEGAL.filter(entry => entry.author === "guest"))(
+    "$name: the host refuses the guest's proposal as invalid, and nobody reloads",
+    async ({ key: decisionKey, payload, author }) => {
+      const { host, guest, settle } = pair();
+      void host.awaitDecision(decisionKey);
+      void guest.awaitDecision(decisionKey);
+      const rejections: RejectReason[] = [];
+      guest.onProposalRejected(({ reason }) => rejections.push(reason));
+
+      guest.propose(decisionKey, payload);
+      settle();
+
+      expect(author).toBe("guest");
+      expect(rejections).toEqual(["invalid"]);
+      expect(host.desync).toBeNull();
+      expect(guest.desync).toBeNull();
+      expect(host.lastApplied).toBe(0);
+      expect(guest.lastApplied).toBe(0);
+    },
+  );
+
   it.each(ILLEGAL)(
-    "$name: both raise the same desync, and neither applies it",
+    "$name: if it is sequenced all the same, both raise the same desync, and neither applies it",
     async ({ key: decisionKey, payload, author }) => {
       const { host, guest, settle } = pair();
       const onHost = host.awaitDecision(decisionKey);
@@ -148,8 +180,11 @@ describe("an illegal decision on both clients (D24)", () => {
       host.onDesync(error => failures.push({ client: "host", error }));
       guest.onDesync(error => failures.push({ client: "guest", error }));
 
-      // the author proposes it; the host sequences it (it does not check what the state has, only the shape) and both get it
-      (author === "host" ? host : guest).propose(decisionKey, payload);
+      // the host proposes it (its own decisions are not checked before they are sequenced: an illegal one means its own
+      // state is wrong), so both get it; the author the check sees is the one of the case
+      host.setLegality(sequenceAs(author));
+      guest.setLegality(sequenceAs(author));
+      host.propose(decisionKey, payload);
       settle();
 
       const [a, b] = await Promise.allSettled([onHost, onGuest]);
@@ -201,11 +236,17 @@ describe("an illegal decision on both clients (D24)", () => {
     expect(b.seq).toBe(3);
     expect(a.payload).toEqual(b.payload);
 
-    // and the check is still on
+    // and the check is still on: the guest's illegal proposal is refused, the host's own stops both clients
     const again = turnKey(GUEST_MON);
     void host.awaitDecision(again).catch(() => undefined);
     void guest.awaitDecision(again).catch(() => undefined);
+    const rejections: RejectReason[] = [];
+    guest.onProposalRejected(({ reason }) => rejections.push(reason));
     guest.propose(again, "attack");
+    settle();
+    expect(rejections).toEqual(["invalid"]);
+    expect(host.desync).toBeNull();
+    host.propose(again, "attack");
     settle();
     expect(host.desync?.message).toMatch(/illegal decision/);
     expect(guest.desync?.message).toMatch(/illegal decision/);

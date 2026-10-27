@@ -28,6 +28,12 @@ import type { CoopSession } from "#coop/session";
 
 const FIELDS = ["kind", "wave", "turn", "phaseName", "hash"] as const;
 
+/**
+ * How far ahead of this client the partner's checkpoints are kept: the partner can only be a few ahead (it waits for this
+ * player's decisions every turn), so one further than this is dropped and never compared, and the waiting ones stay few
+ */
+export const CHECKPOINT_LOOKAHEAD = 64;
+
 function compare(session: CoopSession, index: number): void {
   const local = session.checkpoints.entries[index];
   const remote = session.remoteCheckpoints.get(index);
@@ -59,6 +65,15 @@ export function attachCheckpointExchange(session: CoopSession, link: CoopLink): 
   };
   const stop = link.onCheckpoint(message => {
     if (!(CHECKPOINT_KINDS as readonly string[]).includes(message.kind)) {
+      return;
+    }
+    const local = session.checkpoints.entries.length;
+    if (
+      message.index > local + CHECKPOINT_LOOKAHEAD
+      || (message.index >= local
+        && !session.remoteCheckpoints.has(message.index)
+        && session.remoteCheckpoints.size > CHECKPOINT_LOOKAHEAD)
+    ) {
       return;
     }
     session.remoteCheckpoints.set(message.index, { ...message, kind: message.kind as CheckpointKind } as Checkpoint);

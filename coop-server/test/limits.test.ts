@@ -95,6 +95,18 @@ describe("IpLimiter", () => {
     );
   });
 
+  it("limits the bytes of an IP over all its sockets; a message larger than the burst still passes when it is full", () => {
+    const { limiter, advance } = limiterWith({ bytesPerSecond: 1000, byteBurst: 3000, messageBurst: 1000 });
+    expect([limiter.allowMessage("1.1.1.1", 1000), limiter.allowMessage("1.1.1.1", 1500)]).toEqual([true, true]);
+    expect(limiter.allowMessage("1.1.1.1", 1000)).toBe(false);
+    expect(limiter.allowMessage("2.2.2.2", 1000)).toBe(true); // another IP is not affected
+    advance(500); // 1000 per second: 500 more, 1000 in all
+    expect(limiter.allowMessage("1.1.1.1", 1000)).toBe(true);
+    advance(10_000);
+    expect(limiter.allowMessage("1.1.1.1", 50_000)).toBe(true);
+    expect(limiter.allowMessage("1.1.1.1", 1)).toBe(false);
+  });
+
   it("forgets the IPs that are quiet again", () => {
     const { limiter, advance } = limiterWith({});
     limiter.admit("1.1.1.1");
@@ -161,6 +173,18 @@ describe("clientIp behind a proxy of the deploy (the default)", () => {
     expect(clientIp(fakeRequest({ "x-forwarded-for": "198.51.100.4, 10.9.9.9" }, "172.17.0.1"), "private")).toBe(
       "198.51.100.4",
     );
+  });
+
+  it("counts an IPv6 client as its /64 and an IPv4-mapped one as its IPv4, wherever the address comes from", () => {
+    const socket = (address: string) => clientIp(fakeRequest({}, address), 0);
+    expect(socket("2001:db8:1:2::aaaa")).toBe(socket("2001:db8:1:2:ffff::1"));
+    expect(socket("2001:db8:1:2::aaaa")).not.toBe(socket("2001:db8:1:3::aaaa"));
+    expect(socket("::ffff:203.0.113.7")).toBe("203.0.113.7");
+    const proxied = (forwarded: string) =>
+      clientIp(fakeRequest({ "x-forwarded-for": forwarded }, "10.0.0.2"), "private");
+    expect(proxied("2001:db8:1:2::1")).toBe("2001:db8:1:2::/64");
+    expect(proxied("2001:db8:1:2::1")).toBe(proxied("2001:db8:1:2:9::9"));
+    expect(clientIp(fakeRequest({ "x-forwarded-for": "2001:db8:1:2::1" }), 1)).toBe("2001:db8:1:2::/64");
   });
 
   it("does not believe a header that comes straight from the internet", () => {

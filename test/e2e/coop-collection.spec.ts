@@ -102,8 +102,12 @@ test.describe("co-op: the starter select of both players", () => {
       await pressUntil(guest, "CANCEL", "CONFIRM");
       await pressUntil(guest, "CANCEL", "STARTER_SELECT");
       await pressUntil(guest, "CANCEL", "CONFIRM");
-      await guest.page.waitForTimeout(700);
-      await pressUntil(guest, "ACTION", "STARTER_SELECT");
+      // the question takes no answer for a moment (game time, which runs slow in a headless browser): Enter until it does
+      for (let i = 0; i < 40 && (await ui(guest)) === "CONFIRM"; i++) {
+        await press(guest, "ACTION");
+        await guest.page.waitForTimeout(250);
+      }
+      expect(await ui(guest), "Enter on the question's No").toBe("STARTER_SELECT");
       await guest.page.waitForTimeout(300);
 
       const guestPicks = async (): Promise<void> => {

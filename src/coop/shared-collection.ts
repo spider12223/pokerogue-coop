@@ -4,7 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { CollectionData, CollectionDexEntry, CollectionStarterEntry } from "#coop/collection-data";
+import {
+  COLLECTION_LIMITS,
+  type CollectionData,
+  type CollectionDexEntry,
+  type CollectionStarterEntry,
+} from "#coop/collection-data";
 import type { LobbyMessage } from "#coop/protocol";
 import { Passive } from "#enums/passive";
 import type { DexData, DexEntry } from "#types/dex-data";
@@ -27,6 +32,9 @@ import type { StarterData, StarterDataEntry } from "#types/save-data";
  *
  * @module
  */
+
+/** The bits of a dex attribute the partner's collection may set */
+const ATTR_MASK = (1n << BigInt(COLLECTION_LIMITS.attrBits)) - 1n;
 
 /** What of an account the merge replaces: `GameData` has both */
 export interface CollectionHolder {
@@ -72,10 +80,11 @@ export function mergeDexEntry(own: DexEntry, partner: CollectionDexEntry | undef
   if (partner === undefined) {
     return own;
   }
-  const caughtAttr = own.caughtAttr | BigInt(partner.caught);
-  const seenAttr = own.seenAttr | BigInt(partner.seen) | caughtAttr;
-  const natureAttr = own.natureAttr | partner.natures;
-  const ivs = own.ivs.map((iv, stat) => Math.max(iv, partner.ivs[stat] ?? 0));
+  // The partner's values are clamped to the game's ranges, whatever came over the wire (`COLLECTION_LIMITS`)
+  const caughtAttr = own.caughtAttr | (BigInt(partner.caught) & ATTR_MASK);
+  const seenAttr = own.seenAttr | (BigInt(partner.seen) & ATTR_MASK) | caughtAttr;
+  const natureAttr = own.natureAttr | (partner.natures & COLLECTION_LIMITS.natures);
+  const ivs = own.ivs.map((iv, stat) => Math.max(iv, Math.min(31, partner.ivs[stat] ?? 0)));
   if (
     caughtAttr === own.caughtAttr
     && seenAttr === own.seenAttr
@@ -103,15 +112,17 @@ export function mergeStarterEntry(
   if (partner === undefined) {
     return own;
   }
-  const abilityAttr = own.abilityAttr | partner.abilities;
-  const eggMoves = own.eggMoves | partner.eggMoves;
-  const classicWinCount = Math.max(own.classicWinCount, partner.wins);
+  // The partner's values are clamped to the game's ranges, whatever came over the wire (`COLLECTION_LIMITS`)
+  const partnerReduction = Math.max(0, Math.min(COLLECTION_LIMITS.reduction, partner.reduction));
+  const abilityAttr = own.abilityAttr | (partner.abilities & COLLECTION_LIMITS.abilities);
+  const eggMoves = own.eggMoves | (partner.eggMoves & COLLECTION_LIMITS.eggMoves);
+  const classicWinCount = Math.max(own.classicWinCount, Math.min(COLLECTION_LIMITS.wins, partner.wins));
   const partnerPassive = (partner.passive & Passive.UNLOCKED) !== 0;
   if (
     abilityAttr === own.abilityAttr
     && eggMoves === own.eggMoves
     && classicWinCount === own.classicWinCount
-    && partner.reduction <= own.valueReduction
+    && partnerReduction <= own.valueReduction
     && (!partnerPassive || (own.passiveAttr & Passive.UNLOCKED) !== 0)
   ) {
     return own;
@@ -147,7 +158,7 @@ export function mergeStarterEntry(
     ),
     // A reduction bought here (the next one after the bigger of the two) is this player's
     valueReduction: accessor(
-      () => Math.max(own.valueReduction, partner.reduction),
+      () => Math.max(own.valueReduction, partnerReduction),
       value => {
         own.valueReduction = value;
       },
@@ -211,10 +222,12 @@ export interface CollectionLink {
 /**
  * Sends this player's collection on entering the lobby and gets the partner's. Each side sends its own with `ask`; a
  * collection with `ask` is answered with this player's, so the two arrive whichever player enters the lobby first (a
- * message sent before the partner listens is lost).
+ * message sent before the partner listens is lost). Only the first `ask` is answered: a partner that asks over and over
+ * gets nothing more (each answer is a whole collection).
  */
 export class CollectionExchange {
   private partner: CollectionData | null = null;
+  private answered = false;
   private ended = false;
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribes: (() => void)[];
@@ -225,7 +238,8 @@ export class CollectionExchange {
         if (message.t !== "collection") {
           return;
         }
-        if (message.ask) {
+        if (message.ask && !this.answered) {
+          this.answered = true;
           link.sendLobby({ t: "collection", collection: own, ask: false });
         }
         if (this.partner === null) {

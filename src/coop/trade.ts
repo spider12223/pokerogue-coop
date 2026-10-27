@@ -165,8 +165,11 @@ export class TradeState {
       }
       case "TRADE_DONE": {
         const done = isTradeDonePayload(decision.payload) ? decision.payload.done : false;
-        this.done[decision.author] = done;
-        return { t: "done", seat: decision.author, done };
+        // Whose "done" it is: the seat in the key, which is the absent player's when the partner took over for them (D17)
+        const named = String(decision.key.ref).split(":")[1];
+        const seat: Seat = named === "host" || named === "guest" ? named : decision.author;
+        this.done[seat] = done;
+        return { t: "done", seat, done };
       }
       default:
         return { t: "none" };

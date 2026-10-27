@@ -5,7 +5,7 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { AfkWatcher, showTookOver } from "#coop/afk";
+import { AfkWatcher, type AfkWatcherOptions, showTookOver } from "#coop/afk";
 import { coopLog } from "#coop/coop-log";
 import { EpochChangedError } from "#coop/epoch";
 import type { CoopLink } from "#coop/link";
@@ -73,6 +73,8 @@ export interface BridgeRequest<P> {
   ask: () => Promise<P>;
   /** The other side: show that this client waits. Default: {@linkcode showWaitingForPartner}. */
   wait?: () => void;
+  /** Where the waiting player's hint and take-over offer go, when the decision's screen is not the message box (D17) */
+  watcher?: Omit<AfkWatcherOptions, "onTakeOver">;
   /** Check the sequenced payload; a payload that does not fit is a desync */
   isPayload: (payload: unknown) => payload is P;
   /**
@@ -128,7 +130,10 @@ function watchForTakeover<P>(
     const payload = plan.mode === "payload" ? plan.payload : await ask();
     proposeUnlessLate(link, key, payload, { takeover: true });
   };
-  const watcher = new AfkWatcher({ onTakeOver: () => void runTakeover().catch(error => reportBridgeError(error)) });
+  const watcher = new AfkWatcher({
+    ...request.watcher,
+    onTakeOver: () => void runTakeover().catch(error => reportBridgeError(error)),
+  });
   watcher.start();
   return watcher;
 }
@@ -221,4 +226,6 @@ export function reportBridgeError(error: unknown): void {
   if (session !== null && session.desyncMessage === null) {
     session.desyncMessage = error instanceof Error ? error.message : String(error);
   }
+  // The phase that failed will not go on: the wave is reloaded (or, the third time, the run stops) instead of hanging
+  session?.onBridgeFailure?.();
 }

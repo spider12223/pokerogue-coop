@@ -210,6 +210,14 @@ export class UI extends Phaser.GameObjects.Container {
     return this._modeChain;
   }
 
+  /**
+   * Co-op: the mode change that is fading the screen now, if any (`null`: none, always in solo play). A mode change asked
+   * for meanwhile waits for it, so {@linkcode mode} is not yet the screen it will land on.
+   */
+  public get pendingCoopTransition(): Promise<void> | null {
+    return this.coopTransition;
+  }
+
   public setup(): void {
     this.setName(`ui-${UiMode[this._mode]}`);
     for (const handler of this.handlers) {

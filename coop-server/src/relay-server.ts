@@ -18,6 +18,8 @@ import {
   CLOSE_CODE_REJECTED,
   CLOSE_CODE_REPLACED,
   CLOSE_CODE_ROOM_CLOSED,
+  CODE_ALPHABET,
+  CODE_LENGTH,
   RELAY_PATH,
   RELAY_PREFIX,
   type RelayControlMessage,
@@ -26,8 +28,29 @@ import {
 } from "./relay-protocol.ts";
 import { otherSeat, RoomRegistry } from "./room-registry.ts";
 import { createStaticHandler, type StaticHandler } from "./static.ts";
+import { logField, requestUrl } from "./untrusted.ts";
 
 const OPEN = 1; // WebSocket.OPEN
+
+/** How many refusals a minute are logged one by one; the rest are counted, and the count is logged once a minute */
+const REFUSALS_LOGGED_PER_MINUTE = 20;
+const ROOM_CODE = new RegExp(`^[${CODE_ALPHABET}]{${CODE_LENGTH}}$`);
+
+/** A code from a client, as the logs may show it: a code if it looks like one, never the client's text */
+function codeForLog(code: string | null): string {
+  if (code === null) {
+    return "(no code)";
+  }
+  return ROOM_CODE.test(code) ? code : "(invalid)";
+}
+
+/** The size of a frame as `ws` hands it over */
+function frameBytes(data: RawData): number {
+  if (Array.isArray(data)) {
+    return data.reduce((sum, chunk) => sum + chunk.length, 0);
+  }
+  return data.byteLength;
+}
 
 export interface RelayServerOptions {
   port: number;
@@ -64,6 +87,8 @@ export interface RelayStats {
   rooms: number;
   sockets: number;
   trackedIps: number;
+  /** Files being sent right now (each holds an open file) */
+  downloads: number;
 }
 
 export interface RelayServer {
@@ -134,16 +159,62 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
   const sockets = new Map<string, RoomSockets>();
   /** Sockets that answered the last heartbeat ping. */
   const alive = new WeakSet<WebSocket>();
-  /** The IP of each socket, for its limits and its logs. */
-  const ipOf = new WeakMap<WebSocket, string>();
+  /** Frames dropped in a row for a socket that does not read what it is sent. */
+  const stalled = new WeakMap<WebSocket, number>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: options.maxPayloadBytes ?? 1_048_576 });
 
-  const stats = (): RelayStats => ({ rooms: registry.size, sockets: wss.clients.size, trackedIps: limiter.trackedIps });
+  const stats = (): RelayStats => ({
+    rooms: registry.size,
+    sockets: wss.clients.size,
+    trackedIps: limiter.trackedIps,
+    downloads: files?.downloads ?? 0,
+  });
+
+  // #region Refusals in the log
+
+  // Anyone can make the relay refuse something as often as it likes: the first refusals of a minute are logged one by one,
+  // the rest only counted, so a flood of them cannot flood the log.
+  const refusals = { since: now(), shown: 0, hidden: new Map<string, number>() };
+  const rollRefusals = (): void => {
+    if (now() - refusals.since < 60_000) {
+      return;
+    }
+    if (refusals.hidden.size > 0) {
+      const total = [...refusals.hidden.values()].reduce((sum, count) => sum + count, 0);
+      const byReason = [...refusals.hidden].map(([reason, count]) => `${reason} ${count}`).join(", ");
+      log(`coop relay: ${total} more refusals not shown (${byReason})`);
+    }
+    refusals.since = now();
+    refusals.shown = 0;
+    refusals.hidden.clear();
+  };
+  /** @param line - Fixed text and values that passed {@linkcode codeForLog}, {@linkcode ipTag} or {@linkcode logField} */
+  const refused = (reason: string, line: string): void => {
+    rollRefusals();
+    if (refusals.shown < REFUSALS_LOGGED_PER_MINUTE) {
+      refusals.shown++;
+      log(`coop relay: ${line}`);
+    } else {
+      refusals.hidden.set(reason, (refusals.hidden.get(reason) ?? 0) + 1);
+    }
+  };
+
+  // #endregion
 
   // #region HTTP: health and files
 
   const handleHttp = (request: IncomingMessage, response: ServerResponse): void => {
-    const pathname = new URL(request.url ?? "/", "http://placeholder").pathname;
+    const url = requestUrl(request.url);
+    if (url === null) {
+      response.writeHead(400, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        connection: "close",
+      });
+      response.end("Bad request");
+      return;
+    }
+    const pathname = url.pathname;
     if (pathname === "/healthz") {
       const usage = process.cpuUsage();
       const body = JSON.stringify({
@@ -170,9 +241,19 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     files.handle(request, response).catch(() => response.destroy());
   };
 
-  const server = createServer(handleHttp);
+  const server = createServer(
+    {
+      // A client that sends its request slowly, or never ends it, does not hold a connection for long
+      headersTimeout: 15_000,
+      requestTimeout: 30_000,
+      connectionsCheckingInterval: 5_000,
+    },
+    handleHttp,
+  );
   // Platforms put a proxy in front that keeps connections for about a minute: do not close first
   server.keepAliveTimeout = 65_000;
+  // A request the HTTP parser refuses (or one that timed out) is dropped, whatever it is
+  server.on("clientError", (_error: Error, socket: Duplex) => socket.destroy());
 
   // #endregion
 
@@ -194,7 +275,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
 
     let dropped = 0;
     socket.on("message", (data: RawData, isBinary: boolean) => {
-      if (!limiter.allowMessage(ip)) {
+      if (!limiter.allowMessage(ip, frameBytes(data))) {
         // The reliable layer of the clients sends it again; a socket that keeps going is not a game
         dropped++;
         if (dropped === limits.maxDropsPerSocket) {
@@ -208,10 +289,23 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         return;
       }
       const text = data.toString();
-      if (!isControlFrame(text)) {
-        registry.touch(code);
-        peer.send(text);
+      if (isControlFrame(text)) {
+        return;
       }
+      registry.touch(code);
+      if (peer.bufferedAmount > limits.maxBufferedBytes) {
+        // The partner does not read what it is sent: what waits for it stays bounded, and the reliable layer of the sender
+        // sends the frame again. A partner that stays stuck is cut; its seat is kept, so it can come back.
+        const inARow = (stalled.get(peer) ?? 0) + 1;
+        stalled.set(peer, inARow);
+        if (inARow === limits.maxDropsPerSocket) {
+          log(`coop relay: ${code} ${otherSeat(seat)} does not read what it is sent: cutting it`);
+          peer.terminate();
+        }
+        return;
+      }
+      stalled.delete(peer);
+      peer.send(text);
     });
 
     socket.on("close", (closeCode: number) => {
@@ -240,7 +334,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
   };
 
   const reject = (socket: WebSocket, reason: RelayErrorReason, code: string | null, ip: string): void => {
-    log(`coop relay: rejected ${code ?? "(no code)"}: ${reason} (ip ${ipTag(ip)})`);
+    refused(reason, `rejected ${codeForLog(code)}: ${reason} (ip ${ipTag(ip)})`);
     send(socket, { t: "relay:error", reason });
     socket.close(CLOSE_CODE_REJECTED, reason);
   };
@@ -252,12 +346,11 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     send(room?.guest, { t: "relay:paired" });
   };
 
-  wss.on("connection", (socket: WebSocket, request: IncomingMessage) => {
+  /** A socket that completed its handshake at the relay's path, with the query of its URL */
+  const connected = (socket: WebSocket, ip: string, params: URLSearchParams): void => {
     // `ws` emits "error" for protocol violations (an oversized frame, bad UTF-8, ...) and then closes the socket.
     // Without a listener that error would be thrown and take the whole relay down.
-    socket.on("error", error => log(`coop relay: socket error: ${error.message}`));
-    const ip = ipOf.get(socket) ?? "unknown";
-    const params = new URL(request.url ?? "/", "ws://relay").searchParams;
+    socket.on("error", error => log(`coop relay: socket error: ${logField(error.message)}`));
     const role = params.get("role");
     const code = params.get("code");
     const seatParam = params.get("seat");
@@ -324,32 +417,37 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     } else if (registry.isReserved(code, "host")) {
       send(socket, { t: "relay:peerLeft", holdMs: null });
     }
-  });
+  };
 
   server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     socket.on("error", () => socket.destroy());
-    const pathname = new URL(request.url ?? "/", "http://placeholder").pathname.replace(/\/+$/, "") || "/";
+    const url = requestUrl(request.url);
+    if (url === null) {
+      refuseUpgrade(socket, 400, "Bad Request");
+      return;
+    }
+    const pathname = url.pathname.replace(/\/+$/, "") || "/";
     if (pathname !== path) {
       refuseUpgrade(socket, 404, "Not Found");
       return;
     }
-    if (!originAllowed(request.headers.origin, request.headers.host, allowedOrigins)) {
-      log(`coop relay: origin refused: ${request.headers.origin}`);
+    const origin = request.headers.origin;
+    if (!originAllowed(origin, request.headers.host, allowedOrigins)) {
+      refused("origin", `origin refused: ${logField(origin ?? "")}`);
       refuseUpgrade(socket, 403, "Forbidden");
       return;
     }
     const ip = clientIp(request, trustProxy);
     const admitted = limiter.admit(ip);
     if (admitted !== "ok") {
-      log(`coop relay: refused ip ${ipTag(ip)}: ${admitted}`);
+      refused(admitted, `refused ip ${ipTag(ip)}: ${admitted}`);
       refuseUpgrade(socket, 429, "Too Many Requests");
       return;
     }
-    wss.handleUpgrade(request, socket, head, ws => {
-      ipOf.set(ws, ip);
-      ws.on("close", () => limiter.release(ip));
-      wss.emit("connection", ws, request);
-    });
+    // The socket counts for its IP until the connection is gone, whether the handshake below completes or not (a bad key,
+    // a method that is not GET, a client that left): `ws` closes this same socket when the WebSocket ends.
+    socket.once("close", () => limiter.release(ip));
+    wss.handleUpgrade(request, socket, head, ws => connected(ws, ip, url.searchParams));
   });
 
   // #endregion
@@ -374,7 +472,10 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
   }, options.sweepIntervalMs ?? 1000);
   sweepTimer.unref();
 
-  const limiterTimer = setInterval(() => limiter.sweep(), 60_000);
+  const limiterTimer = setInterval(() => {
+    limiter.sweep();
+    rollRefusals();
+  }, 60_000);
   limiterTimer.unref();
 
   // Without traffic, a connection that died on the way (a phone losing signal) never closes on its own,
@@ -410,7 +511,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     server.once("error", rejectStart);
     server.listen(options.port, options.host, () => {
       server.off("error", rejectStart);
-      server.on("error", error => log(`coop relay: server error: ${error.message}`));
+      server.on("error", error => log(`coop relay: server error: ${logField(error.message)}`));
       const address = server.address();
       const port = typeof address === "object" && address !== null ? address.port : options.port;
       resolve({ port, registry, limiter, stats, close });

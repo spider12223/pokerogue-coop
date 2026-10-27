@@ -53,13 +53,31 @@ export function registerLeaveHandler(handler: () => void): void {
   leaveHandler = handler;
 }
 
+/** What the lobby does before a reload: a guest still on the starter select (its START was lost) closes it first */
+let beforeReloadHandler: (() => void) | null = null;
+
+export function registerBeforeReload(handler: () => void): void {
+  beforeReloadHandler = handler;
+}
+
+/** A reload starts (`CoopResyncPhase`): the lobby, if one is still open, closes first */
+export function beforeReload(): void {
+  beforeReloadHandler?.();
+}
+
 /** The phases that wait for the player or for nothing: abandoning one loses no work */
-const SAFE_PHASES: ReadonlySet<string> = new Set(["CommandPhase", "SelectTargetPhase", "TitlePhase"]);
+// (the starter select: a guest whose START was lost while its connection dropped is brought into the run by the reload)
+const SAFE_PHASES: ReadonlySet<string> = new Set([
+  "CommandPhase",
+  "SelectTargetPhase",
+  "TitlePhase",
+  "SelectStarterPhase",
+]);
 
 /** @returns Whether the running phase can be abandoned now */
 export function isSafePoint(session: CoopSession): boolean {
-  // (after a retry the game over phase only waits for the host's reload, D4a)
-  if (session.atGate || session.retryPending) {
+  // (after a retry the game over phase only waits for the host's reload, D4a; a phase whose decision failed is stuck)
+  if (session.atGate || session.retryPending || session.bridgeFailed) {
     return true;
   }
   const phase = globalScene?.phaseManager?.getCurrentPhase?.();
@@ -137,6 +155,11 @@ function step(session: CoopSession, link: CoopLink): boolean {
     return true;
   }
   if (session.isHost && link.partnerPresent && (session.resyncWanted !== null || link.needsResync)) {
+    if (session.waveSave === null && session.resyncWanted === null) {
+      // A return before the first wave (the lobby, the starter select): there is no world to reload yet. The lobby sends
+      // its state again; once the first wave is saved, its start is what the partner reloads
+      return false;
+    }
     issueResync(session, session.resyncWanted?.reason ?? "rejoin");
     return true;
   }
@@ -191,7 +214,12 @@ export function issueResync(
 /** Guest: the host's `RESYNC` arrived. It is applied at the next safe point (D13). */
 export function receiveResync(session: CoopSession, message: ResyncMessage): void {
   if (session.stopped !== null) {
-    return;
+    if (isStop(message) || message.epoch <= session.stopped.epoch) {
+      return;
+    }
+    // The host reloaded its tab after the stop and continues the run from its slot: this client comes back into it
+    session.stopped = null;
+    session.stopMismatch = null;
   }
   // A newer one replaces an older one that was not applied yet
   if (session.pendingResync === null || session.pendingResync.epoch < message.epoch) {
@@ -222,6 +250,10 @@ export function applyResync(session: CoopSession, message: ResyncMessage): void 
   if (isStop(message)) {
     session.reloading = false;
     session.stopped = message;
+    if (session.isHost) {
+      // The slot moves to the stop's epoch too: a host that reloads then brings a still-open guest back with a newer one
+      updateSlotEpoch(message.epoch, message.seq);
+    }
     showStop(session, link, message, lastMismatch);
     return;
   }
@@ -245,6 +277,36 @@ export function endSession(session: CoopSession): void {
   hideReconnectScreen();
   session.link?.leave();
   leaveHandler?.();
+}
+
+/**
+ * The wave start could not be loaded (D13): a save this build refuses, or a broken one. Nothing can go on from there, so the
+ * player is told why and goes back to the title screen; the partner sees them leave.
+ * @param reason - Why, for the player
+ */
+export function showReloadFailed(session: CoopSession, reason: string): void {
+  const { ui } = globalScene;
+  void ui.setMode(UiMode.MESSAGE).then(() => {
+    if (getCoopSession() !== session) {
+      return;
+    }
+    ui.showText(
+      coopText("reloadFailed", "The start of the wave could not be loaded: {{reason}}", { reason }),
+      null,
+      () =>
+        showOverlayMenu([
+          {
+            label: coopText("backToTitle", "Back to the title screen"),
+            handler: () => {
+              endSession(session);
+              return true;
+            },
+          },
+        ]),
+      null,
+      false,
+    );
+  });
 }
 
 /**
@@ -300,8 +362,9 @@ function refreshAwayScreen(session: CoopSession, link: CoopLink): void {
   if (!link.partnerPresent) {
     // Nobody is there to take over for
     stopAllAfkWatchers();
-    // (a guest that waits for the host's reload after a retry waits like one in a decision, D4a)
-    if (session.openWindow.length > 0 || session.retryPending) {
+    // (a guest that waits for the host's reload after a retry, a rejoin or a continued run waits like one in a decision,
+    // D4a, D20, D21)
+    if (session.openWindow.length > 0 || session.retryPending || session.awaitingReload) {
       showReconnectScreen({
         partner: session.partnerName,
         code: link.code,
@@ -335,6 +398,10 @@ export function installResync(session: CoopSession, link: CoopLink): () => void 
     }),
   );
   session.onMismatch = () => wantResync(session, "mismatch");
+  session.onBridgeFailure = () => {
+    session.bridgeFailed = true;
+    wantResync(session, "desync");
+  };
   const stops = [
     link.onResync(message => receiveResync(session, message)),
     link.onResyncRequest(request => {
@@ -364,6 +431,7 @@ export function installResync(session: CoopSession, link: CoopLink): () => void 
     }
     session.beforeDecision = null;
     session.onMismatch = null;
+    session.onBridgeFailure = null;
   };
 }
 

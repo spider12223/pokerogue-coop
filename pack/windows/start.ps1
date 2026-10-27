@@ -108,7 +108,8 @@ try {
       while ($null -eq $link -and (Get-Date) -lt $deadline -and -not $tunnelProcess.HasExited) {
         Start-Sleep -Milliseconds 500
         if (Test-Path $tunnelLog) {
-          $found = Select-String -Path $tunnelLog -Pattern "https://[-a-z0-9]+\.trycloudflare\.com" | Select-Object -First 1
+          # The tunnel's own address; not api.trycloudflare.com, which cloudflared names in its errors
+          $found = Select-String -Path $tunnelLog -Pattern "https://(?!api\.)[-a-z0-9]+\.trycloudflare\.com" | Select-Object -First 1
           if ($null -ne $found) {
             $link = $found.Matches[0].Value
           }

@@ -131,6 +131,8 @@ export class CoopLink {
   private readonly connection: LinkConnection | null;
   private readonly scheduler: Scheduler;
   private present = true;
+  /** The relay closed this connection because another took its seat (D20) */
+  private replaced = false;
   /** Why the relay closed the room under this client, if it did (D23: `idle` is a room that was silent for too long) */
   closedReason: "hostGone" | "partnerLeft" | "idle" | null = null;
   private resyncNeeded = false;
@@ -204,6 +206,11 @@ export class CoopLink {
   /** Envelopes sent and not yet acknowledged (diagnostics) */
   get pending(): number {
     return this.reliable.pending;
+  }
+
+  /** Another tab took this seat (D20): the seat in the store is that tab's now */
+  get wasReplaced(): boolean {
+    return this.replaced;
   }
 
   /** The seat token and relay of this connection, for the seat store (D20) */
@@ -618,6 +625,7 @@ export class CoopLink {
     // Another connection took this seat with the same token (the player opened the game in a second tab, or the relay room
     // was closed under them): fighting for the seat back would make the two tabs take it from each other for ever
     if (this.connection === null || code === CLOSE_CODE_REPLACED || code === CLOSE_CODE_ROOM_CLOSED) {
+      this.replaced = code === CLOSE_CODE_REPLACED;
       this.emitEnd("closed");
       return;
     }

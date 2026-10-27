@@ -199,6 +199,14 @@ export class CoopTurnSyncPhase extends Phase {
    */
   private enforceTeraRule(participants: { slot: number; controller: Seat }[], seqs: number[]): void {
     const battle = globalScene.currentBattle;
+    const isTera = (slot: number): boolean => {
+      const pre = battle.preTurnCommands[slot];
+      return pre?.command === Command.TERA && !pre.skip;
+    };
+    // A Tera kept from an earlier round of this turn (the partner chose again after a declined Ball or Run) came first
+    const keptBefore = globalScene
+      .getPlayerField()
+      .some((pokemon, slot) => pokemon.isActive() && !participants.some(part => part.slot === slot) && isTera(slot));
     const users = participants
       .map((part, index) => ({ part, seq: seqs[index] }))
       .filter(({ part }) => {
@@ -206,7 +214,7 @@ export class CoopTurnSyncPhase extends Phase {
         return pre?.command === Command.TERA && !pre.skip;
       })
       .sort((a, b) => a.seq - b.seq);
-    for (const { part } of users.slice(1)) {
+    for (const { part } of users.slice(keptBefore ? 0 : 1)) {
       battle.preTurnCommands[part.slot] = { command: Command.FIGHT, targets: [part.slot], skip: true };
       if (part.controller === mySeat()) {
         this.notice = coopText("partnerTeraFirst", "{{partner}} Terastallized first: no Tera for you this turn.", {

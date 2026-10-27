@@ -10,9 +10,8 @@ import { turnCommandsKey } from "#coop/decision-keys";
 import { safeLegality } from "#coop/legal";
 import { gameLegalityView } from "#coop/legal-view";
 import { keyId } from "#coop/protocol";
-import type { ResyncPayload } from "#coop/resync";
 import { rewardWindow } from "#coop/reward-actions";
-import { DesyncError } from "#coop/sequencer";
+import type { DesyncError } from "#coop/sequencer";
 import { modifierTypes } from "#data/data-lists";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
@@ -32,8 +31,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 /**
  * D24 on the real game: a decision that is not legal in the state the simulation is in is not applied by either client. The
- * real client is the host; the scripted guest looks at the same game with the same check, as a second client would, and both
- * raise the same desync. The host then reloads the wave under the next epoch, and nothing throws.
+ * real client is the host; it checks a guest's proposal before it sequences it, and refuses an illegal one: nothing is
+ * sequenced, nobody desyncs, and the decision is still to come.
  */
 
 const FOUR = [SpeciesId.BULBASAUR, SpeciesId.SQUIRTLE, SpeciesId.CHARMANDER, SpeciesId.PIKACHU];
@@ -42,8 +41,12 @@ const ALTERNATING = ["host", "guest", "host", "guest"] as const;
 describe("Co-op: illegal decisions on the real game (D24)", () => {
   let phaserGame: Phaser.Game;
   let run: LinkedRun | null = null;
-  /** What each sequencer reported, when it happened: the host's failure is forgotten by its own reload */
+  /** What each sequencer reported, when it happened */
   let desyncs: { host: DesyncError[]; guest: DesyncError[] } = { host: [], guest: [] };
+  /** The host's verdicts, by key */
+  let verdicts = new Map<string, string | null>();
+  /** What the host refused of the scripted guest's proposals */
+  let refused: { key: unknown; reason: string }[] = [];
 
   beforeAll(() => {
     phaserGame = new Phaser.Game({ type: Phaser.HEADLESS });
@@ -68,7 +71,9 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
     // The guest's client has the same state at the same decision point, so it gets the same verdict. (Here both clients share
     // one game, which moves on as soon as the host reloads; the verdict is taken at the host's decision point and given to
     // the guest's sequencer. `legal-sequencer.test.ts` has two independent checks.)
-    const verdicts = new Map<string, string | null>();
+    verdicts = new Map<string, string | null>();
+    refused = [];
+    run.partner.sequencer.onProposalRejected(info => refused.push(info));
     const check = safeLegality(gameLegalityView, error => {
       throw error;
     });
@@ -84,34 +89,40 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
     return run;
   }
 
-  /** Both clients stopped at the same decision for the same reason, and the host reloads the wave */
-  async function expectBothRejected(r: LinkedRun, reason: RegExp, waiting: Promise<unknown>): Promise<void> {
+  /**
+   * The host refused the guest's proposal for `reason` before sequencing it: the guest is told (`invalid`), nothing is
+   * sequenced, neither client desyncs, and the decision is still open
+   */
+  async function expectRefused(r: LinkedRun, reason: RegExp, waiting: Promise<unknown>): Promise<void> {
     try {
-      await vi.waitUntil(() => desyncs.host.length > 0 && desyncs.guest.length > 0, { interval: 5, timeout: 6000 });
+      await vi.waitUntil(() => refused.length > 0, { interval: 5, timeout: 6000 });
     } catch (error) {
       throw new Error(
-        `the host reported ${desyncs.host.length} desyncs and the guest ${desyncs.guest.length}; the host's own: ${r.link.sequencer.desync?.message}; phase: ${globalScene.phaseManager.getCurrentPhase().phaseName}`,
+        `nothing was refused; desyncs: host ${desyncs.host.length}, guest ${desyncs.guest.length}; phase: ${globalScene.phaseManager.getCurrentPhase().phaseName}`,
         { cause: error },
       );
     }
-    await expect(waiting).rejects.toBeInstanceOf(DesyncError);
-    const [host] = desyncs.host as [DesyncError];
-    const [guest] = desyncs.guest as [DesyncError];
-    expect(host.message).toMatch(reason);
-    expect(guest.message).toBe(host.message);
-    expect(guest.seq).toBe(host.seq);
-    expect(guest.actual).toEqual(host.actual);
-    expect(desyncs.host).toHaveLength(1);
-    expect(r.session.desyncMessage ?? host.message).toMatch(/illegal decision/);
-
-    // it is a desync like any other: the host reloads the wave start, and the run goes on
-    await vi.waitUntil(() => r.partner.resyncs.length === 1, { interval: 5, timeout: 6000 });
-    const message = r.partner.resyncs[0] as ResyncPayload;
-    expect(message).toMatchObject({ epoch: 1, reason: "desync" });
-    r.partner.beginEpoch(message.epoch, message.seq + 1);
-    await advanceTo(r.ctx, ["CommandPhase"]);
-    expect(r.link.epoch).toBe(1);
+    expect(refused[0].reason).toBe("invalid");
+    const reasons = [...verdicts.values()].filter((verdict): verdict is string => verdict !== null);
+    expect(
+      reasons.some(verdict => reason.test(verdict)),
+      `verdicts: ${reasons.join(" | ")}`,
+    ).toBe(true);
+    let settled: string | null = null;
+    waiting.then(
+      value => {
+        settled = `resolved ${JSON.stringify(value)}`;
+      },
+      error => {
+        settled = `rejected ${error}`;
+      },
+    );
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(settled).toBeNull();
+    expect(desyncs.host).toHaveLength(0);
+    expect(desyncs.guest).toHaveLength(0);
     expect(r.link.sequencer.desync).toBeNull();
+    expect(r.partner.resyncs).toHaveLength(0);
   }
 
   describe("the turn's commands", () => {
@@ -127,6 +138,15 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
       const battle = globalScene.currentBattle;
       const guestMon = globalScene.getPlayerField().find(pokemon => ownerOf(pokemon) === "guest")!;
       const key = turnCommandsKey(battle.waveIndex, battle.turn, guestMon.id);
+      // The guest's simulation waits for every slot's commands at once, as `CoopTurnSyncPhase` does: the host's own may be
+      // sequenced first
+      for (const pokemon of globalScene.getPlayerField()) {
+        if (pokemon !== guestMon) {
+          r.partner.sequencer
+            .awaitDecision(turnCommandsKey(battle.waveIndex, battle.turn, pokemon.id))
+            .catch(() => undefined);
+        }
+      }
       const waiting = r.partner.sequencer.awaitDecision(key);
       waiting.catch(() => undefined);
       return { guestMon, key, waiting };
@@ -140,21 +160,22 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
       ).toBe(false);
       r.partner.propose(key, attackCommand(r.ctx.game, 1, MoveId.EXPLOSION));
       await startTurnSync(r);
-      await expectBothRejected(r, /illegal decision: slot 0 holds move \d+, not 153/, waiting);
+      await expectRefused(r, /slot 0 holds move \d+, not 153/, waiting);
     });
 
     it("refuses a target the move cannot have", async () => {
       const r = await start();
-      const { key, waiting } = await toGuestCommands(r);
+      const { guestMon, key, waiting } = await toGuestCommands(r);
       const legal = attackCommand(r.ctx.game, 1, MoveId.BITE);
-      // the partner's own Pokémon is not a target of the same move at a foe: the move can go to the foes and the ally, not to a seat that is not there
+      // Bite goes to a foe or the ally, never to the user itself
+      const self = guestMon.getBattlerIndex();
       const payload = {
         ...legal,
-        command: { ...legal.command!, targets: [7], move: { ...legal.command!.move!, targets: [7] } },
+        command: { ...legal.command!, targets: [self], move: { ...legal.command!.move!, targets: [self] } },
       };
       r.partner.propose(key, payload);
       await startTurnSync(r);
-      await expectBothRejected(r, /illegal decision: targets \[7\]/, waiting);
+      await expectRefused(r, /targets \[\d\] that move \d+ cannot have/, waiting);
     });
 
     it("refuses commands that cannot be read, from a partner that is not what it says it is", async () => {
@@ -162,7 +183,7 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
       const { key, waiting } = await toGuestCommands(r);
       r.partner.propose(key, { command: { command: "FIGHT" }, pre: "no" });
       await startTurnSync(r);
-      await expectBothRejected(r, /illegal decision: commands that cannot be read/, waiting);
+      await expectRefused(r, /commands that cannot be read/, waiting);
     });
   });
 
@@ -185,7 +206,7 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
       const { waiting } = await openWindow(r);
       globalScene.money = 0;
       partnerActs(r, { t: "buy", index: 0 });
-      await expectBothRejected(r, /illegal decision: a purchase that costs more than the money there is/, waiting);
+      await expectRefused(r, /a purchase that costs more than the money there is/, waiting);
     });
 
     it("refuses a transfer of items that are not there", async () => {
@@ -194,7 +215,7 @@ describe("Co-op: illegal decisions on the real game (D24)", () => {
       const guestMon = globalScene.getPlayerParty().find(pokemon => ownerOf(pokemon) === "guest")!;
       const hostMon = globalScene.getPlayerParty().find(pokemon => ownerOf(pokemon) === "host")!;
       partnerActs(r, { t: "transfer", from: guestMon.id, to: hostMon.id, items: [{ index: 3, quantity: 1 }] });
-      await expectBothRejected(r, /illegal decision: a transfer of items that are not there/, waiting);
+      await expectRefused(r, /a transfer of items that are not there/, waiting);
     });
   });
 });

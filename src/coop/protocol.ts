@@ -22,7 +22,7 @@ import {
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 6;
+export const COOP_PROTOCOL_VERSION = 7;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -103,15 +103,24 @@ export function keysEqual(a: DecisionKey, b: DecisionKey): boolean {
   return a.wave === b.wave && a.turn === b.turn && a.kind === b.kind && a.ref === b.ref;
 }
 
+/** Waves and turns of a key are below this: far more than any run reaches, so a forged key cannot be anything */
+export const MAX_KEY_WAVE = 1_000_000;
+/** The longest string `ref` of a key (the longest the game makes is about 30 characters) */
+export const MAX_REF_LENGTH = 64;
+
+const isKeyNumber = (value: unknown): boolean =>
+  Number.isInteger(value) && (value as number) >= 0 && (value as number) <= MAX_KEY_WAVE;
+
 export function isDecisionKey(value: unknown): value is DecisionKey {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const key = value as Record<string, unknown>;
+  const ref = key["ref"];
   return (
-    Number.isInteger(key["wave"])
-    && Number.isInteger(key["turn"])
-    && (Number.isInteger(key["ref"]) || (typeof key["ref"] === "string" && key["ref"].length > 0))
+    isKeyNumber(key["wave"])
+    && isKeyNumber(key["turn"])
+    && (Number.isSafeInteger(ref) || (typeof ref === "string" && ref.length > 0 && ref.length <= MAX_REF_LENGTH))
     && typeof key["kind"] === "string"
     && (DECISION_KINDS as readonly string[]).includes(key["kind"])
   );
@@ -262,8 +271,10 @@ export const MAX_NAME_LENGTH = 16;
 export const DEFAULT_NAME = "Player";
 
 /**
- * Make a display name safe to show (D1): control characters out, whitespace collapsed, at most
- * {@linkcode MAX_NAME_LENGTH} characters.
+ * Make a display name safe to show (D1): control characters out, invisible format characters (`\p{Cf}`: bidi overrides,
+ * zero-width joiners) out, the characters of the game's text markup out (`@x{...}` codes and the page break `$` of the
+ * message box), whitespace collapsed, at most {@linkcode MAX_NAME_LENGTH} characters. Both the name sent and the name
+ * received go through it.
  * @returns The name, or {@linkcode DEFAULT_NAME} if nothing printable is left
  */
 export function cleanName(value: unknown): string {
@@ -272,6 +283,7 @@ export function cleanName(value: unknown): string {
   }
   const cleaned = value
     .replace(/\p{Cc}/gu, " ")
+    .replace(/[\p{Cf}@{}$]/gu, "")
     .replace(/\s+/g, " ")
     .trim();
   return cleaned.slice(0, MAX_NAME_LENGTH).trim() || DEFAULT_NAME;
@@ -452,16 +464,18 @@ export function isStartPayload(value: unknown): value is StartPayload {
  * `LOBBY` payloads: the co-op starter select, before the run exists.
  * - `picks`: the sender's current party, tentatively (the partner shows it faded); `cost` is what it costs of the shared
  *   point budget
- * - `ready`: the sender confirmed these starters, with the account the run will use and the timed events its clock has on
+ * - `ready`: the sender confirmed these starters, with the account the run will use and the timed events its clock has on;
+ *   `gen` counts the sender's readies, so that an answer to an older one can be told apart
  * - `unready`: the sender took the confirmation back
- * - `reset`: host to guest, both parties were confirmed but together cost more than the shared budget: nobody is ready
+ * - `reset`: host to guest, both parties were confirmed but together cost more than the shared budget: nobody is ready.
+ *   `gen` is the guest's ready it answers: a guest that has confirmed again since ignores it
  * - `collection`: the sender's Pokémon, for the starter select of both (D32); `ask` asks for the partner's in return
  */
 export type LobbyMessage =
   | { t: "picks"; picks: CoopStarter[]; cost: number }
-  | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot; events: string[] }
+  | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot; events: string[]; gen: number }
   | { t: "unready" }
-  | { t: "reset" }
+  | { t: "reset"; gen: number }
   | { t: "collection"; collection: CollectionData; ask: boolean };
 
 export function isLobbyMessage(value: unknown): value is LobbyMessage {
@@ -480,10 +494,12 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
         && typeof message["cost"] === "number"
         && isAccountSnapshot(message["snapshot"])
         && isTimedEventNames(message["events"])
+        && Number.isSafeInteger(message["gen"])
       );
     case "unready":
-    case "reset":
       return true;
+    case "reset":
+      return Number.isSafeInteger(message["gen"]);
     case "collection":
       return isCollectionData(message["collection"]) && typeof message["ask"] === "boolean";
     default:
@@ -501,18 +517,30 @@ export interface CheckpointMessage {
   hash: string;
 }
 
+/** The longest phase name a checkpoint may carry */
+const MAX_PHASE_NAME_LENGTH = 64;
+
 export function isCheckpointMessage(value: unknown): value is CheckpointMessage {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const checkpoint = value as Record<string, unknown>;
+  const index = checkpoint["index"];
+  const kind = checkpoint["kind"];
+  const phaseName = checkpoint["phaseName"];
+  const hash = checkpoint["hash"];
   return (
-    Number.isInteger(checkpoint["index"])
-    && typeof checkpoint["kind"] === "string"
-    && Number.isInteger(checkpoint["wave"])
-    && Number.isInteger(checkpoint["turn"])
-    && typeof checkpoint["phaseName"] === "string"
-    && typeof checkpoint["hash"] === "string"
+    Number.isSafeInteger(index)
+    && (index as number) >= 0
+    && typeof kind === "string"
+    && kind.length <= 16
+    && isKeyNumber(checkpoint["wave"])
+    && isKeyNumber(checkpoint["turn"])
+    && typeof phaseName === "string"
+    && phaseName.length <= MAX_PHASE_NAME_LENGTH
+    // the state hash is `hashCanonical`'s
+    && typeof hash === "string"
+    && /^[0-9a-f]{14}$/.test(hash)
   );
 }
 

@@ -1075,9 +1075,16 @@ export class SelectModifierPhase extends BattlePhase {
       if (!target) {
         return null;
       }
-      return modifierType instanceof PokemonMoveModifierType || modifierType instanceof RememberMoveModifierType
-        ? modifierType.newModifier(target, action.option ?? 0)
-        : modifierType.newModifier(target);
+      const option = action.option ?? 0;
+      // A move slot the Pokémon does not have (a forged or stale pick) gives nothing, on both clients alike, instead of
+      // throwing when the item is used
+      if (modifierType instanceof RememberMoveModifierType) {
+        return option < target.getLearnableLevelMoves().length ? modifierType.newModifier(target, option) : null;
+      }
+      if (modifierType instanceof PokemonMoveModifierType) {
+        return option < target.getMoveset().length ? modifierType.newModifier(target, option) : null;
+      }
+      return modifierType.newModifier(target);
     }
     return modifierType.newModifier();
   }
@@ -1132,6 +1139,11 @@ export class SelectModifierPhase extends BattlePhase {
    */
   private finishScreen(): void {
     if (isLinked()) {
+      if (!this.closed) {
+        // The phase ends without a pick (a bought Memory Mushroom goes on to its own copy of the screen): its window, watcher
+        // and legality view stop with it, or they would take the next screen's decisions
+        this.closeScreen();
+      }
       const session = requireCoopSession();
       if (session.tradeRequested && !session.tradeQueued) {
         session.tradeQueued = true;

@@ -15,6 +15,7 @@ import {
   isEvolutionCancelPayload,
   isEvolutionPausePayload,
 } from "#coop/prompt-payloads";
+import { requireCoopSession } from "#coop/session";
 import { getTypeRgb } from "#data/type";
 import { LearnMoveSituation } from "#enums/learn-move-situation";
 import { UiMode } from "#enums/ui-mode";
@@ -40,6 +41,8 @@ export class EvolutionPhase extends Phase {
   private readonly fusionSpeciesEvolved: boolean; // Whether the evolution is of the fused species
   private evolutionBgm: BackgroundMusic | null;
   private evolutionHandler: EvolutionSceneUiHandler;
+  /** Co-op (D2): the how-manyth time this wave offers this evolution; its cancel and pause questions are keyed with it */
+  private coopOccurrence = 1;
 
   /** Container for all assets used by the scene. When the scene is cleared, the children within this are destroyed. */
   protected evolutionContainer: Phaser.GameObjects.Container;
@@ -339,8 +342,13 @@ export class EvolutionPhase extends Phase {
     if (owner === null || owner === "either") {
       throw new Error("co-op: an evolution without an owner");
     }
+    const wave = globalScene.currentBattle.waveIndex;
+    const speciesId = this.evolution?.speciesId ?? -1;
+    // The same evolution offered again this wave (cancelled, then the next level) is a decision of its own (D2); the pause
+    // question after it shares its count
+    this.coopOccurrence = requireCoopSession().nextOccurrence(wave, `evolve:${this.pokemon.id}:${speciesId}`);
     const decision = await coopDecide<EvolutionCancelPayload>({
-      key: evolutionCancelKey(globalScene.currentBattle.waveIndex, this.pokemon.id, this.evolution?.speciesId ?? -1),
+      key: evolutionCancelKey(wave, this.pokemon.id, speciesId, this.coopOccurrence),
       decider: owner,
       ask: async () => ({ cancel: this.evolutionHandler.cancelled }),
       // The animation is over: the partner sees the finished evolution scene for the moment the answer takes
@@ -357,7 +365,12 @@ export class EvolutionPhase extends Phase {
       throw new Error("co-op: an evolution without an owner");
     }
     coopDecide<EvolutionPausePayload>({
-      key: evolutionPauseKey(globalScene.currentBattle.waveIndex, this.pokemon.id, this.evolution?.speciesId ?? -1),
+      key: evolutionPauseKey(
+        globalScene.currentBattle.waveIndex,
+        this.pokemon.id,
+        this.evolution?.speciesId ?? -1,
+        this.coopOccurrence,
+      ),
       decider: owner,
       ask: () =>
         new Promise<EvolutionPausePayload>(resolve => {

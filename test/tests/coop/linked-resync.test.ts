@@ -139,14 +139,16 @@ describe("Co-op: save and resync (D13, D18, D19)", () => {
       expect(reconnectScreenText()).toBeNull();
     });
 
-    it("says that the partner is back, and has no way out then: the reload is on its way", async () => {
+    it("says that the partner is back; the way out comes only after a longer wait: the reload is on its way", async () => {
       const r = await start();
       await advanceTo(r.ctx, ["CommandPhase"]);
-      showReconnectScreen({ partner: "Alex", code: "ABC234", back: false, onEnd: vi.fn(), endAfterMs: 20 });
-      showReconnectScreen({ partner: "Alex", code: "ABC234", back: true, onEnd: vi.fn(), endAfterMs: 20 });
+      showReconnectScreen({ partner: "Alex", code: "ABC234", back: false, onEnd: vi.fn(), endAfterMs: 50 });
+      showReconnectScreen({ partner: "Alex", code: "ABC234", back: true, onEnd: vi.fn(), endAfterMs: 50 });
       expect(reconnectScreenText()).toBe("Alex is back. Getting the game ready…");
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 80));
       expect(isEndSessionOffered()).toBe(false);
+      // a reload that never comes does not trap the player (three times the usual wait)
+      await vi.waitUntil(() => isEndSessionOffered(), { interval: 10, timeout: 1000 });
       hideReconnectScreen();
       expect(reconnectScreenText()).toBeNull();
     });

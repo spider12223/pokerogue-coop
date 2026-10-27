@@ -136,6 +136,11 @@ export class CoopSession {
    * for it can be abandoned. Forgotten when the epoch changes.
    */
   public retryPending = false;
+  /**
+   * Guest: it rejoined, or joined a continued run, and waits for the host's reload of the wave start (D20, D21): it waits
+   * like one in a decision (the reconnect screen, End session). Forgotten when the epoch changes.
+   */
+  public awaitingReload = false;
   /** The run was stopped (D13): the third desync of a wave. Nothing is decided any more. */
   public stopped: ResyncStopPayload | null = null;
   /** The checkpoints that differed when the run stopped */
@@ -146,6 +151,13 @@ export class CoopSession {
   public beforeDecision: (() => Promise<void>) | null = null;
   /** Called when two checkpoints of the same index differ (D13). Set by `installResync`. */
   public onMismatch: ((local: Checkpoint | null, remote: Checkpoint) => void) | null = null;
+  /**
+   * Called when a decision's code failed (`reportBridgeError`): its phase will not go on, so the wave is reloaded (D13).
+   * Set by `installResync`.
+   */
+  public onBridgeFailure: (() => void) | null = null;
+  /** A decision's code failed in this epoch: its phase is stuck, so it can be abandoned (a safe point, D13) */
+  public bridgeFailed = false;
   /** After this many ms of waiting for a partner the player may end the session (D20); `null`: the default of a minute */
   public reconnectEndMs: number | null = null;
   /** This client's own account was saved in this run (D19), at a wave start: a fresh account has no saved ids until it is */
@@ -184,6 +196,9 @@ export class CoopSession {
   private events: string[] = [];
   /** The trainer types of the run's trainer battles so far (D34) */
   private trainers: number[] = [];
+  /** How many times each prompt was asked in {@linkcode occurrencesWave} of this epoch (D2) */
+  private readonly occurrences = new Map<string, number>();
+  private occurrencesWave = -1;
 
   constructor(init: CoopSessionInit) {
     this.seat = init.seat;
@@ -245,6 +260,23 @@ export class CoopSession {
     if (!this.trainers.includes(type)) {
       this.trainers.push(type);
     }
+  }
+
+  /**
+   * A prompt is asked (D2): the how-manyth time this wave, in this epoch. Both clients ask the same prompts in the same
+   * order, so they count alike; the count goes into the prompt's key, so that the same prompt asked again in a wave (an
+   * evolution cancelled and offered again, a declined TM picked again) is a decision of its own.
+   * @param what - What is asked, e.g. `learn:<pokemon>:<move>`
+   * @returns 1 the first time
+   */
+  public nextOccurrence(wave: number, what: string): number {
+    if (wave !== this.occurrencesWave) {
+      this.occurrences.clear();
+      this.occurrencesWave = wave;
+    }
+    const occurrence = (this.occurrences.get(what) ?? 0) + 1;
+    this.occurrences.set(what, occurrence);
+    return occurrence;
   }
 
   /** A new run starts: it has met no trainer yet */
@@ -332,6 +364,11 @@ export class CoopSession {
     this.checkpoints.clear();
     this.remoteCheckpoints.clear();
     this.pace.reset();
+    this.bridgeFailed = false;
+    this.awaitingReload = false;
+    // The wave is played again from its start: its prompts count from the first again
+    this.occurrences.clear();
+    this.occurrencesWave = -1;
     this.meStep = 0;
     this.meChooser = "host";
     this.meQuestion = null;

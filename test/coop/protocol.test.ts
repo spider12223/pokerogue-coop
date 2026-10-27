@@ -9,8 +9,10 @@ import {
   type BuildIdentity,
   type CoopStarter,
   canonicalJson,
+  cleanName,
   compareBuild,
   DECISION_KINDS,
+  DEFAULT_NAME,
   type DecisionKey,
   type Envelope,
   type HelloPayload,
@@ -25,6 +27,9 @@ import {
   isStartPayload,
   keyId,
   keysEqual,
+  MAX_KEY_WAVE,
+  MAX_NAME_LENGTH,
+  MAX_REF_LENGTH,
   NO_REF,
   type StartPayload,
 } from "#coop/protocol";
@@ -78,6 +83,40 @@ describe("DecisionKey", () => {
     expect(isDecisionKey({ ...key, ref: null })).toBe(false);
     expect(isDecisionKey({ ...key, ref: ["1"] })).toBe(false);
     expect(isDecisionKey({ wave: 1, turn: 1, kind: "BIOME" })).toBe(false);
+  });
+
+  it("bounds what a forged key can be: the wave, the turn and the length of the ref", () => {
+    const key = { wave: 1, turn: 0, kind: "LEARN_MOVE", ref: "12:33" };
+    expect(isDecisionKey({ ...key, wave: MAX_KEY_WAVE })).toBe(true);
+    expect(isDecisionKey({ ...key, wave: MAX_KEY_WAVE + 1 })).toBe(false);
+    expect(isDecisionKey({ ...key, wave: -1 })).toBe(false);
+    expect(isDecisionKey({ ...key, turn: -1 })).toBe(false);
+    expect(isDecisionKey({ ...key, turn: 2 ** 40 })).toBe(false);
+    expect(isDecisionKey({ ...key, ref: "1".repeat(MAX_REF_LENGTH) })).toBe(true);
+    expect(isDecisionKey({ ...key, ref: "1".repeat(MAX_REF_LENGTH + 1) })).toBe(false);
+    expect(isDecisionKey({ ...key, ref: 2 ** 60 })).toBe(false);
+    // a Pokémon id is 32 bits
+    expect(isDecisionKey({ ...key, ref: 2 ** 32 - 1 })).toBe(true);
+  });
+});
+
+describe("display names (D1)", () => {
+  it("cannot carry the message box's markup: a font size code would black out the partner's screen", () => {
+    expect(cleanName("@f{99999999}")).toBe("f99999999");
+    expect(cleanName("Sam@d{50}")).toBe("Samd50");
+    expect(cleanName("a$b")).toBe("ab");
+    expect(cleanName("@c{red}Al@s{se}")).toBe("credAlsse");
+    expect(cleanName("@{}$")).toBe(DEFAULT_NAME);
+  });
+
+  it("drops invisible format characters and control characters, and keeps the rest", () => {
+    expect(cleanName("Al‮ex")).toBe("Alex");
+    expect(cleanName("A‍l﻿ex")).toBe("Alex");
+    expect(cleanName("Al\nex\t")).toBe("Al ex");
+    expect(cleanName("  Pokémon   Fan ")).toBe("Pokémon Fan");
+    expect(cleanName("ジョン")).toBe("ジョン");
+    expect(cleanName("x".repeat(40))).toHaveLength(MAX_NAME_LENGTH);
+    expect(cleanName(5)).toBe(DEFAULT_NAME);
   });
 });
 
@@ -205,12 +244,14 @@ describe("LOBBY", () => {
   it("accepts picks, ready, unready and reset", () => {
     expect(isLobbyMessage({ t: "picks", picks: [starter], cost: 3 })).toBe(true);
     expect(isLobbyMessage({ t: "picks", picks: [], cost: 0 })).toBe(true);
-    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [] })).toBe(true);
+    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [], gen: 1 })).toBe(
+      true,
+    );
     expect(
-      isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: ["Halloween 26"] }),
+      isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: ["Halloween 26"], gen: 2 }),
     ).toBe(true);
     expect(isLobbyMessage({ t: "unready" })).toBe(true);
-    expect(isLobbyMessage({ t: "reset" })).toBe(true);
+    expect(isLobbyMessage({ t: "reset", gen: 1 })).toBe(true);
   });
 
   it("rejects what is not one", () => {
@@ -219,17 +260,39 @@ describe("LOBBY", () => {
     expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3 })).toBe(false);
     expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account })).toBe(false);
     expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [3] })).toBe(false);
+    // the count of the sender's readies, which a reset answers
+    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [] })).toBe(false);
+    expect(isLobbyMessage({ t: "reset" })).toBe(false);
     expect(isLobbyMessage({ t: "nope" })).toBe(false);
     expect(isLobbyMessage(null)).toBe(false);
   });
 });
 
 describe("CHECKPOINT", () => {
+  const checkpoint = {
+    index: 0,
+    kind: "turn",
+    wave: 1,
+    turn: 1,
+    phaseName: "TurnInitPhase",
+    hash: hashCanonical({ state: 1 }),
+  };
+
   it("has an index, a kind, the wave and turn, the phase and a hash", () => {
-    const checkpoint = { index: 0, kind: "turn", wave: 1, turn: 1, phaseName: "TurnInitPhase", hash: "ab" };
     expect(isCheckpointMessage(checkpoint)).toBe(true);
     expect(isCheckpointMessage({ ...checkpoint, hash: 5 })).toBe(false);
     expect(isCheckpointMessage({ ...checkpoint, index: 0.5 })).toBe(false);
+  });
+
+  it("is bounded: the hash is the state hash's, the strings are short, the numbers in range", () => {
+    expect(isCheckpointMessage({ ...checkpoint, hash: "ab" })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, hash: "x".repeat(14) })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, hash: "a".repeat(100_000) })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, phaseName: "P".repeat(65) })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, kind: "k".repeat(17) })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, index: -1 })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, wave: -1 })).toBe(false);
+    expect(isCheckpointMessage({ ...checkpoint, turn: MAX_KEY_WAVE + 1 })).toBe(false);
   });
 });
 

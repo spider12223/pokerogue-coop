@@ -23,7 +23,9 @@ import {
   isSidePickPayload,
   isTurnCommandsPayload,
   type WireTurnCommand,
+  type WireTurnMove,
 } from "#coop/turn-commands";
+import { MoveUseMode } from "#enums/move-use-mode";
 
 /**
  * Is a sequenced decision legal? (DECISIONS D24)
@@ -32,7 +34,8 @@ import {
  * simulation waits for the decision, so the state is the same on both). A decision that is not legal is not applied by
  * either: the sequencer raises a `DesyncError` ("illegal decision: ...") and the run goes through the resync path of D13. The
  * host asks it of its own and of the guest's decisions alike, so a forged or corrupted payload cannot make the two clients
- * differ.
+ * differ. The host also asks it of a proposal of the guest just before it sequences it, and refuses an illegal one
+ * (`invalid`) instead of making both clients reload.
  *
  * These are pure functions of the decision and a {@linkcode LegalityView}, a small read-only picture of the state that the
  * game fills in (`legal-view.ts`). Nothing here imports the game, so Node tests feed it illegal payloads of every kind. A check
@@ -52,6 +55,14 @@ const TERA = 4;
 const MOVE_NONE = 0;
 const MOVE_STRUGGLE = 165;
 
+/** The move a Pokémon is made to use next (a two-turn move, a rampage): what `CommandPhase` turns into its command */
+export interface QueuedMoveView {
+  move: number;
+  targets: readonly number[];
+  /** `MoveUseMode` */
+  useMode: number;
+}
+
 /** What a Pokémon of the player's side that is on the field can do this turn */
 export interface FighterView {
   fieldIndex: number;
@@ -59,8 +70,8 @@ export interface FighterView {
   controller: Seat;
   /** The moveset, in order: the move and whether it can be selected now (PP, disabled, locked) */
   moves: readonly { id: number; usable: boolean }[];
-  /** The move it is made to use next (a two-turn move, a rampage), if any */
-  queuedMove: number | null;
+  /** The move it is made to use next, if any */
+  queued: QueuedMoveView | null;
   /** Whether it can be switched out of the field */
   trapped: boolean;
   /** Whether it can Terastallize this turn */
@@ -95,11 +106,23 @@ export interface LegalityView {
   ownerOf(pokemonId: number): Seat | undefined;
   /** A Pokémon of the player's side that fights now */
   fighter(pokemonId: number): FighterView | null;
-  /** Whether a Ball may be thrown, and a Run attempted (a wild battle) */
+  /**
+   * Whether a Ball may be thrown, and a Run attempted, as `CommandPhase` allows them: not in a trainer battle, not where an
+   * encounter forbids it, not in the End biome's battles that cannot be caught or fled
+   */
   canCatch: boolean;
   canRun: boolean;
   /** Balls left, by type (`PokeballType`) */
   ballCount(type: number): number;
+  /** The battler indices of the enemies on the field: a Ball is only thrown when there is one */
+  catchTargets(): readonly number[];
+  /** Whether a Ball of this type can be thrown at that enemy (a boss with shields left takes a Master Ball, or none) */
+  ballWorks(type: number): boolean;
+  /**
+   * What lets a Pokémon of the party pass the baton when it leaves: a held Baton (a switch of the command screen), or a
+   * Baton Pass that just worked (the switch it causes)
+   */
+  baton(pokemonId: number): { item: boolean; move: boolean };
   /** The party indices that may replace the Pokémon that left (a faint or a pivot) */
   replacements(leavingId: number, reason: "faint" | "voluntary"): readonly number[];
   /** The reward screen that is open, if one is */
@@ -133,78 +156,163 @@ const isIndex = (value: unknown, below: number): value is number =>
 
 // #region Turn commands
 
-function checkFight(fighter: FighterView, command: WireTurnCommand): string | null {
-  if (command.skip === true) {
-    return null; // a command that is not carried out (the partner threw a Ball): nothing in it matters
-  }
-  const move = command.move;
-  if (move === undefined) {
-    return command.cursor === -1 ? null : reasonOf("a fight without a move");
-  }
-  const cursor = command.cursor ?? -1;
-  const queued = fighter.queuedMove !== null && fighter.queuedMove === move.move;
-  if (cursor === -1) {
-    // A move that is made (or none at all): only what the Pokémon is bound to
-    if (move.move !== MOVE_NONE && !queued) {
-      return reasonOf("a move that is not in its moveset or its queue");
-    }
-  } else if (!isIndex(cursor, fighter.moves.length)) {
-    return reasonOf(`move slot ${cursor} does not exist`);
-  } else if (!queued) {
-    const known = fighter.moves[cursor]!;
-    const struggling = move.move === MOVE_STRUGGLE && fighter.moves.every(entry => !entry.usable);
-    if (!struggling && known.id !== move.move) {
-      return reasonOf(`slot ${cursor} holds move ${known.id}, not ${move.move}`);
-    }
-    if (!struggling && !known.usable) {
-      return reasonOf("a move that cannot be selected");
-    }
-  }
-  if (move.move === MOVE_NONE || queued) {
-    return null; // a move that was already under way keeps the targets it had
-  }
-  // The target the player picked (`SelectTargetPhase` stores it on the command), else the ones the move has by itself
-  const chosen = command.targets ?? move.targets;
-  const where = fighter.targetsOf(move.move);
+/** @returns Whether two lists of battlers name the same battlers, each once */
+function sameBattlers(chosen: readonly number[], expected: readonly number[]): boolean {
+  return (
+    chosen.length === expected.length
+    && new Set(chosen).size === chosen.length
+    && chosen.every(target => expected.includes(target))
+  );
+}
+
+/** Where a move the player chose goes: the target the player picked, or every battler of a move that hits several */
+function checkMoveTargets(fighter: FighterView, moveId: number, chosen: readonly number[]): string | null {
+  const where = fighter.targetsOf(moveId);
   if (where.multiple) {
-    // A move that hits several is carried out on all of them, whatever the command says; it must still name battlers
-    return chosen.every(target => isIndex(target, 4)) ? null : reasonOf(`targets [${chosen}] that are not battlers`);
+    // `TurnStartPhase` hands the targets to the move as they are: a move that hits several must name every one it hits, as
+    // the command phase and the target screen do, or it hits only some of them, at full power
+    return sameBattlers(chosen, where.targets)
+      ? null
+      : reasonOf(`targets [${chosen}] that are not every target of move ${moveId} ([${where.targets}])`);
   }
   const fits =
     where.targets.length === 0 ? chosen.length === 0 : chosen.length === 1 && where.targets.includes(chosen[0]!);
   return fits
     ? null
-    : reasonOf(`targets [${chosen}] that move ${move.move} cannot have (it can go to one of [${where.targets}])`);
+    : reasonOf(`targets [${chosen}] that move ${moveId} cannot have (it can go to one of [${where.targets}])`);
 }
 
-function checkCommand(view: LegalityView, fighter: FighterView, command: WireTurnCommand, pre: boolean): string | null {
+/**
+ * A move the Pokémon is bound to (`CommandPhase.tryExecuteQueuedMove`): the queued move, with its use mode and its targets.
+ * The cursor is the slot of the move, or -1 for one that is not in the moveset (a move called by another).
+ */
+function checkQueuedMove(
+  fighter: FighterView,
+  queued: QueuedMoveView,
+  command: WireTurnCommand,
+  move: WireTurnMove,
+): string | null {
+  if (move.useMode !== queued.useMode) {
+    return reasonOf(`a queued move with use mode ${move.useMode}, not ${queued.useMode}`);
+  }
+  const cursor = command.cursor ?? -1;
+  if (cursor !== -1 && fighter.moves[cursor]?.id !== move.move) {
+    return reasonOf(`slot ${cursor} does not hold the queued move ${move.move}`);
+  }
+  if (!sameBattlers(move.targets, queued.targets)) {
+    return reasonOf(`a queued move at [${move.targets}], not at [${queued.targets}]`);
+  }
+  // The target screen opens for a queued move that hits several: it names the battlers the move has now
+  const chosen = command.targets;
+  if (
+    chosen !== undefined
+    && !sameBattlers(chosen, queued.targets)
+    && !(fighter.targetsOf(move.move).multiple && sameBattlers(chosen, fighter.targetsOf(move.move).targets))
+  ) {
+    return reasonOf(`a queued move at [${chosen}], not at [${queued.targets}]`);
+  }
+  return null;
+}
+
+/** A move the player chose on the fight screen: one of the moveset that can be used (or Struggle), used as normal */
+function checkChosenMove(fighter: FighterView, command: WireTurnCommand, move: WireTurnMove): string | null {
+  if (move.useMode !== MoveUseMode.NORMAL) {
+    return reasonOf(`a move with use mode ${move.useMode}, which the player cannot choose`);
+  }
+  const cursor = command.cursor ?? -1;
+  if (cursor === -1) {
+    // No move at all (a Pokémon that cannot act): it has no targets that matter
+    return move.move === MOVE_NONE ? null : reasonOf("a move that is not in its moveset or its queue");
+  }
+  if (!isIndex(cursor, fighter.moves.length)) {
+    return reasonOf(`move slot ${cursor} does not exist`);
+  }
+  const known = fighter.moves[cursor]!;
+  const struggling = move.move === MOVE_STRUGGLE && fighter.moves.every(entry => !entry.usable);
+  if (!struggling && known.id !== move.move) {
+    return reasonOf(`slot ${cursor} holds move ${known.id}, not ${move.move}`);
+  }
+  if (!struggling && !known.usable) {
+    return reasonOf("a move that cannot be selected");
+  }
+  // The target the player picked (`SelectTargetPhase` stores it on the command), else the ones the move has by itself:
+  // `TurnStartPhase` takes them in that order
+  return checkMoveTargets(fighter, move.move, command.targets ?? move.targets);
+}
+
+function checkFight(fighter: FighterView, command: WireTurnCommand): string | null {
+  const move = command.move;
+  if (command.skip === true) {
+    // A command that is not carried out (a Pokémon commanding its ally): it must not carry a move to make
+    return move === undefined || move.move === MOVE_NONE
+      ? null
+      : reasonOf("a command that is skipped but makes a move");
+  }
+  if (move === undefined) {
+    return command.cursor === -1 ? null : reasonOf("a fight without a move");
+  }
+  const queued = fighter.queued;
+  if (queued === null || queued.move !== move.move) {
+    return checkChosenMove(fighter, command, move);
+  }
+  // The move it is bound to; or the same move chosen anew (a take over's menu, D17)
+  const asQueued = checkQueuedMove(fighter, queued, command, move);
+  return asQueued === null || checkChosenMove(fighter, command, move) === null ? null : asQueued;
+}
+
+/** A Ball, as `CommandPhase.handleBallCommand` allows it: one that is in the bag, at the one enemy on the field */
+function checkBall(view: LegalityView, command: WireTurnCommand): string | null {
+  if (!view.canCatch) {
+    return reasonOf("a Ball where nothing can be caught");
+  }
+  const type = command.cursor;
+  // The ball screen has the five kinds of Ball (`PokeballType` up to the Master Ball)
+  if (!isIndex(type, 5) || view.ballCount(type) <= 0) {
+    return reasonOf("a Ball that is not in the bag");
+  }
+  const enemies = view.catchTargets();
+  const targets = command.targets;
+  if (enemies.length !== 1 || targets === undefined || targets.length !== 1 || targets[0] !== enemies[0]) {
+    return reasonOf(`a Ball at [${targets ?? []}], not at the one enemy there is ([${enemies}])`);
+  }
+  return view.ballWorks(type) ? null : reasonOf("a Ball that cannot catch this Pokémon");
+}
+
+function checkCommand(
+  view: LegalityView,
+  pokemonId: number,
+  fighter: FighterView,
+  command: WireTurnCommand,
+  pre: boolean,
+): string | null {
   switch (command.command) {
     case FIGHT:
       return pre ? null : checkFight(fighter, command);
     case TERA:
       return pre && fighter.canTera ? null : reasonOf("a Terastallization that is not possible");
     case BALL:
-      if (pre) {
-        return reasonOf("a Ball before the turn");
-      }
-      if (!view.canCatch) {
-        return reasonOf("a Ball where nothing can be caught");
-      }
-      return isIndex(command.cursor, 16) && view.ballCount(command.cursor) > 0
-        ? null
-        : reasonOf("a Ball that is not in the bag");
-    case POKEMON:
+      return pre ? reasonOf("a Ball before the turn") : checkBall(view, command);
+    case POKEMON: {
       if (pre) {
         return reasonOf("a switch before the turn");
       }
-      if (fighter.trapped) {
+      // A switch that passes the baton is the held Baton's (the party screen offers it then), and gets out of a trap
+      const baton = command.baton === true;
+      if (baton && !view.baton(pokemonId).item) {
+        return reasonOf("a switch that passes the baton without a Baton");
+      }
+      if (!baton && fighter.trapped) {
         return reasonOf("a switch of a Pokémon that is trapped");
       }
       return typeof command.cursor === "number" && fighter.switchTargets.includes(command.cursor)
         ? null
         : reasonOf("a switch to a Pokémon that cannot come in");
+    }
     case RUN:
-      return !pre && view.canRun ? null : reasonOf("a Run where it is not allowed");
+      if (pre || !view.canRun) {
+        return reasonOf("a Run where it is not allowed");
+      }
+      return fighter.trapped ? reasonOf("a Run of a Pokémon that is trapped") : null;
     default:
       return reasonOf("an unknown command");
   }
@@ -216,17 +324,17 @@ function checkTurnCommands(view: LegalityView, key: DecisionKey, payload: unknow
   }
   const id = pokemonOfRef(key.ref);
   const fighter = id === null ? null : view.fighter(id);
-  if (fighter === null) {
+  if (id === null || fighter === null) {
     return reasonOf("commands for a Pokémon that is not on the field");
   }
   if (payload.command !== null) {
-    const problem = checkCommand(view, fighter, payload.command, false);
+    const problem = checkCommand(view, id, fighter, payload.command, false);
     if (problem !== null) {
       return problem;
     }
   }
   if (payload.pre !== null && payload.pre.command !== FIGHT) {
-    return checkCommand(view, fighter, payload.pre, true);
+    return checkCommand(view, id, fighter, payload.pre, true);
   }
   return null;
 }
@@ -330,6 +438,13 @@ function checkSwitch(view: LegalityView, key: DecisionKey, payload: unknown): st
   const leaving = pokemonOfRef(key.ref);
   if (partyIndex === null || leaving === null) {
     return null;
+  }
+  if (baton) {
+    // The party screen offers to pass the baton after a Baton Pass, or to a Pokémon that holds a Baton
+    const source = view.baton(leaving);
+    if (!source.item && !source.move) {
+      return reasonOf("a replacement that is passed a baton nobody has");
+    }
   }
   return view.replacements(leaving, key.kind === "FAINT_SWITCH" ? "faint" : "voluntary").includes(partyIndex as number)
     ? null

@@ -5,6 +5,7 @@
  */
 
 import { RELAY_PATH } from "../../coop-server/src/relay-protocol.ts";
+import { normalizeIp } from "../../coop-server/src/untrusted.ts";
 import {
   ACTION_HEADER,
   CODE_HEADER,
@@ -30,8 +31,9 @@ export { Room } from "./room.ts";
 const CREATE_ATTEMPTS = 5;
 
 /**
- * Connection attempts and new rooms per address. One copy per Worker instance, so the limits are rough: they stop a script
- * that guesses codes from one place, which is what they are for.
+ * Connection attempts and new rooms per address (an IPv6 client is its /64, as in `coop-server`). One copy per Worker
+ * instance, so the limits are rough: they stop a script that guesses codes from one place, which is what they are for. A
+ * limit over the whole relay is the platform's (a Rate Limiting rule of the zone on `/coop`).
  */
 class AddressLimiter {
   private readonly addresses = new Map<string, { connect: TokenBucket; rooms: TokenBucket }>();
@@ -117,7 +119,7 @@ export default {
     const params = url.searchParams;
     const code = params.get("code");
     const create = params.get("role") === "host" && code === null;
-    const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+    const ip = normalizeIp(request.headers.get("cf-connecting-ip") ?? "unknown");
     if (!limiter.admit(env, ip, create)) {
       return create ? rejectSocket("rateLimited") : new Response(null, { status: 429 });
     }

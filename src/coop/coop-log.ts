@@ -82,8 +82,16 @@ const SEND_LATER_MS = 10_000;
 /** After a failed send, the next try waits this long (doubling up to the cap) */
 const RETRY_MIN_MS = 5000;
 const RETRY_MAX_MS = 120_000;
-/** A string longer than this in an entry's data is cut */
-const MAX_DATA_CHARS = 3000;
+/** An entry's data whose JSON is longer than this is cut (the server keeps 4000) */
+export const MAX_DATA_CHARS = 3000;
+/** A report's snapshot goes in at most this many entries */
+export const REPORT_MAX_PARTS = 40;
+/** The same entry again within this time of the first (same level, kind, message and data) is counted on the first one */
+const REPEAT_MS = 1000;
+/** How many of the newest entries a repeat is looked for among */
+const REPEAT_LOOKBACK = 8;
+/** `localStorage` is written at most once in this time, an error's write too (it goes at once otherwise) */
+const PERSIST_MIN_GAP_MS = 1000;
 const STORAGE_KEY = "coopLog";
 
 interface Persisted {
@@ -92,8 +100,24 @@ interface Persisted {
   entries: CoopLogEntry[];
 }
 
-/** The data of an entry as plain JSON, short enough for the server: an `Error` becomes its message and the top of its stack */
-export function toLogData(value: unknown): unknown {
+/** One of the newest entries, which a repeat is counted on */
+interface RecentEntry {
+  entry: CoopLogEntry;
+  /** Level, kind, message and data: what an entry must have to be the same */
+  same: string;
+  /** Its message without the count */
+  msg: string;
+  /** When it was written first (the log's clock) */
+  at: number;
+  /** How many times it came */
+  count: number;
+}
+
+/**
+ * The data of an entry as plain JSON, short enough for the server: an `Error` becomes its message and the top of its stack
+ * @param max - Longer JSON than this is replaced by its start
+ */
+export function toLogData(value: unknown, max = MAX_DATA_CHARS): unknown {
   if (value instanceof Error) {
     return { error: value.name, message: value.message, stack: value.stack?.split("\n").slice(0, 6).join("\n") };
   }
@@ -105,10 +129,112 @@ export function toLogData(value: unknown): unknown {
     if (json === undefined) {
       return String(value);
     }
-    return json.length > MAX_DATA_CHARS ? { truncated: true, preview: json.slice(0, 500) } : JSON.parse(json);
+    return json.length > max ? { truncated: true, preview: json.slice(0, 500) } : JSON.parse(json);
   } catch {
     return String(value);
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const jsonLength = (value: unknown): number => JSON.stringify(value)?.length ?? 4;
+
+/**
+ * Plain JSON data too long for one entry (a report's snapshot), cut into pieces whose JSON fits in `max` characters each.
+ * Keys go together while they fit; a value too long for a piece of its own is cut again, its parts keyed by where they are
+ * in it (`trace[0..59]`, `party[2].moves`, `message@1400`). Merged back in order, the pieces are the data.
+ */
+export function splitLogData(data: Record<string, unknown>, max = MAX_DATA_CHARS): Record<string, unknown>[] {
+  const pieces: Record<string, unknown>[] = [];
+  let current: Record<string, unknown> = {};
+  /** The JSON length of `current`, `{}` and a comma per key included */
+  let size = 2;
+  const close = (): void => {
+    if (size > 2) {
+      pieces.push(current);
+      current = {};
+      size = 2;
+    }
+  };
+  const put = (key: string, value: unknown, depth: number): void => {
+    const extra = jsonLength(key) + 1 + jsonLength(value) + 1;
+    if (size + extra > max) {
+      close();
+      if (2 + extra > max) {
+        for (const [part, partValue] of cutValue(key, value, max, depth)) {
+          put(part, partValue, depth + 1);
+        }
+        return;
+      }
+    }
+    current[key] = value;
+    size += extra;
+  };
+  for (const [key, value] of Object.entries(data)) {
+    put(key, value, 0);
+  }
+  close();
+  return pieces;
+}
+
+/** A value too long for a piece of its own, in parts that are each shorter, keyed by where they are in it */
+function cutValue(key: string, value: unknown, max: number, depth: number): [string, unknown][] {
+  // What a part may take: the piece's braces, the key and the index added to it take the rest
+  const room = max - jsonLength(key) - 16;
+  if (depth >= 6 || room < 100) {
+    return [[key.slice(0, 100), { truncated: true }]];
+  }
+  if (Array.isArray(value)) {
+    const parts: [string, unknown][] = [];
+    let start = 0;
+    let run: unknown[] = [];
+    let runSize = 2;
+    const flush = (end: number): void => {
+      if (run.length > 0) {
+        parts.push([`${key}[${start}..${end - 1}]`, run]);
+      }
+      run = [];
+      runSize = 2;
+      start = end;
+    };
+    value.forEach((item, index) => {
+      const itemSize = jsonLength(item) + 1;
+      if (runSize + itemSize > room) {
+        flush(index);
+        if (2 + itemSize > room) {
+          // Cut again on its own
+          parts.push([`${key}[${index}]`, item]);
+          start = index + 1;
+          return;
+        }
+      }
+      run.push(item);
+      runSize += itemSize;
+    });
+    flush(value.length);
+    return parts;
+  }
+  if (isRecord(value)) {
+    return Object.entries(value).map(([subKey, subValue]) => [`${key}.${subKey}`, subValue]);
+  }
+  if (typeof value === "string") {
+    const parts: [string, unknown][] = [];
+    let at = 0;
+    while (at < value.length) {
+      let length = Math.min(value.length - at, room);
+      // An escaped character takes more than one
+      while (length > 1 && jsonLength(value.slice(at, at + length)) > room) {
+        length = Math.max(1, Math.floor(length * 0.75));
+      }
+      parts.push([`${key}@${at}`, value.slice(at, at + length)]);
+      at += length;
+    }
+    return parts;
+  }
+  // A number, a boolean or null is short: only a key too long is left, which the depth stops
+  return [[key, value]];
 }
 
 export class CoopLog {
@@ -124,9 +250,19 @@ export class CoopLog {
   private refused = false;
   private sendTimer: unknown = null;
   private sendAt = Number.POSITIVE_INFINITY;
-  private sending = false;
+  /** The sends under way (one at a time) */
+  private sendingNow: Promise<void> | null = null;
+  /** The batch under way holds the entries below this (`0`: none): they are not changed any more */
+  private sendingUpTo = 0;
+  /** Counts the batches the server refused for good (they are not sent again) */
+  private dropped = 0;
   private retryMs = RETRY_MIN_MS;
   private persistTimer: unknown = null;
+  /** When the persist timer goes off, and when the log was last written (the log's clock) */
+  private persistAt = Number.POSITIVE_INFINITY;
+  private lastPersist = Number.NEGATIVE_INFINITY;
+  /** The newest entries, for a repeat to be counted on */
+  private recent: RecentEntry[] = [];
 
   constructor(env: CoopLogEnvironment) {
     this.env = env;
@@ -192,29 +328,81 @@ export class CoopLog {
     this.add("error", kind, msg, data);
   }
 
+  /**
+   * Write an entry. The same entry again within a second of the first (same level, kind, message and data: an error in a
+   * loop) is counted on the first one, `msg (x5)`, while that one has not gone to the server yet.
+   * @returns The entry
+   */
   add(level: CoopLogLevel, kind: string, msg: string, data?: unknown): CoopLogEntry {
-    const entry: CoopLogEntry = { at: this.env.now().toISOString(), n: this.next++, level, kind, msg };
+    const now = this.env.now();
     const plain = toLogData(data);
-    if (plain !== undefined) {
-      entry.data = plain;
-    }
-    this.entries.push(entry);
-    if (this.entries.length > LOG_BUFFER) {
-      this.entries.splice(0, this.entries.length - LOG_BUFFER);
+    const same = `${level}\n${kind}\n${msg}\n${plain === undefined ? "" : JSON.stringify(plain)}`;
+    const repeat = this.findRepeat(same, now.getTime());
+    let entry: CoopLogEntry;
+    if (repeat === null) {
+      entry = { at: now.toISOString(), n: this.next++, level, kind, msg };
+      if (plain !== undefined) {
+        entry.data = plain;
+      }
+      this.entries.push(entry);
+      if (this.entries.length > LOG_BUFFER) {
+        this.entries.splice(0, this.entries.length - LOG_BUFFER);
+      }
+      this.recent.push({ entry, same, msg, at: now.getTime(), count: 1 });
+      if (this.recent.length > REPEAT_LOOKBACK) {
+        this.recent.shift();
+      }
+    } else {
+      repeat.count++;
+      repeat.entry.msg = `${repeat.msg} (x${repeat.count})`;
+      entry = repeat.entry;
     }
     this.schedulePersist(level === "error" ? 0 : 2000);
     this.scheduleSend(level === "warn" || level === "error" ? SEND_SOON_MS : SEND_LATER_MS);
     return entry;
   }
 
-  /** Send what is pending now (a report does), and resolve when that try is over */
-  async flush(): Promise<void> {
+  /**
+   * A problem report (`report-button.ts`): the note, with a snapshot of the game as its data. A snapshot too long for one
+   * entry goes on in the entries right after it (same kind, "snapshot, part 2 of 3"), each short enough for the server, so
+   * that the server gets all of it.
+   * @returns The report's own entry
+   */
+  report(msg: string, snapshot: Record<string, unknown>): CoopLogEntry {
+    const plain = toLogData(snapshot, Number.POSITIVE_INFINITY);
+    if (!isRecord(plain)) {
+      return this.add("warn", "report", msg, plain);
+    }
+    const parts = splitLogData(plain);
+    if (parts.length > REPORT_MAX_PARTS) {
+      const left = parts.length - REPORT_MAX_PARTS + 1;
+      parts.splice(REPORT_MAX_PARTS - 1, left, { truncated: `${left} more parts of the snapshot were left out` });
+    }
+    const first = this.add("warn", "report", msg, parts[0] ?? {});
+    for (let i = 1; i < parts.length; i++) {
+      this.add("warn", "report", `snapshot, part ${i + 1} of ${parts.length}`, parts[i]);
+    }
+    return first;
+  }
+
+  /**
+   * Send what is pending now (a report does), after the send under way if there is one.
+   * @returns Whether everything written before the call reached the server and was taken: `false` without a server, with one
+   * that does not collect logs, when a send failed (it is tried again later) or when the server refused a batch for good
+   */
+  async flush(): Promise<boolean> {
+    const upTo = this.next;
+    const dropped = this.dropped;
+    while (this.sendingNow !== null) {
+      await this.sendingNow;
+    }
     if (this.sendTimer !== null) {
       this.env.clearTimer(this.sendTimer);
       this.sendTimer = null;
       this.sendAt = Number.POSITIVE_INFINITY;
     }
     await this.send();
+    return this.url !== null && !this.refused && this.sentUpTo >= upTo && this.dropped === dropped;
   }
 
   /** The page is being left: what is pending goes in one last request that outlives the page */
@@ -246,9 +434,22 @@ export class CoopLog {
   /** Forget everything (tests) */
   clear(): void {
     this.entries = [];
+    this.recent = [];
     this.next = 0;
     this.sentUpTo = 0;
     this.env.storage?.removeItem(STORAGE_KEY);
+  }
+
+  /** An entry of the last second that `same` repeats, and that can still change: not sent, nor on its way */
+  private findRepeat(same: string, ms: number): RecentEntry | null {
+    const floor = Math.max(this.sentUpTo, this.sendingUpTo);
+    for (let i = this.recent.length - 1; i >= 0; i--) {
+      const recent = this.recent[i];
+      if (recent.same === same && ms >= recent.at && ms - recent.at < REPEAT_MS && recent.entry.n >= floor) {
+        return recent;
+      }
+    }
+    return null;
   }
 
   private pending(): CoopLogEntry[] {
@@ -300,72 +501,99 @@ export class CoopLog {
     return { body, upTo: entries.at(-1)!.n + 1 };
   }
 
-  private async send(): Promise<void> {
-    if (this.sending || this.url === null || this.refused) {
-      return;
+  /** Send the pending entries, batch after batch; while a send is under way, that one (it sends what came meanwhile too) */
+  private send(): Promise<void> {
+    if (this.sendingNow !== null) {
+      return this.sendingNow;
     }
-    this.sending = true;
-    try {
-      for (;;) {
-        const batch = this.nextBatch();
-        if (batch === null) {
-          break;
-        }
-        let status: number;
-        try {
-          status = await this.env.post(this.url, JSON.stringify(batch.body), true);
-        } catch {
-          // Offline, or the tunnel blinked: try again later, the entries stay pending
-          this.scheduleSend(this.retryMs);
-          this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
-          return;
-        }
-        if (status === 404 || status === 405) {
-          // This server does not collect client logs: the log stays in this browser
-          this.refused = true;
-          return;
-        }
-        if (status === 429 || status >= 500) {
-          this.scheduleSend(this.retryMs);
-          this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
-          return;
-        }
-        // Accepted, or refused for good (too big, a shape the server does not take): either way it is not sent again
-        this.sentUpTo = batch.upTo;
-        this.retryMs = RETRY_MIN_MS;
-        this.schedulePersist(2000);
+    if (this.url === null || this.refused) {
+      return Promise.resolve();
+    }
+    const sending = this.sendBatches(this.url).finally(() => {
+      this.sendingNow = null;
+    });
+    this.sendingNow = sending;
+    return sending;
+  }
+
+  private async sendBatches(url: string): Promise<void> {
+    for (;;) {
+      const batch = this.nextBatch();
+      if (batch === null) {
+        return;
       }
-    } finally {
-      this.sending = false;
+      let status: number;
+      this.sendingUpTo = batch.upTo;
+      try {
+        status = await this.env.post(url, JSON.stringify(batch.body), true);
+      } catch {
+        // Offline, or the tunnel blinked: try again later, the entries stay pending
+        this.scheduleSend(this.retryMs);
+        this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
+        return;
+      } finally {
+        this.sendingUpTo = 0;
+      }
+      if (status === 404 || status === 405) {
+        // This server does not collect client logs: the log stays in this browser
+        this.refused = true;
+        return;
+      }
+      if (status === 429 || status >= 500) {
+        this.scheduleSend(this.retryMs);
+        this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
+        return;
+      }
+      // Accepted, or refused for good (too big, a shape the server does not take): either way it is not sent again
+      if (status < 200 || status >= 300) {
+        this.dropped++;
+      }
+      this.sentUpTo = batch.upTo;
+      this.retryMs = RETRY_MIN_MS;
+      this.schedulePersist(2000);
     }
   }
 
+  /**
+   * Write the log to storage in `ms` (`0`: now), but not twice within a second: a flood of errors does not write 1500
+   * entries each time. An earlier time wins over a later one.
+   */
   private schedulePersist(ms: number): void {
     if (this.env.storage === null) {
       return;
     }
-    if (ms === 0) {
+    const now = this.now();
+    // (a clock that went back does not hold the writes off)
+    const at = Math.max(now + ms, Math.min(this.lastPersist, now) + PERSIST_MIN_GAP_MS);
+    if (at <= now) {
       this.persist();
       return;
     }
     if (this.persistTimer !== null) {
-      return;
+      if (this.persistAt <= at) {
+        return;
+      }
+      this.env.clearTimer(this.persistTimer);
     }
+    this.persistAt = at;
     this.persistTimer = this.env.setTimer(() => {
       this.persistTimer = null;
+      this.persistAt = Number.POSITIVE_INFINITY;
       this.persist();
-    }, ms);
+    }, at - now);
   }
 
   private persist(): void {
     if (this.persistTimer !== null) {
       this.env.clearTimer(this.persistTimer);
       this.persistTimer = null;
+      this.persistAt = Number.POSITIVE_INFINITY;
     }
     const storage = this.env.storage;
     if (storage === null) {
       return;
     }
+    this.lastPersist = this.now();
     let kept = this.entries.slice(-LOG_PERSISTED);
     let text = JSON.stringify({ next: this.next, sentUpTo: this.sentUpTo, entries: kept } satisfies Persisted);
     while (text.length > LOG_PERSISTED_MAX_CHARS && kept.length > 1) {

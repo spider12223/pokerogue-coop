@@ -6,10 +6,11 @@
 
 import type { CollectionData } from "#coop/collection-data";
 import { CoopLink } from "#coop/link";
-import { isLobbyMessage } from "#coop/protocol";
+import { isLobbyMessage, type LobbyMessage } from "#coop/protocol";
 import {
   CollectionExchange,
   type CollectionHolder,
+  type CollectionLink,
   captureCollection,
   mergeDexEntry,
   mergeStarterEntry,
@@ -260,5 +261,78 @@ describe("the exchange on a link", () => {
     expect(await atHost.partnerCollection(50)).toBeNull();
     guest.close();
     expect(await atHost.partnerCollection(5000)).toBeNull();
+  });
+
+  it("answers only the first ask: a partner that asks over and over does not get the collection over and over", () => {
+    const sent: LobbyMessage[] = [];
+    let listener: ((message: LobbyMessage) => void) | null = null;
+    const link: CollectionLink = {
+      sendLobby: message => sent.push(message),
+      onLobby: l => {
+        listener = l;
+        return () => undefined;
+      },
+      onEnd: () => () => undefined,
+    };
+    const made = new CollectionExchange(link, hostCollection);
+    exchanges.push(made);
+    for (let i = 0; i < 50; i++) {
+      listener!({ t: "collection", collection: guestCollection, ask: true });
+    }
+    // its own ask, and one answer
+    expect(sent.map(message => (message.t === "collection" ? message.ask : null))).toEqual([true, false]);
+  });
+});
+
+describe("a partner's collection that is out of the game's ranges", () => {
+  const valid = captureCollection(accounts().partner);
+
+  it("is refused on the wire", () => {
+    const starter = valid.starters[151];
+    const bad: unknown[] = [
+      // the starter select counts the cost down one reduction at a time: a huge one froze the tab
+      { ...valid, starters: { 151: { ...starter, reduction: 2 ** 52 } } },
+      { ...valid, starters: { 151: { ...starter, reduction: 3 } } },
+      { ...valid, starters: { 151: { ...starter, abilities: 8 } } },
+      { ...valid, starters: { 151: { ...starter, passive: 4 } } },
+      { ...valid, starters: { 151: { ...starter, eggMoves: 16 } } },
+      { ...valid, starters: { 151: { ...starter, wins: 1_000_001 } } },
+      { ...valid, dex: { 1: { ...valid.dex[1], natures: 2 ** 26 } } },
+      { ...valid, dex: { 1: { ...valid.dex[1], caught: (2n ** 64n).toString() } } },
+      { ...valid, dex: { 1: { ...valid.dex[1], seen: "9".repeat(40) } } },
+    ];
+    for (const collection of bad) {
+      expect(isLobbyMessage({ t: "collection", collection, ask: false })).toBe(false);
+    }
+    const best = {
+      ...valid,
+      starters: { 151: { abilities: 7, passive: 3, reduction: 2, eggMoves: 15, wins: 1_000_000 } },
+      dex: { 1: { ...valid.dex[1], natures: 2 ** 26 - 1, caught: (2n ** 64n - 1n).toString() } },
+    };
+    expect(isLobbyMessage({ t: "collection", collection: best, ask: false })).toBe(true);
+  });
+
+  it("is clamped in the merge, whatever got through", () => {
+    const own = starterEntry();
+    const merged = mergeStarterEntry(own, {
+      abilities: 0xff,
+      passive: 0,
+      reduction: 2 ** 52,
+      eggMoves: 0xff,
+      wins: 2 ** 52,
+    });
+    expect(merged.valueReduction).toBe(2);
+    expect(merged.abilityAttr).toBe(7);
+    expect(merged.eggMoves).toBe(15);
+    expect(merged.classicWinCount).toBe(1_000_000);
+    const dex = mergeDexEntry(dexEntry(1n), {
+      caught: (2n ** 70n + 2n).toString(),
+      seen: "0",
+      natures: 2 ** 30 + 4,
+      ivs: [99, 0, 0, 0, 0, 0],
+    });
+    expect(dex.caughtAttr).toBe(3n);
+    expect(dex.natureAttr).toBe(4);
+    expect(dex.ivs[0]).toBe(31);
   });
 });

@@ -86,6 +86,19 @@ describe("turn commands on the wire (D2, D8)", () => {
     expect(isTurnCommandsPayload({ pre: null })).toBe(false);
     expect(isTurnCommandsPayload(null)).toBe(false);
   });
+
+  it("takes battler lists of at most the four battlers, each a field position or the attacker (-1)", () => {
+    const move = { move: 33, targets: [2], useMode: MoveUseMode.NORMAL };
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [-1] })).toBe(true);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3] })).toBe(true);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3, 3] })).toBe(false);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [4] })).toBe(false);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [-2] })).toBe(false);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move: { ...move, targets: [7] } })).toBe(false);
+    expect(isWireCommand({ command: Command.BALL, cursor: 0, targets: Array.from({ length: 100_000 }, () => 2) })).toBe(
+      false,
+    );
+  });
 });
 
 describe("decision keys of the battle (D2)", () => {
@@ -103,6 +116,15 @@ describe("decision keys of the battle (D2)", () => {
     ];
     expect(keys.every(isDecisionKey)).toBe(true);
     expect(new Set(keys.map(keyId)).size).toBe(keys.length);
+  });
+
+  it("tell apart the same prompt asked again in a wave; the pause question keeps its suffix", () => {
+    expect(learnMoveKey(3, 77, 33)).toEqual(learnMoveKey(3, 77, 33, 1));
+    expect(keyId(learnMoveKey(3, 77, 33, 2))).not.toBe(keyId(learnMoveKey(3, 77, 33)));
+    expect(keyId(evolutionCancelKey(3, 77, 5, 2))).not.toBe(keyId(evolutionCancelKey(3, 77, 5)));
+    expect(String(evolutionPauseKey(3, 77, 5, 2).ref).endsWith(":pause")).toBe(true);
+    expect(String(evolutionCancelKey(3, 77, 5, 2).ref).endsWith(":pause")).toBe(false);
+    expect([learnMoveKey(3, 77, 33, 2), evolutionPauseKey(3, 77, 5, 3)].every(isDecisionKey)).toBe(true);
   });
 
   it("carry the turn only on commands and switches; a prompt uses turn 0", () => {

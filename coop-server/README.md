@@ -34,10 +34,13 @@ For development, the game (on Vite's port 8000) connects to this relay with `VIT
 | `TRUST_PROXY` | `private` | `private`, a number of proxies, or `0`: where the player's address comes from (`docs/coop/HOSTING.md`) |
 | `MAX_CONNECTIONS_PER_IP`, `CONNECTIONS_PER_MINUTE`, `ROOMS_PER_MINUTE` | 16, 60, 10 | per address (`429` over them; a room over the limit gets `relay:error rateLimited`) |
 | `MESSAGES_PER_SECOND`, `MESSAGE_BURST`, `MAX_DROPS_PER_SOCKET` | 120, 400, 200 | per address, over all its sockets; frames over the rate are dropped (the clients resend), and a socket that keeps going is closed (1008) |
+| `BYTES_PER_SECOND`, `BYTE_BURST` | 2 MiB, 16 MiB | the bytes one address may send, over all its sockets |
+| `MAX_BUFFERED_BYTES` | 4 MiB | what may wait to be sent to a player who does not read: frames over it are dropped (the clients resend), and a player who keeps not reading is cut (the seat is kept) |
 | `MAX_ROOMS` | 1000 | rooms in all (`relay:error busy` over it) |
 | `IDLE_ROOM_MS` | 1800000 | a room without a game frame for this long is closed (`relay:closed idle`) |
 
-`GET /healthz` answers `{"ok":true,"rooms":…,"sockets":…,"trackedIps":…,"uptimeS":…,"rssMb":…,"cpuMs":…}`.
+`GET /healthz` answers `{"ok":true,"rooms":…,"sockets":…,"trackedIps":…,"downloads":…,"uptimeS":…,"rssMb":…,"cpuMs":…}`
+(`downloads`: files being sent right now).
 Logs name rooms, seats and reasons, never a message, a token or an address (a short salted hash stands for an address).
 
 ## Protocol

@@ -303,7 +303,8 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
     const key = learnMoveKey(game.scene.currentBattle?.waveIndex ?? 1, hostPokemon.id, MoveId.SWIFT);
     const decisions = decisionsOf(r);
 
-    // the guest took over for the host's player, who has not even been asked yet: it is the first to arrive
+    // the guest takes over for the host's player before the host is even asked: the host holds it until its own player has
+    // had the question for the hint's time (D17), and the player does not answer meanwhile
     r.partner.takeOver({ ...key, wave: 1 }, { replaceIndex: null });
     await sleep(40);
     game.scene.phaseManager.unshiftNew(
@@ -311,6 +312,10 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
       game.scene.getPlayerParty().indexOf(hostPokemon),
       MoveId.SWIFT,
     );
+    await advanceTo(r.ctx, ["LearnMovePhase"]);
+    const learn = game.scene.phaseManager.getCurrentPhase();
+    learn.start();
+    await vi.waitUntil(() => game.scene.phaseManager.getCurrentPhase() !== learn, { interval: 10, timeout: 8000 });
     await advanceTo(r.ctx, ["CommandPhase"]);
 
     expect(texts.some(text => text.includes("Alex took over for you"))).toBe(true);

@@ -48,7 +48,15 @@ export interface EpochStats {
   heldNewer: number;
   /** Of those, the ones that were handed on once it did (the rest were passed by a later epoch) */
   releasedNewer: number;
+  /** Messages of a newer epoch dropped because too many were waiting already (only a partner that sends junk gets there) */
+  droppedNewer?: number;
 }
+
+/**
+ * How many messages of a newer epoch may wait. A reload's own messages are a handful; a partner that stamps junk with a
+ * future epoch must not grow the tab's memory without end
+ */
+export const MAX_HELD_NEWER = 2048;
 
 /**
  * The part of the reliable channel an epoch transport needs: what the sequencer talks to, and the volatile frames (a
@@ -153,6 +161,10 @@ export class EpochTransport implements EpochInner {
     } else if (epoch < this.current) {
       this.stats.droppedOlder++;
     } else if (message.kind !== "COSMETIC") {
+      if (this.held.length >= MAX_HELD_NEWER) {
+        this.stats.droppedNewer = (this.stats.droppedNewer ?? 0) + 1;
+        return;
+      }
       this.stats.heldNewer++;
       this.held.push(message);
     }

@@ -35,7 +35,7 @@ import { COOP_STARTER_POINTS, keyId, otherSeat, type Seat } from "#coop/protocol
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
 import { askAndReport, setReportButtonVisible } from "#coop/report-button";
-import { installResync, registerLeaveHandler } from "#coop/resync-run";
+import { installResync, registerBeforeReload, registerLeaveHandler } from "#coop/resync-run";
 import { forgetSeat, saveSeat } from "#coop/seat-store";
 import { type CoopSession, endCoopSession, getCoopSession, startCoopSession } from "#coop/session";
 import { CollectionExchange, captureCollection, poolCollection, unpoolCollection } from "#coop/shared-collection";
@@ -120,7 +120,9 @@ export function closeStarterLobby(): void {
  * so is the seat in the room: it was only for coming back (D20).
  */
 export function leaveCoop(): void {
-  const code = getCoopSession()?.link?.code;
+  const link = getCoopSession()?.link;
+  // A tab whose seat another tab took leaves that tab's seat in the store (it is using it)
+  const code = link?.wasReplaced ? undefined : link?.code;
   stopCoopLog?.();
   stopCoopLog = null;
   setReportButtonVisible(false);
@@ -159,6 +161,8 @@ export function returnToTitle(message: string | null): void {
 }
 
 registerLeaveHandler(() => returnToTitle(null));
+// A guest whose START was lost is brought into the run by the reload: its starter select's lobby and pooled collection go
+registerBeforeReload(() => closeStarterLobby());
 
 /** A message for the player explaining why connecting failed. */
 export function describeCoopError(error: unknown): string {
@@ -272,7 +276,32 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
     {
       label: coopText("host", "Host a game"),
       handler: () => {
-        void hostGame(callbacks);
+        if (slot === null) {
+          void hostGame(callbacks);
+          return true;
+        }
+        // A new run takes the place of the saved one at its first wave (D19): the host is asked first, as a solo New
+        // Game over a saved run asks
+        const { ui } = globalScene;
+        ui.showText(
+          coopText(
+            "hostOverwrites",
+            "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
+            { wave: slot.wave },
+          ),
+          null,
+          () =>
+            ui.setModeWithoutClear(UiMode.CONFIRM, {
+              yesHandler: () => {
+                ui.clearText();
+                void hostGame(callbacks);
+              },
+              noHandler: () => {
+                ui.clearText();
+                showCoopTitleMenu(callbacks);
+              },
+            }),
+        );
         return true;
       },
     },
@@ -592,6 +621,7 @@ export async function joinGame(rawCode: string, callbacks: CoopTitleCallbacks): 
     lastFailedCode = null;
     if (established.hello.mode === "resume") {
       // The host continues a saved run: its wave start arrives next, and `installResync` loads it (D21)
+      session.awaitingReload = true;
       ui.setMode(UiMode.MESSAGE);
       ui.showText(
         coopText("waitingForResume", "Waiting for {{partner}} to load the saved game…", {

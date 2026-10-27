@@ -33,12 +33,13 @@ import {
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
 import { hideReconnectScreen, showReconnectScreen } from "#coop/reconnect-ui";
 import { issueResync } from "#coop/resync-run";
+import { CoopSaveRefusedError, checkSaveBlock } from "#coop/save-block";
 import { forgetSeat, newestSeat } from "#coop/seat-store";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { RelayError } from "#coop/transport/relay-ws";
 import { validateProposal } from "#coop/validate";
-import { coopStore, currentCoopSlot } from "#coop/wave-save";
+import { coopStore, currentCoopSlot, removeCoopSlot } from "#coop/wave-save";
 import { UiMode } from "#enums/ui-mode";
 
 /**
@@ -129,7 +130,10 @@ export async function tryAutoRejoin(): Promise<boolean> {
     return true;
   }
 
+  /** The player ended the wait (End session): the socket closing next is theirs, not the partner's ending */
+  let cancelled = false;
   const cancel = (): void => {
+    cancelled = true;
     room.relay.leave();
     forgetSeat(store, record.code);
     returnToTitle(coopText("sessionEnded", "You ended the session."));
@@ -147,11 +151,21 @@ export async function tryAutoRejoin(): Promise<boolean> {
   }, 400);
   try {
     await room.paired;
-  } catch {
+  } catch (error) {
     clearTimeout(waiting);
     hideReconnectScreen();
-    forgetSeat(store, record.code);
-    returnToTitle(coopText("partnerEnded", "{{partner}} ended the session.", { partner }));
+    if (cancelled) {
+      return true;
+    }
+    if (error instanceof Error && error.message === "room closed") {
+      // The relay closed the room: the partner ended it
+      forgetSeat(store, record.code);
+      returnToTitle(coopText("partnerEnded", "{{partner}} ended the session.", { partner }));
+      return true;
+    }
+    // This client's own connection dropped (or the relay restarted): the seat is kept, a reload tries again (D20)
+    room.relay.close();
+    returnToTitle(coopText("rejoinConnectionLost", "The connection was lost. Reload the page to try again."));
     return true;
   }
   clearTimeout(waiting);
@@ -180,6 +194,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
       const session = beginSession(established.link, "guest", overlay);
       session.timing["rejoinStartedAt"] = startedAt;
       session.timing["handshakeAt"] = Date.now();
+      session.awaitingReload = true;
       // the host sends the wave start; `installResync` applies it as soon as it arrives
       ui.showText(
         coopText("waitingForResume", "Waiting for {{partner}}…", { partner: established.link.partnerName }),
@@ -208,6 +223,38 @@ export async function tryAutoRejoin(): Promise<boolean> {
  * "Co-op, Continue": a new room for the run in the co-op slot. The guest joins with the code; the handshake refuses any guest
  * but the one the run was saved with, and then both load the wave start (D21).
  */
+/** @returns Why the saved run cannot be loaded by this build, or `null` if it can */
+function slotRefusal(slot: CoopSlot): string | null {
+  try {
+    const data = globalScene.gameData.parseSessionData(slot.session);
+    checkSaveBlock(data.coop, { accountIds: slot.accountIds });
+    return null;
+  } catch (error) {
+    return error instanceof CoopSaveRefusedError
+      ? error.message
+      : coopText("slotDamaged", "The save is damaged or from another version.");
+  }
+}
+
+/** The saved run cannot be loaded: say why, and offer to delete it so that "Continue" is not a dead end */
+function offerToDelete(reason: string, callbacks: CoopTitleCallbacks): void {
+  const { ui } = globalScene;
+  void ui.setMode(UiMode.MESSAGE).then(() =>
+    ui.showText(
+      coopText("slotUnusable", "This saved co-op run can't be continued: {{reason}} Delete it?", { reason }),
+      null,
+      () =>
+        ui.setModeWithoutClear(UiMode.CONFIRM, {
+          yesHandler: () => {
+            removeCoopSlot();
+            callbacks.onCancel();
+          },
+          noHandler: () => callbacks.onCancel(),
+        }),
+    ),
+  );
+}
+
 export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void> {
   const { ui } = globalScene;
   const slot = currentCoopSlot();
@@ -225,6 +272,13 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
       callbacks,
       coopText("otherHost", "This co-op run was saved with another account."),
     );
+    return;
+  }
+  const unusable = slotRefusal(slot);
+  if (unusable !== null) {
+    // A run this build cannot load (another version, a damaged save) would leave both players stuck after the partner
+    // joins: the host is told, and may delete it (D21)
+    offerToDelete(unusable, callbacks);
     return;
   }
   let room: HostRoom | null = null;

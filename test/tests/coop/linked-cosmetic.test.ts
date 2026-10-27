@@ -150,6 +150,48 @@ describe("Co-op: the cosmetic channel in a linked run (D16)", () => {
     expect(view.cursor).toBeNull();
   });
 
+  it("puts the item under the partner's cursor in their color, and a pinged one while the ping is shown", async () => {
+    const r = await start();
+    expect(await winWave(r)).toBe(true);
+    const handler = r.ctx.game.scene.ui.handlers[UiMode.MODIFIER_SELECT] as any;
+    // the screen's opening is over (it draws the partner's cursor at its end)
+    await vi.waitFor(() => expect(handler.awaitingActionInput).toBe(true));
+    const options = handler.options as { setPartnerTint(tint: number | null): void }[];
+    expect(options.length).toBeGreaterThan(2);
+    const tints = options.map(option => vi.spyOn(option, "setPartnerTint"));
+    const lastTint = (index: number): number | null | undefined => tints[index].mock.calls.at(-1)?.[0];
+    const PARTNER = 0x8fd3ff;
+
+    handler.setPartnerCursor(1, 2);
+    expect(handler.partnerTarget).toBe(options[2]);
+    expect(lastTint(2)).toBe(PARTNER);
+
+    // the cursor moves on: the item it left loses the color
+    handler.setPartnerCursor(1, 0);
+    expect(handler.partnerTarget).toBe(options[0]);
+    expect(lastTint(2)).toBeNull();
+    expect(lastTint(0)).toBe(PARTNER);
+
+    // a ping keeps its item in the color while it is shown, even when the cursor passes over it and leaves
+    handler.pingOption(false, 1, "Alex: !");
+    expect(lastTint(1)).toBe(PARTNER);
+    handler.setPartnerCursor(1, 1);
+    handler.setPartnerCursor(1, 0);
+    expect(lastTint(1)).toBe(PARTNER);
+
+    // a ping on the item under the cursor: when it is over, the item keeps the color of the cursor
+    handler.pingOption(false, 0, "Alex: !");
+    await flush();
+    expect(lastTint(0)).toBe(PARTNER);
+    // and the other ping is over: its item lost the color
+    expect(lastTint(1)).toBeNull();
+
+    // on a button, no item has the color
+    handler.setPartnerCursor(0, 1);
+    expect(handler.partnerTarget).toBeNull();
+    expect(lastTint(0)).toBeNull();
+  });
+
   it("shows a ping and an emote with the partner's name, and keeps to the limits", async () => {
     const r = await start({ names: { mine: "Sam", theirs: "Alex" } });
     await advanceTo(r.ctx, ["CommandPhase"]);

@@ -140,19 +140,19 @@ export class SelectStarterPhase extends Phase {
         starter.ivs,
         starter.nature,
       );
-      if (starter.moveset) {
-        starterPokemon.tryPopulateMoveset(starter.moveset);
-      }
-      if (starter.passive) {
-        starterPokemon.passive = true;
-      }
       if (isCoop()) {
-        // The owner first: the luck below reads the owner's dex
+        // The owner first: the moveset check reads the owner's egg moves, and the luck below the owner's dex
         const owner = requireCoopSession().starterOwners[i];
         if (owner === undefined) {
           throw new Error(`Starter ${i} has no owner`);
         }
         requireCoopSession().ownership.set(starterPokemon.id, owner);
+      }
+      if (starter.moveset) {
+        starterPokemon.tryPopulateMoveset(starter.moveset);
+      }
+      if (starter.passive) {
+        starterPokemon.passive = true;
       }
       starterPokemon.luck = globalScene.gameData.getDexAttrLuck(
         simAccount().getCaughtAttr(species.speciesId, ownerSeat(starterPokemon)),

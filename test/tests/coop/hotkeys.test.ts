@@ -5,9 +5,12 @@
  */
 
 import { bindCoopHotkeys, coopSettingLabel } from "#coop/hotkey-names";
+import { openEmoteWheel, pingNow } from "#coop/hotkeys";
+import { showOverlayMenu } from "#coop/overlay";
 import { pingHint } from "#coop/text";
 import { setTouchEmoteVisible, TOUCH_EMOTE_CLASS } from "#coop/touch-emote";
 import { Button } from "#enums/buttons";
+import { PartyUiMode } from "#enums/party-ui-mode";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
@@ -117,6 +120,71 @@ describe("Co-op: the ping and emote hotkeys are buttons that can be rebound (D16
       actions[Button.CYCLE_ABILITY]();
       await flush();
       expect(r.ctx.game.scene.ui.mode).toBe(UiMode.OPTION_SELECT);
+    });
+
+    it("pings on a Mystery Encounter's options (D29), where the emote wheel stays closed", async () => {
+      const r = await start();
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      vi.spyOn(ui, "mode", "get").mockReturnValue(UiMode.MYSTERY_ENCOUNTER);
+      expect(pingNow()).toBe(true);
+      await flush();
+      expect(r.partner.cosmeticsSeen.filter(message => message.t === "ping").at(-1)).toMatchObject({
+        at: { k: "none" },
+      });
+      expect(openEmoteWheel()).toBe(false);
+    });
+
+    it("do not open the emote wheel over a screen that is fading out", async () => {
+      const r = await start();
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      await ui.setMode(UiMode.COMMAND, 0);
+      vi.spyOn(ui, "pendingCoopTransition", "get").mockReturnValue(new Promise<void>(() => {}));
+      expect(openEmoteWheel()).toBe(false);
+      expect(ui.mode).toBe(UiMode.COMMAND);
+    });
+
+    it("a menu asked for while a mode change fades goes over the screen it brings, and closes back to that one", async () => {
+      const r = await start();
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      await ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {});
+      expect(ui.mode).toBe(UiMode.PARTY);
+      // the party fades out to the message box: the menu asked for meanwhile waits for it
+      const leaving = ui.setMode(UiMode.MESSAGE);
+      expect(ui.pendingCoopTransition).not.toBeNull();
+      let chosen = false;
+      showOverlayMenu([
+        {
+          label: "A",
+          handler: () => {
+            chosen = true;
+            return true;
+          },
+        },
+      ]);
+      expect(ui.mode).toBe(UiMode.PARTY);
+      await leaving;
+      await flush();
+      expect(ui.mode).toBe(UiMode.OPTION_SELECT);
+      (ui.getHandler() as unknown as { config: { options: { handler: () => boolean }[] } }).config.options[0].handler();
+      await flush();
+      expect(chosen).toBe(true);
+      expect(ui.mode).toBe(UiMode.MESSAGE);
+    });
+
+    it("a menu closed before it could open does not open", async () => {
+      const r = await start();
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      await ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {});
+      const leaving = ui.setMode(UiMode.MESSAGE);
+      const close = showOverlayMenu([{ label: "A", handler: () => true }]);
+      close();
+      await leaving;
+      await flush();
+      expect(ui.mode).toBe(UiMode.MESSAGE);
     });
 
     it("do nothing outside a run: the same buttons in a solo game are quiet", async () => {

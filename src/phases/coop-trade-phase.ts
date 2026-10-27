@@ -284,6 +284,8 @@ export class CoopTradePhase extends Phase {
     const step = this.state.step;
     this.watcher = new AfkWatcher({
       offerOver: [UiMode.COOP_TRADE],
+      // The ping and emote keys do nothing on this screen: the hint names none
+      noPingHint: true,
       showText: text => {
         this.notice = text;
         this.refresh();

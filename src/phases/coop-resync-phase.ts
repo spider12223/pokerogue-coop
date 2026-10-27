@@ -8,7 +8,8 @@ import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { reportBridgeError } from "#coop/bridge";
 import type { ResyncPayload } from "#coop/resync";
-import { requireCoopSession } from "#coop/session";
+import { beforeReload, showReloadFailed } from "#coop/resync-run";
+import { getCoopSession, requireCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { BattleType } from "#enums/battle-type";
 import { UiMode } from "#enums/ui-mode";
@@ -34,7 +35,13 @@ export class CoopResyncPhase extends Phase {
     this.reload().catch(error => {
       console.error("co-op: reloading the wave failed:", error);
       reportBridgeError(error);
-      requireCoopSession().reloading = false;
+      const session = getCoopSession();
+      if (session === null) {
+        return;
+      }
+      session.reloading = false;
+      // Nothing can go on from a wave that does not load: the player is told why and can only leave (D13)
+      showReloadFailed(session, error instanceof Error ? error.message : String(error));
     });
   }
 
@@ -63,6 +70,7 @@ export class CoopResyncPhase extends Phase {
   private async reload(): Promise<void> {
     const { ui } = globalScene;
     const session = requireCoopSession();
+    beforeReload();
     session.timing["reloadStartedAt"] = Date.now();
     await ui.setMode(UiMode.MESSAGE);
     ui.resetModeChain();

@@ -65,6 +65,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private openingCount = 0;
   /** Co-op (D16): the bubbles of the partner's pings, removed with the screen */
   private readonly pingBubbles = new Set<Phaser.GameObjects.Text>();
+  /** Co-op (D16): the options the partner pinged, with how many of those pings are still shown */
+  private readonly pinged = new Map<ModifierOption, number>();
   private checkButtonContainer: Phaser.GameObjects.Container;
   private continueButtonContainer: Phaser.GameObjects.Container;
   private rerollCostText: Phaser.GameObjects.Text;
@@ -861,6 +863,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       bubble.destroy();
     }
     this.pingBubbles.clear();
+    this.pinged.clear();
 
     // Reset cursor positions
     this.cursor = 0;
@@ -1021,14 +1024,34 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     };
   }
 
+  /** The option a cursor on `row` and `cursor` is on; `null` on a button */
+  private getOptionAt(row: number, cursor: number): ModifierOption | null {
+    if (row < 1) {
+      return null;
+    }
+    const options = row === 1 ? this.options : this.shopOptionsRows.at(-(row - 1));
+    return options?.[cursor] ?? null;
+  }
+
+  /** An option is in the partner's color while their cursor is on it, and while one of their pings on it is shown */
+  private updatePartnerTint(option: ModifierOption): void {
+    option.setPartnerTint(option === this.partnerTarget || this.pinged.has(option) ? PARTNER_TINT : null);
+  }
+
   /**
-   * Show where the partner's cursor is (D16): a cursor in the partner's color. On an item it points from the other side, so
-   * that it does not hide this player's own cursor when both are on the same item.
+   * Show where the partner's cursor is (D16): a cursor in the partner's color, and the item it is on in that color too. On an
+   * item it points from the other side, so that it does not hide this player's own cursor when both are on the same item.
    * @param row - `null` to take it away
    */
   public setPartnerCursor(row: number | null, cursor = 0): void {
-    this.partnerTarget?.setPartnerTint(null);
-    this.partnerTarget = null;
+    const previous = this.partnerTarget;
+    this.partnerTarget = row === null ? null : this.getOptionAt(row, cursor);
+    if (previous !== null && previous !== this.partnerTarget) {
+      this.updatePartnerTint(previous);
+    }
+    if (this.partnerTarget !== null) {
+      this.updatePartnerTint(this.partnerTarget);
+    }
     const spot = row === null ? null : this.getCursorSpot(row, cursor);
     if (row === null || spot === null) {
       this.partnerCursorObj?.setVisible(false);
@@ -1057,7 +1080,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     if (option === undefined) {
       return;
     }
-    option.setPartnerTint(PARTNER_TINT);
+    this.pinged.set(option, (this.pinged.get(option) ?? 0) + 1);
+    this.updatePartnerTint(option);
     // Right above a reward's icon; a shop item has its name and price under the icon, so the bubble goes under them
     const bubble = addTextObject(option.x, option.y + (shop ? 18 : -11), text, TextStyle.BATTLE_INFO, {
       color: "#8fd3ff",
@@ -1073,9 +1097,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         return;
       }
       bubble.destroy();
-      if (this.partnerTarget !== option) {
-        option.setPartnerTint(null);
+      // A second ping on it is still shown, or the partner's cursor is on it: it keeps the color
+      const shown = (this.pinged.get(option) ?? 1) - 1;
+      if (shown > 0) {
+        this.pinged.set(option, shown);
+      } else {
+        this.pinged.delete(option);
       }
+      this.updatePartnerTint(option);
     });
   }
 

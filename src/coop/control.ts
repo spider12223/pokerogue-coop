@@ -6,6 +6,7 @@
 
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { STARTERS_PER_SEAT } from "#coop/ownership";
 import { otherSeat, type Seat } from "#coop/protocol";
 import { getCoopSession, requireCoopSession, rewardPickerOf } from "#coop/session";
 import { coopText } from "#coop/text";
@@ -60,6 +61,27 @@ export function notYourPokemonText(pokemon: Pokemon): string {
  */
 export function requireOwnerOf(pokemon: PlayerPokemon): Seat {
   return requireCoopSession().ownership.require(pokemon.id);
+}
+
+/**
+ * Co-op (D10): a Pokémon an evolution adds beside the one that evolved (Nincada's Shedinja) is its owner's, within the cap
+ * of {@linkcode STARTERS_PER_SEAT}: an owner who has their three gets none
+ * @returns Whether it may be added; always in solo play
+ */
+export function mayAddBeside(evolving: PlayerPokemon): boolean {
+  const session = getCoopSession();
+  if (session === null) {
+    return true;
+  }
+  const owner = session.ownership.require(evolving.id);
+  const party = globalScene.getPlayerParty().map(member => member.id);
+  return session.ownership.countOwned(party, owner) < STARTERS_PER_SEAT;
+}
+
+/** Co-op (D10): the Pokémon an evolution added ({@linkcode mayAddBeside}) belongs to the owner of the one that evolved */
+export function giveOwnerOf(evolving: PlayerPokemon, added: PlayerPokemon): void {
+  const session = getCoopSession();
+  session?.ownership.set(added.id, session.ownership.require(evolving.id));
 }
 
 /**

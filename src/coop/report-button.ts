@@ -20,6 +20,8 @@ import { coopText } from "#coop/text";
 const BUTTON_ID = "coopReport";
 /** How long the button says what happened before it reads "Report a problem" again */
 const RESULT_MS = 4000;
+/** How long a report waits for the server to take it; past that, the saved file is what to send */
+export const SEND_TIMEOUT_MS = 6000;
 
 /** What a report did: the server has it (`sent`), or only the file was saved (`saved`) */
 export type ReportResult = "sent" | "saved";
@@ -41,19 +43,38 @@ export function downloadCoopLog(note: string | null): void {
 }
 
 /**
- * Report a problem: the note and a snapshot go into the log, the log goes to the server now, and a file is saved.
+ * Report a problem: the note and a snapshot go into the log, a file is saved, and the log goes to the server now.
  * @param note - What the player says went wrong (`null` or empty: nothing)
  * @param saveFile - Also save the file (the end-to-end test does not)
+ * @returns `sent` only if the server took this report (and everything before it) within {@linkcode SEND_TIMEOUT_MS}
  */
 export async function reportProblem(note: string | null, saveFile = true): Promise<ReportResult> {
   const log = coopLog();
   const text = note?.trim() ?? "";
-  log.warn("report", text === "" ? "a problem was reported" : text.slice(0, 500), gameSnapshot(true));
-  await log.flush();
+  log.report(text === "" ? "a problem was reported" : text.slice(0, 500), gameSnapshot(true));
+  // The file first: it is what the player sends when the server does not get the report, and a slow network must not hold
+  // it up
   if (saveFile) {
     downloadCoopLog(note);
   }
-  return log.serverCollects === true ? "sent" : "saved";
+  return (await within(log.flush(), SEND_TIMEOUT_MS, false)) ? "sent" : "saved";
+}
+
+/** @returns What `promise` gives, or `fallback` if it takes longer than `ms` or fails */
+function within<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then(
+      value => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
 }
 
 /** Ask the player what went wrong, then report it; nothing happens if they cancel */

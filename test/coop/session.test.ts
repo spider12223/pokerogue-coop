@@ -62,4 +62,16 @@ describe("CoopSession", () => {
     first.end();
     expect(getCoopSession()).toBe(second);
   });
+
+  it("counts a prompt asked again in a wave, from the first again in a new wave or epoch (D2)", () => {
+    const session = startCoopSession({ seat: "guest", runSeed: "abc", build });
+    expect(session.nextOccurrence(5, "learn:1:33")).toBe(1);
+    expect(session.nextOccurrence(5, "learn:1:33")).toBe(2);
+    expect(session.nextOccurrence(5, "evolve:1:2")).toBe(1);
+    expect(session.nextOccurrence(6, "learn:1:33")).toBe(1);
+    session.nextOccurrence(6, "learn:1:33");
+    // a reload plays the wave again from its start
+    session.beginEpoch(0);
+    expect(session.nextOccurrence(6, "learn:1:33")).toBe(1);
+  });
 });

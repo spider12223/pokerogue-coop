@@ -82,8 +82,11 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     if (owner === null || owner === "either") {
       throw new Error("co-op: a learn-move prompt without an owner");
     }
+    const wave = globalScene.currentBattle.waveIndex;
+    // The same move offered again this wave (a declined TM picked again) is a decision of its own (D2)
+    const occurrence = requireCoopSession().nextOccurrence(wave, `learn:${pokemon.id}:${this.moveId}`);
     coopDecide<LearnMovePayload>({
-      key: learnMoveKey(globalScene.currentBattle.waveIndex, pokemon.id, this.moveId),
+      key: learnMoveKey(wave, pokemon.id, this.moveId, occurrence),
       decider: owner,
       ask: async () => ({ replaceIndex: await this.askReplaceIndex(move, pokemon) }),
       wait: () => {

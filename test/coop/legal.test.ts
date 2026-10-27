@@ -51,7 +51,12 @@ describe("legality: the turn's commands", () => {
     expectLegal([
       { name: "a move at a target", key: turnKey(1), payload: fight(0, TACKLE, [2]) },
       { name: "a spread move, named as the screen does", key: turnKey(1), payload: fight(1, GROWL, [2, 3]) },
-      { name: "a spread move with a target the harness picks", key: turnKey(1), payload: fight(1, GROWL, [2]) },
+      { name: "a spread move, in another order", key: turnKey(1), payload: fight(1, GROWL, [3, 2]) },
+      {
+        name: "a spread move with no target screen (the move's own targets)",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: 1, move: { move: GROWL, targets: [2, 3], useMode: 1 } }, pre: null },
+      },
       {
         name: "Tera before the turn",
         key: turnKey(1),
@@ -63,7 +68,18 @@ describe("legality: the turn's commands", () => {
         payload: { ...fight(0, TACKLE, [2]), pre: { command: 0, targets: [0], skip: true } },
       },
       { name: "a Ball", key: turnKey(1), payload: { command: { command: 1, cursor: 0, targets: [2] }, pre: null } },
+      {
+        name: "a Master Ball",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 4, targets: [2] }, pre: null },
+      },
       { name: "a switch", key: turnKey(1), payload: { command: { command: 2, cursor: 3, baton: false }, pre: null } },
+      {
+        name: "a switch that passes the held Baton, out of a trap",
+        key: turnKey(1),
+        payload: { command: { command: 2, cursor: 3, baton: true }, pre: null },
+        view: view({ fighter: () => fighter({ trapped: true }) }),
+      },
       { name: "Run", key: turnKey(1), payload: { command: { command: 3, cursor: 0 }, pre: null } },
       {
         name: "Struggle when nothing can be used",
@@ -72,22 +88,92 @@ describe("legality: the turn's commands", () => {
         view: view({ fighter: () => fighter({ moves: [{ id: TACKLE, usable: false }] }) }),
       },
       {
-        name: "a move that was under way",
+        name: "a move that was under way, with its use mode and targets",
         key: turnKey(1),
-        payload: fight(-1, 291, [2]),
-        view: view({ fighter: () => fighter({ queuedMove: 291 }) }),
+        payload: { command: { command: 0, cursor: -1, move: { move: 291, targets: [2], useMode: 2 } }, pre: null },
+        view: view({ fighter: () => fighter({ queued: { move: 291, targets: [2], useMode: 2 } }) }),
+      },
+      {
+        name: "a move that was under way, from its slot",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: 0, move: { move: TACKLE, targets: [3], useMode: 2 } }, pre: null },
+        view: view({ fighter: () => fighter({ queued: { move: TACKLE, targets: [3], useMode: 2 } }) }),
+      },
+      {
+        name: "a spread move under way, named again by the target screen",
+        key: turnKey(1),
+        payload: {
+          command: { command: 0, cursor: 1, move: { move: GROWL, targets: [2, 3], useMode: 1 }, targets: [3, 2] },
+          pre: null,
+        },
+        view: view({ fighter: () => fighter({ queued: { move: GROWL, targets: [2, 3], useMode: 1 } }) }),
+      },
+      {
+        name: "the move under way chosen anew from the menu (a take over)",
+        key: turnKey(1),
+        payload: fight(0, TACKLE, [1]),
+        view: view({ fighter: () => fighter({ queued: { move: TACKLE, targets: [3], useMode: 2 } }) }),
       },
       {
         name: "no move at all",
         key: turnKey(1),
-        payload: { command: { command: 0, cursor: -1, move: { move: 0, targets: [], useMode: 0 } }, pre: null },
+        payload: { command: { command: 0, cursor: -1, move: { move: 0, targets: [], useMode: 1 } }, pre: null },
       },
       {
-        name: "a command that is skipped, whatever it holds",
+        name: "a command that is skipped (Commander)",
         key: turnKey(1),
-        payload: fight(0, 999, [], { skip: true }),
+        payload: { command: { command: 0, move: { move: 0, targets: [], useMode: 1 }, skip: true }, pre: null },
       },
       { name: "nothing to command", key: turnKey(1), payload: { command: null, pre: null } },
+    ]);
+  });
+
+  it("refuses a use mode, targets or a skip the command phase never makes (a partner's forged command)", () => {
+    const queuedView = view({ fighter: () => fighter({ queued: { move: 291, targets: [2], useMode: 2 } }) });
+    expectIllegal([
+      {
+        name: "a chosen move that ignores PP",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: 0, move: { move: TACKLE, targets: [2], useMode: 2 } }, pre: null },
+      },
+      {
+        name: "a chosen move as a follow-up",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: 0, move: { move: TACKLE, targets: [2], useMode: 4 } }, pre: null },
+      },
+      {
+        name: "a move under way with another use mode",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: -1, move: { move: 291, targets: [2], useMode: 1 } }, pre: null },
+        view: queuedView,
+      },
+      {
+        name: "a move under way at other targets",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: -1, move: { move: 291, targets: [3], useMode: 2 } }, pre: null },
+        view: queuedView,
+      },
+      {
+        name: "a move under way redirected by the command's targets",
+        key: turnKey(1),
+        payload: {
+          command: { command: 0, cursor: -1, move: { move: 291, targets: [2], useMode: 2 }, targets: [0] },
+          pre: null,
+        },
+        view: queuedView,
+      },
+      { name: "a spread move at one of its targets", key: turnKey(1), payload: fight(1, GROWL, [2]) },
+      { name: "a spread move at one target twice", key: turnKey(1), payload: fight(1, GROWL, [2, 2]) },
+      {
+        name: "a spread move with its own targets cut short",
+        key: turnKey(1),
+        payload: { command: { command: 0, cursor: 1, move: { move: GROWL, targets: [3], useMode: 1 } }, pre: null },
+      },
+      { name: "a skipped command that makes a move", key: turnKey(1), payload: fight(0, 999, [], { skip: true }) },
+      { name: "a skipped command that makes a move", key: turnKey(1), payload: fight(0, TACKLE, [2], { skip: true }) },
+      { name: "five targets", key: turnKey(1), payload: fight(1, GROWL, [0, 1, 2, 3, 2]) },
+      { name: "a target past the field", key: turnKey(1), payload: fight(0, TACKLE, [4]) },
+      { name: "a target below the attacker", key: turnKey(1), payload: fight(0, TACKLE, [-2]) },
     ]);
   });
 
@@ -132,8 +218,58 @@ describe("legality: the turn's commands", () => {
       {
         name: "a Ball where nothing is caught",
         key: turnKey(1),
-        payload: { command: { command: 1, cursor: 0 }, pre: null },
+        payload: { command: { command: 1, cursor: 0, targets: [2] }, pre: null },
         view: view({ canCatch: false }),
+      },
+      // `TurnStartPhase` reads `targets[0]` of a Ball: without one it throws on both clients
+      { name: "a Ball at nothing", key: turnKey(1), payload: { command: { command: 1, cursor: 0 }, pre: null } },
+      {
+        name: "a Ball with no target in the list",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [] }, pre: null },
+      },
+      {
+        name: "a Ball at an ally",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [1] }, pre: null },
+      },
+      {
+        name: "a Ball at an enemy that is not there",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [3] }, pre: null },
+      },
+      {
+        name: "a Ball at two enemies",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [2, 3] }, pre: null },
+      },
+      {
+        name: "a Ball while two enemies are up",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [2] }, pre: null },
+        view: view({ catchTargets: () => [2, 3] }),
+      },
+      {
+        name: "a Ball at a boss with shields",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 0, targets: [2] }, pre: null },
+        view: view({ ballWorks: type => type === 4 }),
+      },
+      {
+        name: "a Luxury Ball, which the ball screen does not have",
+        key: turnKey(1),
+        payload: { command: { command: 1, cursor: 5, targets: [2] }, pre: null },
+        view: view({ ballCount: () => 1 }),
+      },
+      {
+        name: "a switch that passes a Baton it does not hold",
+        key: turnKey(GUEST_MON),
+        payload: { command: { command: 2, cursor: 3, baton: true }, pre: null },
+      },
+      {
+        name: "a Run of a Pokémon that is trapped",
+        key: turnKey(GUEST_MON),
+        payload: { command: { command: 3, cursor: 0 }, pre: null },
       },
       {
         name: "a Ball that is not in the bag",
@@ -199,6 +335,16 @@ describe("legality: the answers to a prompt", () => {
       { name: "accept", key: key("SIDE_ACTION", "1:0", 3), payload: { accept: false } },
       { name: "a replacement", key: key("FAINT_SWITCH", 1, 4), payload: { partyIndex: 2, baton: false } },
       { name: "nobody", key: key("PIVOT_SWITCH", 1, 4), payload: { partyIndex: null, baton: false } },
+      {
+        name: "a baton passed after Baton Pass",
+        key: key("PIVOT_SWITCH", GUEST_MON, 4),
+        payload: { partyIndex: 2, baton: true },
+      },
+      {
+        name: "a baton passed from a held Baton",
+        key: key("PIVOT_SWITCH", HOST_MON, 4),
+        payload: { partyIndex: 2, baton: true },
+      },
       { name: "a move to forget", key: key("LEARN_MOVE", `${HOST_MON}:70`), payload: { replaceIndex: 3 } },
       { name: "no new move", key: key("LEARN_MOVE", `${HOST_MON}:70`), payload: { replaceIndex: null } },
       { name: "an evolution cancelled", key: key("EVOLUTION_CANCEL", `${HOST_MON}:5`), payload: { cancel: true } },
@@ -226,6 +372,11 @@ describe("legality: the answers to a prompt", () => {
       },
       { name: "a replacement by a string", key: key("FAINT_SWITCH", 1, 4), payload: { partyIndex: "2", baton: false } },
       { name: "a replacement without the baton flag", key: key("PIVOT_SWITCH", 1, 4), payload: { partyIndex: 2 } },
+      {
+        name: "a baton that nobody passes",
+        key: key("PIVOT_SWITCH", 3, 4),
+        payload: { partyIndex: 2, baton: true },
+      },
       { name: "a replacement of nothing", key: key("PIVOT_SWITCH", 1, 4), payload: null },
       {
         name: "a move to forget that it does not know",

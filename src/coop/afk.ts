@@ -34,6 +34,8 @@ export interface AfkWatcherOptions {
   showText?: (text: string) => void;
   /** The screens the offer may appear over (a player who is in the middle of something else is not interrupted) */
   offerOver?: readonly UiMode[];
+  /** The hint names no key to nudge with: the screen it is shown on has none (the trade screen) */
+  noPingHint?: boolean;
 }
 
 /** The watchers that are running, so that changing the timers (dev and test builds) reaches the waits that are open now */
@@ -126,6 +128,10 @@ export class AfkWatcher {
   }
 
   private hint(): void {
+    if (this.options.noPingHint) {
+      this.say(coopText("stillChoosingNoHint", "{{partner}} is still choosing.", { partner: this.partnerName() }));
+      return;
+    }
     this.say(
       coopText("stillChoosing", "{{partner}} is still choosing. {{hint}}", {
         partner: this.partnerName(),

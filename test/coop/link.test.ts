@@ -326,8 +326,8 @@ describe("StarterLobby and the checkpoint exchange on a link", () => {
       const checkpoint = session.checkpoints.append({ kind: "turn", wave: 1, turn, phaseName: "TurnInitPhase", hash });
       session.onCheckpoint?.(checkpoint);
     };
-    pass(hostSession, "aaaa", 1);
-    pass(guestSession, "aaaa", 1);
+    pass(hostSession, "aaaaaaaaaaaaaa", 1);
+    pass(guestSession, "aaaaaaaaaaaaaa", 1);
     await until(
       () => hostSession.remoteCheckpoints.size === 0 && guestSession.remoteCheckpoints.size === 0,
       "checkpoint 0",
@@ -336,10 +336,10 @@ describe("StarterLobby and the checkpoint exchange on a link", () => {
     expect(guestSession.checkpointMismatch).toBeNull();
 
     // The guest is ahead and the hash differs: the host notices when it reaches the checkpoint
-    pass(guestSession, "bbbb", 2);
+    pass(guestSession, "bbbbbbbbbbbbbb", 2);
     await until(() => hostSession.remoteCheckpoints.has(1), "the guest's checkpoint 1");
     expect(hostSession.checkpointMismatch).toBeNull();
-    pass(hostSession, "cccc", 2);
+    pass(hostSession, "cccccccccccccc", 2);
     expect(hostSession.checkpointMismatch).not.toBeNull();
     expect(hostSession.desyncMessage).toContain("checkpoint #1");
     await until(() => guestSession.checkpointMismatch !== null, "the guest noticing too");

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { EpochChangedError, EpochTransport } from "#coop/epoch";
+import { EpochChangedError, EpochTransport, MAX_HELD_NEWER } from "#coop/epoch";
 import type { DecisionKey, Envelope, MessageKind } from "#coop/protocol";
 import { DesyncError, Sequencer } from "#coop/sequencer";
 import { describe, expect, it } from "vitest";
@@ -106,6 +106,17 @@ describe("EpochTransport", () => {
       link.guest.receive(envelope(kind, undefined, null));
     }
     expect(got).toEqual(["HELLO", "HELLO_ACK", "HELLO_OK", "REFUSE", "START", "LOBBY", "BYE"]);
+  });
+
+  it("holds no more than its cap of a newer epoch's messages: junk stamped with a future epoch is dropped", () => {
+    const link = createManualLink();
+    const channel = new EpochTransport(link.guest);
+    channel.onMessage(() => undefined);
+    for (let i = 0; i < MAX_HELD_NEWER + 10; i++) {
+      link.guest.receive(envelope("SEQUENCED", 5));
+    }
+    expect(channel.heldCount).toBe(MAX_HELD_NEWER);
+    expect(channel.stats.droppedNewer).toBe(10);
   });
 
   it("holds what a newer epoch sent until the epoch gets there, then hands it on in order", () => {

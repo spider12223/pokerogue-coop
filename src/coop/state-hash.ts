@@ -47,8 +47,12 @@ export interface PokemonHashState {
   fusionSpeciesId: number;
   /** `[moveId, ppUsed]` per move slot */
   moves: [number, number][];
-  /** The co-op player who owns it; `null` for enemies */
+  /** The co-op player who owns it as the owner map has it: `null` for enemies, and for a member the map lacks */
   owner: Seat | null;
+  /** Return, Frustration and friendship evolutions read it */
+  friendship: number;
+  teraType: number;
+  pokerus: boolean;
 }
 
 /** A reward option or a modifier type: its id plus what was generated into it. */
@@ -94,8 +98,15 @@ export interface StateHashSnapshot {
   playerField: number[];
   enemyField: number[];
   /** `[type id, stack count, holder pokemon id or -1, generated args]` */
-  modifiers: [string, number, number, TypeHashState["args"]][];
-  enemyModifiers: [string, number, number, TypeHashState["args"]][];
+  /** `[type id, stack count, holder pokemon id or -1, generated args, battles left or -1]` */
+  modifiers: [string, number, number, TypeHashState["args"], number][];
+  enemyModifiers: [string, number, number, TypeHashState["args"], number][];
+  /** The ball counts, by `PokeballType` */
+  pokeballCounts: Record<string, number>;
+  /** The Lock Capsule's lock: the reroll cost and the tiers depend on it */
+  lockModifierTiers: boolean;
+  /** The co-op run's seed: the seeded draws of `sim-rng` are keyed with it (D3) */
+  runSeed: string | null;
   /** `WeatherType`, `0` if none */
   weather: number;
   /** `TerrainType`, `0` if none */
@@ -165,13 +176,20 @@ function capturePokemon(pokemon: Pokemon): PokemonHashState {
     ivs: [...pokemon.ivs],
     fusionSpeciesId: pokemon.fusionSpecies?.speciesId ?? 0,
     moves: pokemon.getMoveset().map(move => [move.moveId, move.ppUsed]),
-    owner: pokemon.isPlayer() ? (getCoopSession()?.ownerOf(pokemon.id) ?? null) : null,
+    // The map itself: `ownerOf` falls back to the host, which would hide a member with no owner
+    owner: pokemon.isPlayer() ? (getCoopSession()?.ownership.get(pokemon.id) ?? null) : null,
+    friendship: pokemon.friendship,
+    teraType: pokemon.teraType,
+    pokerus: pokemon.pokerus === true,
   };
 }
 
 function captureModifier(modifier: PersistentModifier): StateHashSnapshot["modifiers"][number] {
   const holderId = "pokemonId" in modifier && typeof modifier.pokemonId === "number" ? modifier.pokemonId : -1;
-  return [modifier.type.id, modifier.getStackCount(), holderId, generatedArgs(modifier.type)];
+  // A boost that lasts some battles (X Attack, Lures) counts them down
+  const battlesLeft =
+    "getBattleCount" in modifier && typeof modifier.getBattleCount === "function" ? modifier.getBattleCount() : -1;
+  return [modifier.type.id, modifier.getStackCount(), holderId, generatedArgs(modifier.type), battlesLeft];
 }
 
 /** Capture the state the clients must agree on as a plain object. */
@@ -199,6 +217,9 @@ export function captureStateSnapshot(scene: BattleScene = globalScene): StateHas
     enemyField: scene.getEnemyField().map(p => p.id),
     modifiers: scene.modifiers.map(captureModifier),
     enemyModifiers: scene.findModifiers(() => true, false).map(captureModifier),
+    pokeballCounts: { ...scene.pokeballCounts },
+    lockModifierTiers: scene.lockModifierTiers === true,
+    runSeed: getCoopSession()?.runSeed ?? null,
     weather: scene.arena?.weather?.weatherType ?? 0,
     terrain: scene.arena?.terrain?.terrainType ?? 0,
     rewardOptions: openRewardOptions(scene),

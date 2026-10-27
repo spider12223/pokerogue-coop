@@ -136,6 +136,16 @@ describe("the trade window", () => {
     expect(state.pending).toBeNull();
   });
 
+  it("counts a taken-over done as the absent player's, not the taker's (D17)", () => {
+    const state = new TradeState();
+    state.apply({ key: tradeDoneKey(WAVE, 0, "guest"), author: "guest", payload: { done: true } });
+    // the host is away; the guest takes over the host's done
+    const effect = state.apply({ key: tradeDoneKey(WAVE, 1, "host"), author: "guest", payload: { done: true } });
+    expect(effect).toEqual({ t: "done", seat: "host", done: true });
+    expect(state.done).toEqual({ host: true, guest: true });
+    expect(state.finished).toBe(true);
+  });
+
   it("is over when both are done; a new proposal takes the done back", () => {
     const state = new TradeState();
     state.apply({ key: tradeDoneKey(WAVE, 0, "host"), author: "host", payload: { done: true } });

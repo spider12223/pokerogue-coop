@@ -16,9 +16,23 @@ import { createManualLink } from "./manual-link";
  * arrives first; the one that comes later is rejected.
  */
 
-function setup(validatePayload?: ConstructorParameters<typeof Sequencer>[0]["validatePayload"]) {
+type HostOptions = Omit<ConstructorParameters<typeof Sequencer>[0], "role" | "transport">;
+
+/**
+ * @param options - The host's sequencer; by default a take over of the guest needs no wait (the tests of the wait pass
+ * their own clock)
+ */
+function setup(
+  validatePayload?: ConstructorParameters<typeof Sequencer>[0]["validatePayload"],
+  options: HostOptions = { takeoverAfterMs: () => 0 },
+) {
   const link = createManualLink();
-  const host = new Sequencer({ role: "host", transport: link.host, ...(validatePayload ? { validatePayload } : {}) });
+  const host = new Sequencer({
+    role: "host",
+    transport: link.host,
+    ...options,
+    ...(validatePayload ? { validatePayload } : {}),
+  });
   const guest = new Sequencer({ role: "guest", transport: link.guest });
   const settle = (): void => {
     for (let round = 0; round < 10 && (link.host.outbox.length > 0 || link.guest.outbox.length > 0); round++) {
@@ -149,6 +163,182 @@ describe("take over (D17)", () => {
       expect(host.hasDecision(learnKey)).toBe(true);
       expect(guest.hasDecision(learnKey)).toBe(true);
       expect(guest.hasDecision(commandKey)).toBe(false);
+    });
+  });
+
+  describe("what the host lets the guest take over (a guest that is not what it says it is)", () => {
+    const tradeKey = (kind: "TRADE_ACCEPT" | "TRADE_PROPOSE" | "TRADE_DECLINE"): DecisionKey => ({
+      wave: 5,
+      turn: 0,
+      kind,
+      ref: "0:1",
+    });
+
+    it.each([
+      ["TRADE_ACCEPT", tradeKey("TRADE_ACCEPT"), null],
+      ["TRADE_PROPOSE", tradeKey("TRADE_PROPOSE"), { give: 3, want: 4 }],
+      ["PARTY_EDIT", { wave: 5, turn: 0, kind: "PARTY_EDIT", ref: "0:1" } as DecisionKey, { t: "x" }],
+      ["TRADE_REQUEST", { wave: 5, turn: 0, kind: "TRADE_REQUEST", ref: "0:1" } as DecisionKey, null],
+    ] as const)("refuses a take over of %s", (_name, key, payload) => {
+      const { host, guest, settle, rejections } = setup();
+      void host.awaitDecision(key, { authors: ["host"] });
+      void guest.awaitDecision(key, { authors: ["host"] });
+      guest.propose(key, payload, { takeover: true });
+      settle();
+      expect(rejections).toEqual(["authorNotAllowed"]);
+      expect(host.lastApplied).toBe(0);
+    });
+
+    it("lets the taker decline a trade proposal, with nothing in the answer", async () => {
+      const { host, guest, settle } = setup();
+      const decline = tradeKey("TRADE_DECLINE");
+      const onHost = host.awaitDecision(decline, { authors: ["host"] });
+      void guest.awaitDecision(decline, { authors: ["host"] });
+      guest.propose(decline, null, { takeover: true });
+      settle();
+      expect(await onHost).toMatchObject({ author: "guest", takeover: true, payload: null });
+    });
+
+    it.each([
+      ["a move forgotten for the host's Pokémon", learnKey, { replaceIndex: 1 }],
+      ["a cancel of the host's evolution", { ...learnKey, kind: "EVOLUTION_CANCEL" } as DecisionKey, { cancel: true }],
+      [
+        "a release of the host's Pokémon",
+        { ...learnKey, kind: "CATCH_RELEASE", ref: 9 } as DecisionKey,
+        { release: 3 },
+      ],
+      ["a declined side action", { ...learnKey, kind: "SIDE_ACTION", ref: "4:0" } as DecisionKey, { accept: false }],
+      ["something more", learnKey, { replaceIndex: null, extra: 1 }],
+    ] as const)("refuses %s: a take over with a default proposes the default", (_name, key, payload) => {
+      const { host, guest, settle, rejections } = setup();
+      void host.awaitDecision(key, { authors: ["host"] });
+      void guest.awaitDecision(key, { authors: ["host"] });
+      guest.propose(key, payload, { takeover: true });
+      settle();
+      expect(rejections).toEqual(["invalid"]);
+      expect(host.lastApplied).toBe(0);
+    });
+
+    describe("the wait (D17): the host must have waited for the decision", () => {
+      const HINT = 30_000;
+
+      function timed() {
+        const scheduler = new FakeScheduler();
+        return { scheduler, ...setup(undefined, { scheduler, takeoverAfterMs: () => HINT }) };
+      }
+
+      it("holds a take over that comes before the host waited the hint time, and sequences it then", async () => {
+        const { scheduler, host, guest, settle, rejections } = timed();
+        const onHost = host.awaitDecision(learnKey, { authors: ["host"] });
+        void guest.awaitDecision(learnKey, { authors: ["host"] });
+        scheduler.advance(1000);
+        guest.propose(learnKey, { replaceIndex: null }, { takeover: true });
+        settle();
+        expect(host.lastApplied).toBe(0);
+        expect(host.parkedCount).toBe(1);
+        expect(rejections).toEqual([]);
+
+        scheduler.advance(HINT - 1001);
+        expect(host.lastApplied).toBe(0);
+        scheduler.advance(1);
+        settle();
+        expect(await onHost).toMatchObject({ seq: 1, author: "guest", takeover: true });
+        expect(host.parkedCount).toBe(0);
+      });
+
+      it("sequences a take over at once when the host has waited long enough", async () => {
+        const { scheduler, host, guest, settle } = timed();
+        const onHost = host.awaitDecision(learnKey, { authors: ["host"] });
+        void guest.awaitDecision(learnKey, { authors: ["host"] });
+        scheduler.advance(HINT);
+        guest.propose(learnKey, { replaceIndex: null }, { takeover: true });
+        settle();
+        expect(await onHost).toMatchObject({ author: "guest", takeover: true });
+      });
+
+      it("lets the host's player answer meanwhile: the answer wins, the guest is told its take over is late", async () => {
+        const { scheduler, host, guest, settle, rejections } = timed();
+        const onHost = host.awaitDecision(learnKey, { authors: ["host"] });
+        const onGuest = guest.awaitDecision(learnKey, { authors: ["host"] });
+        guest.propose(learnKey, { replaceIndex: null }, { takeover: true });
+        settle();
+        host.propose(learnKey, { replaceIndex: 2 });
+        settle();
+        expect(await onHost).toMatchObject({ seq: 1, author: "host", payload: { replaceIndex: 2 } });
+        expect(await onGuest).toMatchObject({ seq: 1, author: "host" });
+        expect(rejections).toEqual(["duplicate"]);
+        scheduler.advance(HINT * 2);
+        settle();
+        expect(host.lastApplied).toBe(1);
+        expect(host.parkedCount).toBe(0);
+      });
+
+      it("holds a take over for a decision the host has not opened, and counts the wait from when it opens", async () => {
+        const { scheduler, host, guest, settle } = timed();
+        void guest.awaitDecision(learnKey, { authors: ["host"] });
+        guest.propose(learnKey, { replaceIndex: null }, { takeover: true });
+        settle();
+        scheduler.advance(HINT * 3);
+        expect(host.parkedCount).toBe(1);
+
+        const onHost = host.awaitDecision(learnKey, { authors: ["host"] });
+        scheduler.advance(HINT - 1);
+        expect(host.lastApplied).toBe(0);
+        scheduler.advance(1);
+        settle();
+        expect(await onHost).toMatchObject({ author: "guest", takeover: true });
+      });
+
+      it("lets a taker go on deciding for the host's player step by step, until the host's player decides again", async () => {
+        const { scheduler, host, guest, settle } = timed();
+        const step = (n: number): DecisionKey => ({ wave: 5, turn: 0, kind: "REWARD_PICK", ref: `1:${n}` });
+        void host.awaitDecision(step(0), { authors: ["host"] });
+        void guest.awaitDecision(step(0), { authors: ["host"] });
+        scheduler.advance(HINT);
+        guest.propose(step(0), { t: "reroll" }, { takeover: true });
+        settle();
+        expect(host.lastApplied).toBe(1);
+
+        // the next step opens: the taker is still in the host's player's place
+        void host.awaitDecision(step(1), { authors: ["host"] });
+        void guest.awaitDecision(step(1), { authors: ["host"] });
+        guest.propose(step(1), { t: "skip" }, { takeover: true });
+        settle();
+        expect(host.lastApplied).toBe(2);
+
+        // the host's player is back: the next take over waits again
+        void host.awaitDecision(step(2), { authors: ["host"] });
+        void guest.awaitDecision(step(2), { authors: ["host"] });
+        host.propose(step(2), { t: "skip" });
+        settle();
+        void host.awaitDecision(step(3), { authors: ["host"] });
+        void guest.awaitDecision(step(3), { authors: ["host"] });
+        guest.propose(step(3), { t: "skip" }, { takeover: true });
+        settle();
+        expect(host.lastApplied).toBe(3);
+        expect(host.parkedCount).toBe(1);
+      });
+
+      it("does not wait for the host's own take over", async () => {
+        const { host, guest, settle } = timed();
+        void host.awaitDecision(commandKey, { authors: ["guest"] });
+        const onGuest = guest.awaitDecision(commandKey, { authors: ["guest"] });
+        host.propose(commandKey, { command: null, pre: null }, { takeover: true });
+        settle();
+        expect(await onGuest).toMatchObject({ author: "host", takeover: true });
+      });
+
+      it("forgets a held take over and its timer when the run is reloaded", () => {
+        const { scheduler, host, guest, settle } = timed();
+        void host.awaitDecision(learnKey, { authors: ["host"] }).catch(() => undefined);
+        void guest.awaitDecision(learnKey, { authors: ["host"] }).catch(() => undefined);
+        guest.propose(learnKey, { replaceIndex: null }, { takeover: true });
+        settle();
+        expect(scheduler.pending).toBe(1);
+        host.resetForEpoch(5);
+        expect(host.parkedCount).toBe(0);
+        expect(scheduler.pending).toBe(0);
+      });
     });
   });
 

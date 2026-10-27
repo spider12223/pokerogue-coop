@@ -8,7 +8,9 @@ import { createReadStream } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, resolve, sep } from "node:path";
+import { pipeline } from "node:stream";
 import { gzip } from "node:zlib";
+import { requestUrl } from "./untrusted.ts";
 
 /**
  * The static files of the production build (DECISIONS D22): `dist/` as it is, with the cache rules of the deploy.
@@ -70,6 +72,8 @@ export interface StaticHandler {
   handle(request: IncomingMessage, response: ServerResponse): Promise<void>;
   /** Bytes of gzipped files kept in memory */
   readonly cachedBytes: number;
+  /** Files being sent right now (each holds an open file) */
+  readonly downloads: number;
 }
 
 /** @returns The `Cache-Control` of a file, by its URL path */
@@ -104,6 +108,7 @@ export function createStaticHandler(options: StaticOptions): StaticHandler {
   const root = resolve(options.root);
   const gzipped = new Map<string, Buffer>();
   let cachedBytes = 0;
+  let downloads = 0;
 
   const compressed = async (key: string, file: string): Promise<Buffer> => {
     const known = gzipped.get(key);
@@ -130,10 +135,10 @@ export function createStaticHandler(options: StaticOptions): StaticHandler {
       respond(response, 405, "Method not allowed");
       return;
     }
-    const url = new URL(request.url ?? "/", "http://placeholder");
-    const urlPath = url.pathname === "/" ? "/index.html" : url.pathname;
-    const file = resolveUnder(root, urlPath);
-    if (file === null) {
+    const pathname = requestUrl(request.url)?.pathname;
+    const urlPath = pathname === "/" ? "/index.html" : pathname;
+    const file = urlPath === undefined ? null : resolveUnder(root, urlPath);
+    if (urlPath === undefined || file === null) {
       respond(response, 400, "Bad request");
       return;
     }
@@ -187,8 +192,11 @@ export function createStaticHandler(options: StaticOptions): StaticHandler {
         return;
       }
       const stream = createReadStream(file);
-      stream.on("error", () => response.destroy());
-      stream.pipe(response);
+      downloads++;
+      stream.once("close", () => downloads--);
+      // Unlike `pipe`, `pipeline` closes the file when the response ends early (the browser gave up on the download), and
+      // ends the response when the file cannot be read
+      pipeline(stream, response, () => {});
     } catch {
       if (response.headersSent) {
         response.destroy();
@@ -202,6 +210,9 @@ export function createStaticHandler(options: StaticOptions): StaticHandler {
     handle,
     get cachedBytes() {
       return cachedBytes;
+    },
+    get downloads() {
+      return downloads;
     },
   };
 }

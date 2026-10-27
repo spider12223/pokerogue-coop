@@ -335,8 +335,10 @@ export class CoopStarterSelectController {
       return true;
     }
     if (this.lobby.closed) {
-      // The partner left: there is no run to start any more
+      // The partner left: there is no run to start any more. Leaving tells the relay, so the room closes for a partner who
+      // would come back to it
       if (button === Button.CANCEL) {
+        getCoopSession()?.link?.leave();
         returnToTitle(null);
       } else {
         globalScene.ui.playError();
@@ -379,6 +381,8 @@ export class CoopStarterSelectController {
     const vars = { partner: partnerName() };
     if (this.lobby.closed) {
       this.view.setStatus(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars), "warn");
+    } else if (this.lobby.away) {
+      this.view.setStatus(coopText("partnerAwayLobby", "{{partner}} lost the connection. Waiting…", vars), "warn");
     } else if (this.lobby.localReady) {
       this.view.setStatus(coopText("waitingForPartnerReady", "Ready! Waiting for {{partner}}", vars), "self");
     } else if (this.overLimit) {

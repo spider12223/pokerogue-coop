@@ -45,7 +45,7 @@ export function fighter(over: Partial<FighterView> = {}): FighterView {
       { id: GROWL, usable: true },
       { id: SAND_ATTACK, usable: false },
     ],
-    queuedMove: null,
+    queued: null,
     trapped: false,
     canTera: true,
     switchTargets: [2, 3],
@@ -80,7 +80,12 @@ export function view(over: Partial<LegalityView> = {}): LegalityView {
           : null,
     canCatch: true,
     canRun: true,
-    ballCount: type => (type === 0 ? 5 : 0),
+    ballCount: type => (type === 0 || type === 4 ? 5 : 0),
+    // one enemy left, in the second enemy position
+    catchTargets: () => [2],
+    ballWorks: () => true,
+    // the host's Pokémon holds a Baton; the guest's just used Baton Pass
+    baton: id => ({ item: id === HOST_MON, move: id === GUEST_MON }),
     replacements: () => [2, 3],
     reward: () => reward(),
     transferable: id => (id === GUEST_MON ? [2, 1] : []),
@@ -110,8 +115,11 @@ export const key = (kind: DecisionKind, ref: DecisionKey["ref"] = 0, turn = 0): 
 });
 export const turnKey = (pokemonId: number): DecisionKey => key("TURN_COMMANDS", pokemonId, 3);
 
+/** `MoveUseMode.NORMAL`: a move the player chose */
+export const NORMAL_USE = 1;
+
 /** A command of the wire, with a fight's target chosen the way the target screen stores it */
 export const fight = (cursor: number, move: number, targets: number[], extra: Record<string, unknown> = {}) => ({
-  command: { command: 0, cursor, move: { move, targets: [], useMode: 0 }, targets, ...extra },
+  command: { command: 0, cursor, move: { move, targets: [], useMode: NORMAL_USE }, targets, ...extra },
   pre: null,
 });

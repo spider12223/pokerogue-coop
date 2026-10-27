@@ -103,8 +103,16 @@ export function commandFromWire(wire: WireTurnCommand): TurnCommand {
   return command;
 }
 
-function isIntegerArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every(entry => Number.isInteger(entry));
+/**
+ * Battler indices: at most the four battlers of a double battle, each `BattlerIndex.ATTACKER` (-1, a counter-attack) or
+ * one of the four field positions
+ */
+function isBattlerList(value: unknown): value is number[] {
+  return (
+    Array.isArray(value)
+    && value.length <= 4
+    && value.every(entry => Number.isInteger(entry) && entry >= -1 && entry <= 3)
+  );
 }
 
 function isWireMove(value: unknown): value is WireTurnMove {
@@ -112,7 +120,7 @@ function isWireMove(value: unknown): value is WireTurnMove {
     return false;
   }
   const move = value as Record<string, unknown>;
-  return Number.isInteger(move["move"]) && isIntegerArray(move["targets"]) && Number.isInteger(move["useMode"]);
+  return Number.isInteger(move["move"]) && isBattlerList(move["targets"]) && Number.isInteger(move["useMode"]);
 }
 
 export function isWireCommand(value: unknown): value is WireTurnCommand {
@@ -126,7 +134,7 @@ export function isWireCommand(value: unknown): value is WireTurnCommand {
     && (command["command"] as number) <= Command.TERA
     && (command["cursor"] === undefined || Number.isInteger(command["cursor"]))
     && (command["move"] === undefined || isWireMove(command["move"]))
-    && (command["targets"] === undefined || isIntegerArray(command["targets"]))
+    && (command["targets"] === undefined || isBattlerList(command["targets"]))
     && (command["skip"] === undefined || typeof command["skip"] === "boolean")
     && (command["baton"] === undefined || typeof command["baton"] === "boolean")
   );

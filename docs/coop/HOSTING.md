@@ -16,7 +16,7 @@ address, so nothing has to be configured (see [DECISIONS.md](DECISIONS.md), D22)
 |---|---|
 | `GET /` | the game (the files of `dist/`) |
 | `wss://<your host>/coop` | the relay (`ws://` on an `http` page) |
-| `GET /healthz` | `{"ok":true,"rooms":1,"sockets":2,"trackedIps":1,"uptimeS":…,"rssMb":…,"cpuMs":…}` |
+| `GET /healthz` | `{"ok":true,"rooms":1,"sockets":2,"trackedIps":1,"downloads":0,"uptimeS":…,"rssMb":…,"cpuMs":…}` |
 
 The server speaks plain HTTP. TLS is the job of whatever stands in front of it: the platform, a tunnel, Caddy.
 
@@ -147,6 +147,8 @@ All optional; the defaults suit a game among friends.
 | `CONNECTIONS_PER_MINUTE` | 60 | connection attempts per address |
 | `ROOMS_PER_MINUTE` | 10 | rooms one address may create |
 | `MESSAGES_PER_SECOND`, `MESSAGE_BURST` | 120, 400 | what one address may send, over all its sockets |
+| `BYTES_PER_SECOND`, `BYTE_BURST` | 2 MiB, 16 MiB | the bytes one address may send, over all its sockets |
+| `MAX_BUFFERED_BYTES` | 4 MiB | what may wait to be sent to one player who does not read; frames over it are dropped (the clients resend), and a player who keeps not reading is cut (the seat is kept) |
 | `MAX_ROOMS` | 1000 | rooms in all |
 | `IDLE_ROOM_MS` | 1800000 | a room without a game frame for this long is closed |
 

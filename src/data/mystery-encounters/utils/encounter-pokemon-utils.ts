@@ -8,6 +8,7 @@ import { coopDecide, isLinked, reportBridgeError } from "#coop/bridge";
 import { catchReleaseKey } from "#coop/decision-keys";
 import { coopSeatFull, meAutoAnswers, meChooser, showChooserWaiting } from "#coop/me-run";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
+import { DesyncError } from "#coop/sequencer";
 import { getCoopSession, isCoop } from "#coop/session";
 import { writesForSeat } from "#coop/sim-account";
 import { modifierTypes } from "#data/data-lists";
@@ -850,7 +851,7 @@ export async function catchPokemon(
                 wait: () => showChooserWaiting("pokemon"),
                 isPayload: isCatchReleasePayload,
               })
-                .then(({ payload }) => {
+                .then(({ payload, key, seq }) => {
                   if (payload.release === null) {
                     removePokemon();
                     end();
@@ -858,6 +859,13 @@ export async function catchPokemon(
                   }
                   const party = globalScene.getPlayerParty();
                   const index = party.findIndex(member => member.id === payload.release);
+                  // Co-op (D10, D29): only one of the chooser's own Pokémon in the party, as in the capture phase
+                  if (index < 0 || getCoopSession()?.ownership.get(payload.release) !== coopOwner) {
+                    throw new DesyncError("the sequenced release is not a Pokémon of the chooser", {
+                      actual: key,
+                      seq,
+                    });
+                  }
                   globalScene.removePartyMemberModifiers(index);
                   party.splice(index, 1)[0].destroy();
                   addToParty(index);

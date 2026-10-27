@@ -330,14 +330,151 @@ describe("Sequencer: host validation", () => {
     expect(host.outbox.map(m => m.kind)).toEqual(["REJECT", "REJECT"]);
   });
 
-  it("fails loudly if proposals pile up that the simulation never opens", async () => {
+  it("refuses proposals that pile up for decisions the simulation never opens, without stopping the run", () => {
     const link = createManualLink();
     const host = new Sequencer({ role: "host", transport: link.host, maxParked: 2 });
-    const pending = host.awaitDecision(k(99));
+    const rejections: RejectReason[] = [];
+    host.onProposalRejected(({ reason }) => rejections.push(reason));
+    void host.awaitDecision(k(99));
     for (const turn of [1, 2, 3]) {
       link.host.receive({ key: k(turn), author: "guest", kind: "PROPOSE", payload: null });
     }
-    await expect(pending).rejects.toBeInstanceOf(DesyncError);
+    expect(rejections).toEqual(["full"]);
+    expect(host.parkedCount).toBe(2);
+    expect(host.desync).toBeNull();
+    expect(link.host.outbox.map(m => [m.kind, (m.payload as { reason?: string } | null)?.reason])).toEqual([
+      ["REJECT", "full"],
+    ]);
+  });
+
+  it("refuses a proposal that is too big, and parked ones that are too big together", () => {
+    const link = createManualLink();
+    const host = new Sequencer({ role: "host", transport: link.host });
+    const rejections: RejectReason[] = [];
+    host.onProposalRejected(({ reason }) => rejections.push(reason));
+    link.host.receive({ key: k(1), author: "guest", kind: "PROPOSE", payload: "x".repeat(20_000) });
+    expect(rejections).toEqual(["invalid"]);
+    for (let turn = 2; turn < 40; turn++) {
+      link.host.receive({ key: k(turn), author: "guest", kind: "PROPOSE", payload: "x".repeat(15_000) });
+    }
+    // 17 of them fill the room of the parked proposals (256 K characters), the others are refused
+    expect(host.parkedCount).toBe(17);
+    expect(rejections.filter(reason => reason === "full")).toHaveLength(38 - 17);
+    expect(host.desync).toBeNull();
+  });
+});
+
+describe("Sequencer: legality before sequencing (D24)", () => {
+  function legalSetup() {
+    const s = setup();
+    const check = (_key: DecisionKey, payload: unknown): string | null => (payload === "bad" ? "a bad payload" : null);
+    s.hostSeq.setLegality(check);
+    s.guestSeq.setLegality(check);
+    const rejections: RejectReason[] = [];
+    s.guestSeq.onProposalRejected(({ reason }) => rejections.push(reason));
+    return { ...s, rejections };
+  }
+
+  it("refuses an illegal proposal of the guest as invalid instead of sequencing it: nobody reloads", async () => {
+    const { hostSeq, guestSeq, settle, rejections } = legalSetup();
+    const onHost = hostSeq.awaitDecision(k(1));
+    const onGuest = guestSeq.awaitDecision(k(1));
+    guestSeq.propose(k(1), "bad");
+    settle();
+    expect(rejections).toEqual(["invalid"]);
+    expect(hostSeq.lastApplied).toBe(0);
+    expect(hostSeq.desync).toBeNull();
+    expect(guestSeq.desync).toBeNull();
+
+    // the window is still open: a legal answer goes through
+    guestSeq.propose(k(1), "good");
+    settle();
+    expect((await onHost).payload).toBe("good");
+    expect((await onGuest).payload).toBe("good");
+  });
+
+  it("checks a parked proposal of the guest when its decision opens", () => {
+    const { hostSeq, guestSeq, settle, rejections } = legalSetup();
+    guestSeq.propose(k(1), "bad");
+    settle();
+    expect(hostSeq.parkedCount).toBe(1);
+    void hostSeq.awaitDecision(k(1));
+    settle();
+    expect(rejections).toEqual(["invalid"]);
+    expect(hostSeq.parkedCount).toBe(0);
+    expect(hostSeq.desync).toBeNull();
+  });
+
+  it("still stops at an illegal decision of the host's own (its state is what is wrong: a reload)", async () => {
+    const { hostSeq, settle } = legalSetup();
+    const onHost = hostSeq.awaitDecision(k(1));
+    hostSeq.propose(k(1), "bad");
+    settle();
+    await expect(onHost).rejects.toBeInstanceOf(DesyncError);
+  });
+});
+
+describe("Sequencer: a decision is made once", () => {
+  it("stops both clients when a key that was already used is awaited again, instead of waiting forever", async () => {
+    const { hostSeq, guestSeq, settle } = setup();
+    const first = [hostSeq.awaitDecision(k(1)), guestSeq.awaitDecision(k(1))];
+    hostSeq.propose(k(1), "a");
+    settle();
+    await Promise.all(first);
+
+    await expect(hostSeq.awaitDecision(k(1))).rejects.toBeInstanceOf(DesyncError);
+    await expect(guestSeq.awaitDecision([k(2), k(1)])).rejects.toThrow(/already made is awaited again/);
+    expect(hostSeq.desync).not.toBeNull();
+    expect(guestSeq.desync).not.toBeNull();
+  });
+
+  it("still hands over a decision that came before it was awaited (a late proposal is dropped, the decision is not)", async () => {
+    const { hostSeq, guestSeq, settle } = setup();
+    void hostSeq.awaitDecision(k(1));
+    hostSeq.propose(k(1), "a");
+    settle();
+    // the guest's simulation has not asked yet: it knows the decision, and its own late proposal would be a duplicate
+    expect(guestSeq.hasDecision(k(1))).toBe(true);
+    expect((await guestSeq.awaitDecision(k(1))).payload).toBe("a");
+    expect(guestSeq.desync).toBeNull();
+  });
+
+  it("lets a key be used again in a new epoch (the wave is played again)", async () => {
+    const { hostSeq, guestSeq, settle } = setup();
+    const first = [hostSeq.awaitDecision(k(1)), guestSeq.awaitDecision(k(1))];
+    hostSeq.propose(k(1), "a");
+    settle();
+    await Promise.all(first);
+    hostSeq.resetForEpoch(3);
+    guestSeq.resetForEpoch(3);
+    const again = [hostSeq.awaitDecision(k(1)), guestSeq.awaitDecision(k(1))];
+    hostSeq.propose(k(1), "b");
+    settle();
+    expect((await Promise.all(again)).map(d => d.payload)).toEqual(["b", "b"]);
+  });
+});
+
+describe("Sequencer: decisions ahead of a gap", () => {
+  it("stops when too many decisions wait for a gap that never closes", async () => {
+    const link = createManualLink();
+    const guest = new Sequencer({ role: "guest", transport: link.guest, maxEarly: 3 });
+    const pending = guest.awaitDecision(k(1));
+    for (const seq of [2, 3, 4]) {
+      link.guest.receive(sequenced(seq, k(seq)));
+    }
+    expect(guest.earlyCount).toBe(3);
+    expect(guest.desync).toBeNull();
+    link.guest.receive(sequenced(5, k(5)));
+    await expect(pending).rejects.toThrow(/ahead of a gap/);
+  });
+
+  it("stops at a decision that is far ahead of the next one", async () => {
+    const link = createManualLink();
+    const guest = new Sequencer({ role: "guest", transport: link.guest, maxEarly: 3 });
+    const pending = guest.awaitDecision(k(1));
+    link.guest.receive(sequenced(1_000_000, k(2)));
+    await expect(pending).rejects.toThrow(/ahead of a gap/);
+    expect(guest.earlyCount).toBe(0);
   });
 });
 

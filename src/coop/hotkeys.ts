@@ -34,6 +34,13 @@ const SCREENS: readonly UiMode[] = [
   UiMode.MODIFIER_SELECT,
 ];
 
+/**
+ * The screens where the ping does something: those, and a Mystery Encounter's options, where the player who waits watches
+ * the chooser's cursor and can ping (D29). The emote wheel stays off there: when the chooser picks, the encounter goes on
+ * with a plain change of mode, which would close the wheel only and leave the options drawn under it.
+ */
+const PING_SCREENS: readonly UiMode[] = [...SCREENS, UiMode.MYSTERY_ENCOUNTER];
+
 /** @returns What the player's cursor is on, for a ping; a nudge (nothing in particular) where it is on nothing */
 export function pingTargetOfCursor(): CosmeticTarget {
   const { ui } = globalScene;
@@ -58,7 +65,7 @@ export function pingTargetOfCursor(): CosmeticTarget {
 
 /** Ping what the cursor is on. @returns Whether the ping was sent */
 export function pingNow(): boolean {
-  if (!isLinked() || !SCREENS.includes(globalScene.ui.mode)) {
+  if (!isLinked() || !PING_SCREENS.includes(globalScene.ui.mode)) {
     return false;
   }
   return sendPing(pingTargetOfCursor());
@@ -67,7 +74,8 @@ export function pingNow(): boolean {
 /** Open the emote wheel: the six emotes in a menu over whatever is on screen. @returns Whether it opened */
 export function openEmoteWheel(): boolean {
   const { ui } = globalScene;
-  if (!isLinked() || !SCREENS.includes(ui.mode)) {
+  // A screen that is fading out (co-op) is on its way out: the wheel would open over the next one, whatever it is
+  if (!isLinked() || !SCREENS.includes(ui.mode) || ui.pendingCoopTransition !== null) {
     return false;
   }
   const options = Array.from({ length: EMOTE_COUNT }, (_, id) => ({

@@ -21,9 +21,17 @@ export interface ReliableOptions {
   tickMs?: number;
   /** How many out-of-order frame numbers an ack may list (selective ack). Default 64. */
   maxSackEntries?: number;
+  /**
+   * How far ahead of the next frame in order a frame may arrive and be held back. One further ahead is dropped; the sender
+   * sends it again until it is acknowledged, so nothing is lost. Default 256.
+   */
+  maxHeld?: number;
   /** Timers and clock. Default: real ones. */
   scheduler?: Scheduler;
 }
+
+/** The longest frame the relay forwards (`maxPayload` of the relay, `MAX_FRAME_CHARS` of the worker); a longer one is dropped */
+export const MAX_FRAME_CHARS = 1_048_576;
 
 export interface ReliableStats {
   /** Envelopes handed to {@linkcode ReliableTransport.send} */
@@ -36,6 +44,8 @@ export interface ReliableStats {
   duplicatesDropped: number;
   /** Data frames that arrived ahead of a gap and had to wait */
   heldBack: number;
+  /** Data frames that arrived too far ahead of a gap to be held, and were dropped (the sender sends them again) */
+  tooFarAhead: number;
   /** Frames that were not valid JSON or not an envelope */
   malformed: number;
   /** Volatile envelopes handed to {@linkcode ReliableTransport.sendVolatile} */
@@ -73,6 +83,7 @@ export class ReliableTransport implements MessageTransport {
     delivered: 0,
     duplicatesDropped: 0,
     heldBack: 0,
+    tooFarAhead: 0,
     malformed: 0,
     volatileSent: 0,
     volatileDelivered: 0,
@@ -101,6 +112,7 @@ export class ReliableTransport implements MessageTransport {
   private readonly maxRtoMs: number;
   private readonly tickMs: number;
   private readonly maxSackEntries: number;
+  private readonly maxHeld: number;
   private readonly scheduler: Scheduler;
 
   constructor(raw: RawTransport | null = null, options: ReliableOptions = {}) {
@@ -108,6 +120,7 @@ export class ReliableTransport implements MessageTransport {
     this.maxRtoMs = options.maxRtoMs ?? 2000;
     this.tickMs = options.tickMs ?? 25;
     this.maxSackEntries = options.maxSackEntries ?? 64;
+    this.maxHeld = options.maxHeld ?? 256;
     this.scheduler = options.scheduler ?? systemScheduler;
     if (raw) {
       this.attach(raw);
@@ -208,6 +221,10 @@ export class ReliableTransport implements MessageTransport {
   // #region Receiving
 
   private receiveFrame(text: string): void {
+    if (text.length > MAX_FRAME_CHARS) {
+      this.stats.malformed++;
+      return;
+    }
     let data: unknown;
     try {
       data = JSON.parse(text);
@@ -244,7 +261,7 @@ export class ReliableTransport implements MessageTransport {
       this.unacked.delete(n);
     }
     if (Array.isArray(selective)) {
-      for (const n of selective) {
+      for (const n of selective.slice(0, this.maxSackEntries)) {
         if (isFrameNumber(n)) {
           this.unacked.delete(n);
         }
@@ -269,6 +286,9 @@ export class ReliableTransport implements MessageTransport {
       }
     } else if (this.held.has(n)) {
       this.stats.duplicatesDropped++;
+    } else if (n > this.deliveredN + this.maxHeld || this.held.size >= this.maxHeld) {
+      // Not acknowledged, so an honest sender sends it again once the gap is closed: only a flood is lost
+      this.stats.tooFarAhead++;
     } else {
       this.held.set(n, body);
       this.stats.heldBack++;

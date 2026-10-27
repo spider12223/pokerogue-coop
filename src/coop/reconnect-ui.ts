@@ -113,9 +113,8 @@ export function showReconnectScreen(screen: ReconnectScreen): void {
       ui.showText(text, null, undefined, null, false);
     }
   });
-  if (!screen.back) {
-    offerEnd(screen);
-  }
+  // (the partner is back but their reload does not come: the same offer, after a longer wait)
+  offerEnd(screen.back ? { ...screen, endAfterMs: (screen.endAfterMs ?? END_SESSION_AFTER_MS) * 3 } : screen);
 }
 
 /** Take the screen down (the partner is back, the reload started, or the session ended) */

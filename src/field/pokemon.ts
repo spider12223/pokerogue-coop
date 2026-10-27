@@ -24,9 +24,9 @@ import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE, SHINY_EPIC_CHANCE, SHINY_V
 import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/signature-moves";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
 import { isLinked, reportBridgeError } from "#coop/bridge";
-import { coopSwitchFilter, isAllowedSwitch, switchTargets } from "#coop/control";
+import { coopSwitchFilter, giveOwnerOf, isAllowedSwitch, mayAddBeside, switchTargets } from "#coop/control";
 import { drawUniquePokemonId } from "#coop/pokemon-id";
-import { isCoop } from "#coop/session";
+import { getCoopSession, isCoop } from "#coop/session";
 import { ownerSeat, simAccount, writesForPokemon } from "#coop/sim-account";
 import { coopDecideSwitch } from "#coop/switch-bridge";
 import type { SuppressAbilitiesTag } from "#data/arena-tag";
@@ -6453,7 +6453,8 @@ export class PlayerPokemon extends Pokemon {
     if (evoSpecies?.speciesId === SpeciesId.NINCADA && evolution.speciesId === SpeciesId.NINJASK) {
       const newEvolution = speciesDataRegistry.getEvolutions(evoSpecies.speciesId)[1];
 
-      if (validateShedinjaEvo()) {
+      // Co-op (D10): the Shedinja is the Nincada owner's, within their cap of three
+      if (validateShedinjaEvo() && mayAddBeside(this)) {
         const newPokemon = globalScene.addPlayerPokemon(
           this.species,
           this.level,
@@ -6484,6 +6485,7 @@ export class PlayerPokemon extends Pokemon {
         newPokemon.fusionTeraType = this.fusionTeraType;
         newPokemon.usedTMs = this.usedTMs;
 
+        giveOwnerOf(this, newPokemon);
         globalScene.getPlayerParty().push(newPokemon);
         newPokemon.evolve(isFusion ? new FusionSpeciesFormEvolution(this.id, newEvolution) : newEvolution, evoSpecies);
         const modifiers = globalScene.findModifiers(
@@ -6618,6 +6620,8 @@ export class PlayerPokemon extends Pokemon {
     globalScene.updateModifiers(true, true);
     globalScene.removePartyMemberModifiers(fusedPartyMemberIndex);
     globalScene.getPlayerParty().splice(fusedPartyMemberIndex, 1)[0];
+    // Co-op (D7): the one fused away is no one's any more (the "keep one" rule of a trade counts owners)
+    getCoopSession()?.ownership.retain(globalScene.getPlayerParty().map(member => member.id));
     const newPartyMemberIndex = globalScene.getPlayerParty().indexOf(this);
     pokemon
       .getMoveset(true)

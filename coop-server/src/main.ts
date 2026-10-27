@@ -8,6 +8,7 @@ import { DEFAULT_MAX_DIR_BYTES } from "./client-logs.ts";
 import { DEFAULT_LIMITS, type RelayLimits } from "./limits.ts";
 import { DEFAULT_HOLD_MS } from "./relay-protocol.ts";
 import { startRelayServer } from "./relay-server.ts";
+import { logField } from "./untrusted.ts";
 
 /** A number from the environment, or the default when it is unset or not a number */
 function envNumber(name: string, fallback: number): number {
@@ -46,7 +47,10 @@ const limits: RelayLimits = {
   roomsPerMinute: envNumber("ROOMS_PER_MINUTE", DEFAULT_LIMITS.roomsPerMinute),
   messagesPerSecond: envNumber("MESSAGES_PER_SECOND", DEFAULT_LIMITS.messagesPerSecond),
   messageBurst: envNumber("MESSAGE_BURST", DEFAULT_LIMITS.messageBurst),
+  bytesPerSecond: envNumber("BYTES_PER_SECOND", DEFAULT_LIMITS.bytesPerSecond),
+  byteBurst: envNumber("BYTE_BURST", DEFAULT_LIMITS.byteBurst),
   maxDropsPerSocket: envNumber("MAX_DROPS_PER_SOCKET", DEFAULT_LIMITS.maxDropsPerSocket),
+  maxBufferedBytes: envNumber("MAX_BUFFERED_BYTES", DEFAULT_LIMITS.maxBufferedBytes),
   maxRooms: envNumber("MAX_ROOMS", DEFAULT_LIMITS.maxRooms),
   idleRoomMs: envNumber("IDLE_ROOM_MS", DEFAULT_LIMITS.idleRoomMs),
 };
@@ -86,3 +90,10 @@ const shutdown = (): void => {
 };
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+// The last resort once the server is up: a bug that one request reaches must not end every room with the process. Logged
+// (on one line, clipped), and the server goes on. A promise rejection nobody handles arrives here too (Node's default).
+process.on("uncaughtException", (error: unknown) => {
+  const text = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  log(`coop server: uncaught error, going on: ${logField(text, 4000)}`);
+});

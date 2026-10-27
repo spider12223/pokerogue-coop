@@ -33,6 +33,7 @@ import type { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
+import { getMoveTargets } from "#moves/move-utils";
 import { GameOverPhase } from "#phases/game-over-phase";
 import type { GameManager } from "#test/framework/game-manager";
 import {
@@ -99,8 +100,10 @@ export function attackCommand(
     .getEnemyField()
     .filter(enemy => enemy.isActive(true))
     .map(enemy => enemy.getBattlerIndex());
-  const target = enemies[enemyIndex] ?? enemies[0] ?? BattlerIndex.ENEMY;
   const player = game.scene.getPlayerField()[slot];
+  // A move that hits several (Tail Whip, Earthquake) names all of them, as the command phase does (D24)
+  const spread = getMoveTargets(player, moveId);
+  const targets = spread.multiple ? spread.targets : [enemies[enemyIndex] ?? enemies[0] ?? BattlerIndex.ENEMY];
   return {
     command: commandToWire({
       command: Command.FIGHT,
@@ -108,7 +111,7 @@ export function attackCommand(
         0,
         player.getMoveset().findIndex(move => move.moveId === moveId),
       ),
-      move: { move: moveId, targets: [target], useMode: MoveUseMode.NORMAL },
+      move: { move: moveId, targets, useMode: MoveUseMode.NORMAL },
     }),
     pre: commandToWire({ command: Command.FIGHT, targets: [slot], skip: true }),
   };

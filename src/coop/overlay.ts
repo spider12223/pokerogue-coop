@@ -19,20 +19,22 @@ import type { OptionSelectItem } from "#types/ui-types";
  */
 
 /**
- * Show a menu.
+ * Show a menu. While a co-op mode change is fading the screen, the menu waits for it and goes over the screen it brings:
+ * the screen under the menu, where closing it goes back to, is read when the menu opens.
  * @param options - What can be chosen; each handler runs after the menu is closed
- * @returns A function that closes the menu if it is still open
+ * @returns A function that closes the menu if it is still open (or that it does not open, if it is still waiting)
  */
 export function showOverlayMenu(options: OptionSelectItem[], maxOptions = options.length): () => void {
   const { ui } = globalScene;
-  const base = ui.mode;
+  /** The screen under the menu; `null` until the menu is open */
+  let base: UiMode | null = null;
   let open = true;
   const close = (): void => {
     if (!open) {
       return;
     }
     open = false;
-    if (ui.mode !== UiMode.OPTION_SELECT) {
+    if (base === null || ui.mode !== UiMode.OPTION_SELECT) {
       return;
     }
     if (base === UiMode.MESSAGE) {
@@ -48,6 +50,19 @@ export function showOverlayMenu(options: OptionSelectItem[], maxOptions = option
       return option.handler();
     },
   }));
-  void ui.setOverlayMode(UiMode.OPTION_SELECT, { options: wrapped, yOffset: 48, maxOptions });
+  const show = (): void => {
+    if (!open) {
+      return;
+    }
+    const pending = ui.pendingCoopTransition;
+    if (pending !== null) {
+      // The mode it lands on may be another fade's start, so this looks again once it is over
+      void pending.then(show, show);
+      return;
+    }
+    base = ui.mode;
+    void ui.setOverlayMode(UiMode.OPTION_SELECT, { options: wrapped, yOffset: 48, maxOptions });
+  };
+  show();
   return close;
 }
