@@ -47,3 +47,9 @@ coverage
 # Script outputs
 *.csv
 game-data-output/*
+# Co-op: Playwright output
+test-results/
+playwright-report/
+# Co-op: the Windows pack (scripts/pack-windows.ps1) and the Worker's local state (wrangler dev)
+pack-out/
+.wrangler/

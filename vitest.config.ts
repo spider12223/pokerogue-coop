@@ -7,7 +7,7 @@
 // NB: We cannot use `#XYZ` imports in this file since `vite-tsconfig-paths` has not been initialized yet.
 
 import type { UserConfig } from "vite";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { BaseSequencer, type TestSpecification } from "vitest/node";
 import { TEST_TIMEOUT } from "./test/constants.ts";
 import { CustomDefaultReporter } from "./test/reporters/custom-default-reporter.ts";
@@ -50,6 +50,8 @@ export default defineConfig(async config => {
       },
       name: "main",
       include: ["./test/**/*.{test,spec}.ts"],
+      // Co-op: Playwright specs run with `pnpm e2e`, the Phaser-free co-op tests with `pnpm test:coop`.
+      exclude: [...configDefaults.exclude, "./test/e2e/**", "./test/coop/**"],
     },
   } satisfies UserConfig;
 

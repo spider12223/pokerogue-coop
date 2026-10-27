@@ -17,4 +17,8 @@ export enum Button {
   SPEED_UP,
   SLOW_DOWN,
   DEV_CUSTOM,
+  /** Co-op (DECISIONS D16, D25): ping what the cursor is on */
+  COOP_PING,
+  /** Co-op: open the emote wheel */
+  COOP_EMOTE,
 }

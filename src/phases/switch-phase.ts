@@ -1,4 +1,8 @@
 import { globalScene } from "#app/global-scene";
+import { isLinked, reportBridgeError } from "#coop/bridge";
+import { coopSwitchFilter, isAllowedSwitch, type SwitchReason, switchTargets } from "#coop/control";
+import { isCoop } from "#coop/session";
+import { coopDecideSwitch } from "#coop/switch-bridge";
 import { PartyUiMode } from "#enums/party-ui-mode";
 import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";
@@ -35,6 +39,11 @@ export class SwitchPhase extends BattlePhase {
     this.doReturn = doReturn;
   }
 
+  /** Co-op: whether this is the replacement of a Pokémon that fainted (the only switch the arrange step may supersede) */
+  public get isFaintReplacement(): boolean {
+    return this.isModal && !this.doReturn;
+  }
+
   start() {
     super.start();
 
@@ -67,18 +76,59 @@ export class SwitchPhase extends BattlePhase {
         ? this.fieldIndex
         : 0;
 
+    // Co-op (D7): a faint is replaced from the owner's bench, then the partner's; any other switch from the controller's
+    // own. Nothing to choose from means no switch (upstream behaviour when there is no bench).
+    const reason = this.isModal && !this.doReturn ? "faint" : "voluntary";
+    if (isCoop() && switchTargets(fieldIndex, reason).length === 0) {
+      return super.end();
+    }
+
+    if (isLinked()) {
+      this.startSequenced(fieldIndex, reason);
+      return;
+    }
+
     globalScene.ui.setMode(
       UiMode.PARTY,
       this.isModal ? PartyUiMode.FAINT_SWITCH : PartyUiMode.POST_BATTLE_SWITCH,
       fieldIndex,
       (slotIndex: number, option: PartyOption) => {
-        if (slotIndex >= globalScene.currentBattle.getBattlerCount() && slotIndex < 6) {
+        if (
+          slotIndex >= globalScene.currentBattle.getBattlerCount()
+          && slotIndex < 6
+          && (!isCoop() || isAllowedSwitch(fieldIndex, slotIndex, reason))
+        ) {
           const switchType = option === PartyOption.PASS_BATON ? SwitchType.BATON_PASS : this.switchType;
           globalScene.phaseManager.unshiftNew("SwitchSummonPhase", switchType, fieldIndex, slotIndex, this.doReturn);
         }
         globalScene.ui.setMode(UiMode.MESSAGE).then(() => super.end());
       },
-      PartyUiHandler.FilterNonFainted,
+      isCoop()
+        ? coopSwitchFilter(fieldIndex, reason, PartyUiHandler.FilterNonFainted)
+        : PartyUiHandler.FilterNonFainted,
     );
+  }
+
+  /**
+   * Co-op with a network (D2, D7): the replacement is a sequenced decision. Whoever may pick sees the party screen, the
+   * other client waits, and both send the chosen Pokémon out when the decision comes back.
+   */
+  private startSequenced(fieldIndex: number, reason: SwitchReason): void {
+    const leaving = globalScene.getPlayerParty()[fieldIndex];
+    coopDecideSwitch({
+      fieldIndex,
+      reason,
+      leavingId: leaving.id,
+      partyMode: this.isModal ? PartyUiMode.FAINT_SWITCH : PartyUiMode.POST_BATTLE_SWITCH,
+    })
+      .then(({ partyIndex, baton }) => {
+        if (partyIndex !== null) {
+          const switchType = baton ? SwitchType.BATON_PASS : this.switchType;
+          globalScene.phaseManager.unshiftNew("SwitchSummonPhase", switchType, fieldIndex, partyIndex, this.doReturn);
+        }
+        return globalScene.ui.setMode(UiMode.MESSAGE);
+      })
+      .then(() => super.end())
+      .catch(reportBridgeError);
   }
 }

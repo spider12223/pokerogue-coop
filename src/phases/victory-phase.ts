@@ -1,5 +1,6 @@
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { isLoneEnemy } from "#coop/me-run";
 import { modifierTypes } from "#data/data-lists";
 import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";
@@ -30,11 +31,17 @@ export class VictoryPhase extends PokemonPhase {
       globalScene.gameData.gameStats.pokemonDefeated++;
     }
 
-    const expValue = this.getPokemon().getExpValue();
+    // Co-op (D29): the lone wild Pokémon of an encounter battle, made stronger, gives double the EXP
+    const lone = isMysteryEncounter && isLoneEnemy(this.getPokemon());
+    const expValue = this.getPokemon().getExpValue() * (lone ? 2 : 1);
     globalScene.applyPartyExp(expValue, true);
 
     if (isMysteryEncounter) {
       handleMysteryEncounterVictory(false, this.isExpOnly);
+      if (lone && !this.isExpOnly) {
+        // ... and the money of a trainer win
+        globalScene.phaseManager.unshiftNew("MoneyRewardPhase", 1);
+      }
       this.end();
       return;
     }

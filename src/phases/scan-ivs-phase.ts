@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { whenCoopBehind } from "#coop/pace-run";
 import type { BattlerIndex } from "#enums/battler-index";
 import { PERMANENT_STATS, type PermanentStat, Stat } from "#enums/stat";
 import { TextStyle } from "#enums/text-style";
@@ -54,8 +55,10 @@ export class ScanIvsPhase extends PokemonPhase {
       i18next.t("battle:ivScannerUseQuestion", { pokemonName: getPokemonNameWithAffix(pokemon) }),
       null,
       () => {
+        let answered = false;
         const options: ConfirmModeConfig = {
           yesHandler: () => {
+            answered = true;
             ui.setMode(UiMode.MESSAGE);
             ui.clearText();
             ui.getMessageHandler()
@@ -63,12 +66,19 @@ export class ScanIvsPhase extends PokemonPhase {
               .then(() => this.end());
           },
           noHandler: () => {
+            answered = true;
             ui.setMode(UiMode.MESSAGE);
             ui.clearText();
             this.end();
           },
         };
         ui.setMode(UiMode.CONFIRM, options);
+        // Co-op (D27): a question of this screen alone; the guest does not hold the run up on it once the host is past it
+        whenCoopBehind(() => {
+          if (!answered) {
+            options.noHandler();
+          }
+        });
       },
     );
   }

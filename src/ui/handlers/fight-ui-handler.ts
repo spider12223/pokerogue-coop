@@ -1,6 +1,7 @@
 import type { InfoToggle } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { sendIntent } from "#coop/cosmetic-view";
 import { getTypeDamageMultiplierColor } from "#data/type";
 import { BattleType } from "#enums/battle-type";
 import { Button } from "#enums/buttons";
@@ -304,6 +305,13 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     }
 
     this.setMoveInfo(cursor);
+
+    // Co-op (D16): the partner sees which move this player is looking at
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (phase.is("CommandPhase")) {
+      const pokemon = phase.getPokemon();
+      sendIntent(pokemon.id, pokemon.getMoveset()[cursor]?.moveId ?? null, null);
+    }
 
     if (!this.cursorObj) {
       const isTera = this.fromCommand === Command.TERA;

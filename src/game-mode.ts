@@ -36,6 +36,8 @@ interface GameModeConfig {
   isSplicedOnly?: boolean;
   isChallenge?: boolean;
   hasMysteryEncounters?: boolean;
+  /** Co-op run (see `src/coop/`): classic rules plus the co-op rules of DECISIONS.md */
+  isCoop?: boolean;
 }
 
 export class GameMode implements GameModeConfig {
@@ -54,6 +56,7 @@ export class GameMode implements GameModeConfig {
   public challenges: Challenge[];
   public battleConfig: FixedBattleConfigs;
   public hasMysteryEncounters: boolean;
+  public isCoop = false;
   public minMysteryEncounterWave: number;
   public maxMysteryEncounterWave: number;
 
@@ -464,6 +467,18 @@ export class GameMode implements GameModeConfig {
         return i18next.t("gameMode:challenge");
     }
   }
+}
+
+/**
+ * The game mode of a co-op run (DECISIONS D12, D29): classic with trainers and Mystery Encounters, without daily-run rules
+ * and challenges. It keeps {@linkcode GameModes.CLASSIC} as its id so saves, rankings and i18n treat it as classic.
+ */
+export function createCoopGameMode(): GameMode {
+  return new GameMode(
+    GameModes.CLASSIC,
+    { isClassic: true, hasTrainers: true, hasMysteryEncounters: true, isCoop: true },
+    classicFixedBattles,
+  );
 }
 
 export function getGameMode(gameMode: GameModes): GameMode {

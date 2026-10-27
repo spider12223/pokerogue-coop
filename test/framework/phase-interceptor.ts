@@ -1,6 +1,7 @@
 import type { BattleScene } from "#app/battle-scene";
 import type { Phase } from "#app/phase";
 import { PHASE_INTERCEPTOR_COLOR, PHASE_START_COLOR } from "#constants/colors";
+import { tracePhaseStart } from "#coop/checkpoints";
 import { UiMode } from "#enums/ui-mode";
 import { TEST_TIMEOUT } from "#test/constants";
 import type { GameManager } from "#test/framework/game-manager";
@@ -128,6 +129,7 @@ export class PhaseInterceptor {
     try {
       this.state = "running";
       this.logPhase(currentPhase.phaseName);
+      tracePhaseStart(currentPhase); // the stubbed `PhaseManager.startCurrentPhase` would have
       currentPhase.start();
       await vi.waitUntil(() => this.state !== "running", { interval: 50, timeout: TEST_TIMEOUT });
     } catch (error) {

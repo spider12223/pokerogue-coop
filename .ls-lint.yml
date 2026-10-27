@@ -36,3 +36,10 @@ ignore:
    - .devcontainer
    - "LICENSES"
    - .idea
+   - coop-server/node_modules
+   - coop-worker/node_modules
+   - coop-worker/.wrangler
+   - .wrangler
+   - pack-out
+   - test-results
+   - playwright-report

@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { coopPromptClosed, coopPromptOpened, coopTextAtOnce } from "#coop/pace-run";
 import { TextStyle } from "#enums/text-style";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { addBBCodeTextObject } from "#ui/text";
@@ -107,6 +108,10 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
   ) {
     if (delay === null || delay === undefined) {
       delay = 20;
+    }
+    // Co-op (D27): the host is past this line already, so the guest's screen shows it at once and moves on
+    if (prompt && coopTextAtOnce()) {
+      delay = 0;
     }
 
     // Pattern matching regex that checks for @c{}, @f{}, @s{}, and @f{} patterns within message text and parses them to their respective behaviors.
@@ -280,7 +285,10 @@ export abstract class MessageUiHandler extends AwaitableUiHandler {
     }
     this.pendingPrompt = false;
     this.awaitingActionInput = true;
+    // Co-op (D27): a line both screens show; the guest's closes by itself once the host is past it
+    const coopTicket = coopPromptOpened(this, this.message.text);
     this.onActionInput = () => {
+      coopPromptClosed(coopTicket);
       if (this.prompt) {
         this.prompt.anims.stop();
         this.prompt.setVisible(false);

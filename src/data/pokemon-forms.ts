@@ -1,4 +1,4 @@
-import { globalScene } from "#app/global-scene";
+import { ownerSeat, simAccount } from "#coop/sim-account";
 import { SpeciesFormChangeCompoundTrigger, type SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import type { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
@@ -92,5 +92,5 @@ export class SpeciesFormChangeCondition {
  * @returns A {@linkcode SpeciesFormChangeCondition} checking if that species is registered as caught
  */
 export function getSpeciesDependentFormChangeCondition(species: SpeciesId): SpeciesFormChangeCondition {
-  return new SpeciesFormChangeCondition(_p => !!globalScene.gameData.dexData[species].caughtAttr);
+  return new SpeciesFormChangeCondition(p => !!simAccount().getCaughtAttr(species, ownerSeat(p)));
 }

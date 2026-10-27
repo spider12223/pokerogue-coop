@@ -2,6 +2,7 @@ import { DAILY_BOSS_LEVEL } from "#app/constants";
 import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { currentSeedBlockId, simRandInt } from "#coop/sim-rng";
 import { isDailyFinalBoss } from "#data/daily-seed-utils";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
@@ -27,7 +28,6 @@ import type { TurnMove } from "#types/turn-move";
 import {
   isBetween,
   NumberHolder,
-  randInt,
   randomString,
   randSeedFloat,
   randSeedInt,
@@ -119,11 +119,13 @@ export class Battle {
     this.mysteryEncounterType = mysteryEncounterType;
     this.double = double;
 
+    // Co-op (D6): the classic finale is a double battle against its one boss, two of ours against one of it
+    const wildEnemyCount = double && !(gameMode.isCoop && this.isClassicFinalBoss) ? 2 : 1;
     this.enemyLevels =
       battleType === BattleType.TRAINER
         ? trainer?.getPartyLevels(this.waveIndex)
         : // TODO: Remove array.fill.map
-          new Array(double ? 2 : 1).fill(null).map(() => this.getLevelForWave());
+          new Array(wildEnemyCount).fill(null).map(() => this.getLevelForWave());
   }
 
   public get isClassicFinalBoss(): boolean {
@@ -589,7 +591,8 @@ export function getRandomTrainerFunc(
 
     let trainerGender = TrainerVariant.DEFAULT;
     if (randomGender) {
-      trainerGender = randInt(2) === 0 ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
+      trainerGender =
+        simRandInt("trainerGender", currentSeedBlockId(), 2) === 0 ? TrainerVariant.FEMALE : TrainerVariant.DEFAULT;
     }
 
     /* 1/3 chance for evil team grunts to be double battles */
@@ -608,7 +611,13 @@ export function getRandomTrainerFunc(
     const isEvilTeamGrunt = evilTeamGrunts.includes(choice);
 
     if (trainerConfigs[choice].hasDouble && isEvilTeamGrunt) {
-      return new Trainer(choice, randInt(3) === 0 ? TrainerVariant.DOUBLE : trainerGender);
+      // Co-op (D6): always the double variant
+      return new Trainer(
+        choice,
+        globalScene.gameMode.isCoop || simRandInt("gruntDouble", currentSeedBlockId(), 3) === 0
+          ? TrainerVariant.DOUBLE
+          : trainerGender,
+      );
     }
 
     return new Trainer(choice, trainerGender);

@@ -2,16 +2,25 @@ import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { TouchControl } from "#app/touch-controls";
+import { isDev } from "#constants/app-constants";
+import { bindCoopHotkeys } from "#coop/hotkey-names";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { UiMode } from "#enums/ui-mode";
 import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
-import { assign, getButtonWithKeycode, getIconForLatestInput, swap } from "#inputs/config-handler";
+import {
+  assign,
+  getButtonWithKeycode,
+  getIconForLatestInput,
+  getKeyWithSettingName,
+  swap,
+} from "#inputs/config-handler";
 import { PAD_DUALSHOCK } from "#inputs/pad-dualshock";
 import { PAD_GENERIC } from "#inputs/pad-generic";
 import { PAD_PROCON } from "#inputs/pad-procon";
 import { PAD_UNLICENSED_SNES } from "#inputs/pad-unlicensed-snes";
 import { PAD_XBOX360 } from "#inputs/pad-xbox360";
+import type { SettingKeyboard } from "#system/settings-keyboard";
 import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import type {
   CustomInterfaceConfig,
@@ -506,6 +515,17 @@ export class InputsController {
    * @param id The identifier string of the keyboard layout.
    * @returns InterfaceConfig The configuration object corresponding to the identified keyboard layout.
    */
+  /**
+   * The key the keyboard layout in use binds to a setting, as the player set it
+   * @returns Its name (`KEY_P`), or `undefined` if the setting has no key (co-op: the hint of a waiting player says which key pings)
+   */
+  getKeyboardKeyOf(settingName: SettingKeyboard): string | undefined {
+    const layout = this.selectedDevice[Device.KEYBOARD];
+    // (the mapping is made when the first key is pressed: until then the layout's own keys are the answer)
+    const custom = this.configs[layout]?.custom ?? this.getConfigKeyboard(layout).default;
+    return getKeyWithSettingName({ custom } as InterfaceConfig, settingName);
+  }
+
   getConfigKeyboard(id: string): InterfaceConfig {
     if (id === "default") {
       return CFG_KEYBOARD_QWERTY;
@@ -596,6 +616,8 @@ export class InputsController {
           mappingOverrides[mappingConfigs.custom[key as MappingConfigKey] as keyof typeof mappingOverrides];
       }
     }
+    // A mapping saved before the co-op keys existed gets P and Q back for them
+    bindCoopHotkeys(mappingConfigs.custom as Record<string, unknown>, isDev);
     this.configs[selectedDevice].custom = mappingConfigs.custom;
   }
 

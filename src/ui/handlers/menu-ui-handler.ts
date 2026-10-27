@@ -4,6 +4,9 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { bypassLogin, isApp, isBeta, isDev } from "#constants/app-constants";
+import { systemImportAvailable } from "#coop/import-account";
+import { endSession } from "#coop/resync-run";
+import { getCoopSession } from "#coop/session";
 import { AdminMode, getAdminModeName } from "#enums/admin-mode";
 import { Button } from "#enums/buttons";
 import { GameDataType } from "#enums/game-data-type";
@@ -289,7 +292,8 @@ export class MenuUiHandler extends OptionSelectUiHandler {
       },
       keepOpen: true,
     });
-    if (isBeta || isDev || isApp) {
+    // Co-op: also with local accounts (`bypassLogin`), so a co-op deploy can bring in a pokerogue.net account
+    if (systemImportAvailable()) {
       manageDataOptions.push({
         label: i18next.t("menuUiHandler:importData"),
         handler: () => {
@@ -660,6 +664,13 @@ export class MenuUiHandler extends OptionSelectUiHandler {
         }
         success = true;
         const doSaveQuit = () => {
+          const session = getCoopSession();
+          if (session !== null) {
+            // Co-op: the run is saved at the start of the wave, in the host's co-op slot (D19); here only this player's
+            // account is saved, and the session ends as "End session" does: the partner is told (D20)
+            void globalScene.gameData.saveSystem().finally(() => endSession(session));
+            return;
+          }
           ui.setMode(UiMode.LOADING, {
             buttonActions: [],
             fadeOut: () =>

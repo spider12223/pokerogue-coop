@@ -1,5 +1,11 @@
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
+import { deciderOf } from "#coop/control";
+import { biomeKey } from "#coop/decision-keys";
+import { type BiomePayload, isBiomePayload } from "#coop/prompt-payloads";
+import { DesyncError } from "#coop/sequencer";
+import { requireCoopSession } from "#coop/session";
 import { getDailyForcedBiomes } from "#data/daily-seed/daily-run";
 import { allBiomes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
@@ -56,6 +62,10 @@ export class SelectBiomePhase extends BattlePhase {
           : allBiomeLinks.filter(b => !Array.isArray(b) || !randSeedInt(b[1])).map(b => (Array.isArray(b) ? b[0] : b));
 
       if (biomes.length > 1 && globalScene.findModifier(m => m instanceof MapModifier)) {
+        if (isLinked()) {
+          this.chooseBiomeSequenced(biomes);
+          return;
+        }
         const biomeSelectItems = biomes.map(b => {
           return {
             label: getBiomeName(b),
@@ -96,6 +106,60 @@ export class SelectBiomePhase extends BattlePhase {
     }
 
     this.setNextBiomeAndEnd(this.generateNextBiome(nextWaveIndex));
+  }
+
+  /**
+   * Co-op with a network (D10): the picker of the most recent reward screen chooses the biome; the other client waits.
+   * The choices were drawn from the seeded stream, so both clients offer the same ones.
+   */
+  private chooseBiomeSequenced(biomes: BiomeId[]): void {
+    const decider = deciderOf({ kind: "BIOME" });
+    if (decider === null || decider === "either") {
+      throw new Error("co-op: a biome choice without a picker");
+    }
+    const session = requireCoopSession();
+    session.biomeChoices = biomes;
+    coopDecide<BiomePayload>({
+      key: biomeKey(globalScene.currentBattle.waveIndex),
+      decider,
+      ask: () =>
+        new Promise<BiomePayload>(resolve => {
+          const options: OptionSelectItem[] = biomes.map(b => ({
+            label: getBiomeName(b),
+            handler: () => {
+              globalScene.ui.setMode(UiMode.MESSAGE);
+              resolve({ biome: b });
+              return true;
+            },
+          }));
+          globalScene.ui.setMode(UiMode.OPTION_SELECT, {
+            options,
+            blockCancelButton: true,
+            inputDelay: 1000,
+            yOffset: 48,
+          } satisfies OptionSelectModeConfig);
+        }),
+      wait: () => {
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        globalScene.ui.showText(
+          coopText("partnerChoosesBiome", "{{partner}} is choosing the next biome…", {
+            partner: requireCoopSession().partnerName,
+          }),
+          null,
+        );
+      },
+      isPayload: isBiomePayload,
+    })
+      .then(({ payload, key, seq }) => {
+        session.biomeChoices = null;
+        const chosen = biomes.find(b => b === payload.biome);
+        if (chosen === undefined) {
+          throw new DesyncError("the sequenced biome is not one of the choices", { actual: key, seq });
+        }
+        globalScene.ui.setMode(UiMode.MESSAGE);
+        this.setNextBiomeAndEnd(chosen);
+      })
+      .catch(reportBridgeError);
   }
 
   private generateNextBiome(waveIndex: number): BiomeId {

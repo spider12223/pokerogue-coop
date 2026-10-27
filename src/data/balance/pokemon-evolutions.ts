@@ -1,6 +1,7 @@
 import type { determineEnemySpecies } from "#ai/ai-species-gen";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { ownerSeat, simAccount } from "#coop/sim-account";
 import { allMoves } from "#data/data-lists";
 import { type Gender, getGenderSymbol } from "#data/gender";
 import type { BiomeId } from "#enums/biome-id";
@@ -212,7 +213,7 @@ export class SpeciesEvolutionCondition {
           return ret;
         }
         case EvoCondKey.SPECIES_CAUGHT:
-          return !!globalScene.gameData.dexData[cond.speciesCaught].caughtAttr;
+          return !!simAccount().getCaughtAttr(cond.speciesCaught, ownerSeat(pokemon));
         case EvoCondKey.HELD_ITEM:
           return pokemon
             .getHeldItems()

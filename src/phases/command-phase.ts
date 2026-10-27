@@ -3,6 +3,11 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { isLinked, mySeat } from "#coop/bridge";
+import { controllerOf, isAllowedSwitch } from "#coop/control";
+import { isCoop } from "#coop/session";
+import { simAccount } from "#coop/sim-account";
+import { commandTargetPick } from "#coop/sim-rng";
 import { TrappedTag } from "#data/battler-tags";
 import { getDailyEventSeedBoss } from "#data/daily-run";
 import { isDailyFinalBoss } from "#data/daily-seed-utils";
@@ -82,7 +87,9 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
-    const allyCommand = globalScene.currentBattle.turnCommands[this.fieldIndex - 1];
+    // Co-op (D8): the ally's command is the partner's, and a Ball or Run of theirs is only settled once the partner has
+    // accepted it (`CoopTurnSyncPhase`)
+    const allyCommand = isLinked() ? undefined : globalScene.currentBattle.turnCommands[this.fieldIndex - 1];
     if (allyCommand?.command === Command.BALL || allyCommand?.command === Command.RUN) {
       globalScene.currentBattle.turnCommands[this.fieldIndex] = {
         command: allyCommand?.command,
@@ -91,16 +98,21 @@ export class CommandPhase extends FieldPhase {
     }
   }
 
+  /** Whether this pokemon is commanding its ally via {@linkcode AbilityId.COMMANDER} */
+  private isCommanding(): boolean {
+    return (
+      !!globalScene.currentBattle?.double
+      && this.getPokemon().getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon()
+    );
+  }
+
   /**
    * Submethod of {@linkcode start} that sets the turn command to skip if this pokemon
    * is commanding its ally via {@linkcode AbilityId.COMMANDER}.
    */
   private checkCommander(): void {
     // If the Pokemon has applied Commander's effects to its ally, skip this command
-    if (
-      globalScene.currentBattle?.double
-      && this.getPokemon().getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon()
-    ) {
+    if (this.isCommanding()) {
       globalScene.currentBattle.turnCommands[this.fieldIndex] = {
         command: Command.FIGHT,
         move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL },
@@ -175,6 +187,19 @@ export class CommandPhase extends FieldPhase {
 
     if (this.fieldIndex) {
       this.handleFieldIndexLogic();
+    }
+
+    // Co-op (D8): both players choose at once. The slot of the partner's Pokémon has nothing for this client to choose:
+    // its command comes with the sequenced decisions (`CoopTurnSyncPhase`), so this phase must not block the local slot.
+    if (isLinked() && controllerOf(this.fieldIndex) !== mySeat()) {
+      // The partner's client drops the moves at the front of the Pokémon's queue that it can no longer use (a rampage cut
+      // short by Torment or Disable) before it chooses: so does this one, or `MovePhase` takes another use mode from it.
+      // A Pokémon commanding its ally skips that (`checkCommander`)
+      if (!this.isCommanding() && !globalScene.currentBattle.turnCommands[this.fieldIndex]?.skip) {
+        this.clearUnusableMoves();
+      }
+      this.end();
+      return;
     }
 
     this.checkCommander();
@@ -277,8 +302,10 @@ export class CommandPhase extends FieldPhase {
     const moveTargets: MoveTargetSet =
       // `move.targets` normally shouldn't be `null`,
       // that check is to guard against bugs that can cause it to become `null`
+      // Co-op: a random target (Outrage) is drawn from a stream of its own, not the battle's: with a network only this
+      // client runs this for the Pokémon (`commandTargetPick`)
       move === undefined || move.targets == null
-        ? getMoveTargets(playerPokemon, moveId)
+        ? getMoveTargets(playerPokemon, moveId, undefined, commandTargetPick(playerPokemon, moveId))
         : {
             targets: move.targets,
             multiple: move.targets.length > 1,
@@ -354,20 +381,19 @@ export class CommandPhase extends FieldPhase {
    * @returns Whether a pokeball can be thrown
    */
   private checkCanUseBall(): boolean {
-    const { arena, currentBattle, gameData, gameMode } = globalScene;
+    const { arena, currentBattle, gameMode } = globalScene;
     const { battleType } = currentBattle;
     const { biomeId } = arena;
     const { isClassic, isEndless, isDaily } = gameMode;
-    const { dexData } = gameData;
+    const account = simAccount();
 
     const isClassicFinalBoss = gameMode.isBattleClassicFinalBoss(globalScene.currentBattle.waveIndex);
     const isEndlessMinorBoss = gameMode.isEndlessMinorBoss(globalScene.currentBattle.waveIndex);
     const isFullFreshStart = gameMode.isFullFreshStartChallenge();
     const someUncaughtSpeciesOnField = globalScene
       .getEnemyField()
-      .some(p => p.isActive() && !dexData[p.species.speciesId].caughtAttr);
-    const missingMultipleStarters =
-      gameData.getStarterCount(d => !!d.caughtAttr) < speciesDataRegistry.getAllStarters().length - 1;
+      .some(p => p.isActive() && !account.getCaughtAttr(p.species.speciesId, "host"));
+    const missingMultipleStarters = account.getStarterCaughtCount() < speciesDataRegistry.getAllStarters().length - 1;
     const isCatchableDailyBoss = isDailyFinalBoss() && (getDailyEventSeedBoss()?.catchable ?? false);
 
     if (biomeId === BiomeId.END && battleType === BattleType.WILD) {
@@ -454,7 +480,7 @@ export class CommandPhase extends FieldPhase {
         cursor,
       };
       globalScene.currentBattle.turnCommands[this.fieldIndex]!.targets = targets;
-      if (this.fieldIndex) {
+      if (this.fieldIndex && !isLinked()) {
         globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
       }
       return true;
@@ -546,6 +572,11 @@ export class CommandPhase extends FieldPhase {
       return false;
     }
 
+    // Co-op (D7): a voluntary switch can only bring in the controller's own bench
+    if (this.isSwitch && isCoop() && (cursor === undefined || !isAllowedSwitch(this.fieldIndex, cursor, "voluntary"))) {
+      return false;
+    }
+
     if (isBatonSwitch || !this.handleTrap()) {
       currentBattle.turnCommands[this.fieldIndex] = this.isSwitch
         ? {
@@ -556,7 +587,7 @@ export class CommandPhase extends FieldPhase {
         : {
             command: Command.RUN,
           };
-      if (!this.isSwitch && this.fieldIndex) {
+      if (!this.isSwitch && this.fieldIndex && !isLinked()) {
         currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
       }
       return true;
@@ -671,6 +702,11 @@ export class CommandPhase extends FieldPhase {
   }
 
   cancel() {
+    // Co-op (D8): only this player's own slots are reopened; the partner's command is not theirs to take back. A player
+    // with one slot has no earlier command of their own to go back to.
+    if (isLinked() && [0, 1].filter(slot => controllerOf(slot) === mySeat()).length < 2) {
+      return;
+    }
     if (this.fieldIndex) {
       globalScene.phaseManager.unshiftNew("CommandPhase", 0);
       globalScene.phaseManager.unshiftNew("CommandPhase", 1);

@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { coopRunNames } from "#coop/labels";
+import { coopText } from "#coop/text";
 import { BattleType } from "#enums/battle-type";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
@@ -368,7 +370,8 @@ class RunEntryContainer extends Phaser.GameObjects.Container {
         mode = i18next.t("gameMode:challenge");
         break;
     }
-    gameModeLabel.appendText(mode, false);
+    // A co-op run keeps the id of classic (DECISIONS D12), and says so here
+    gameModeLabel.appendText(run.coop === undefined ? mode : coopText("coopMode", "Co-op"), false);
     if (data.gameMode === GameModes.SPLICED_ENDLESS) {
       const splicedIcon = globalScene.add.image(0, 0, "icon_spliced");
       splicedIcon.setScale(0.75);
@@ -383,7 +386,13 @@ class RunEntryContainer extends Phaser.GameObjects.Container {
     gameModeLabel.appendText(i18next.t("saveSlotSelectUiHandler:wave") + " " + data.waveIndex, false);
     this.add(gameModeLabel);
 
-    const timestampLabel = addTextObject(8, 33, new Date(data.timestamp).toLocaleString(), TextStyle.WINDOW);
+    // A co-op run says who played it, in the place of the time (which is in the run's details)
+    const timestampLabel = addTextObject(
+      8,
+      33,
+      run.coop === undefined ? new Date(data.timestamp).toLocaleString() : coopRunNames(run.coop.names),
+      TextStyle.WINDOW,
+    );
     this.add(timestampLabel);
 
     // pokemonIconsContainer holds the run's party Pokemon icons and levels

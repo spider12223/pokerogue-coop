@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { coopSettingLabel } from "#coop/hotkey-names";
 import { Button } from "#enums/buttons";
 import type { Device } from "#enums/devices";
 import { TextStyle } from "#enums/text-style";
@@ -193,7 +194,8 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
         const isLock = this.settingBlacklisted.includes(this.setting[setting]);
         const labelStyle = isLock ? TextStyle.SETTINGS_LOCKED : TextStyle.SETTINGS_LABEL;
         const isAlt = setting.includes("ALT");
-        const labelText = i18next.t(`settings:${i18nKey}`) + (isAlt ? i18next.t("settings:alt") : "");
+        const labelText =
+          i18next.t(`settings:${i18nKey}`, coopSettingLabel(i18nKey)) + (isAlt ? i18next.t("settings:alt") : "");
         settingLabels[s] = addTextObject(8, 28 + s * 16, labelText, labelStyle) //
           .setOrigin(0);
         optionsContainer.add(settingLabels[s]);

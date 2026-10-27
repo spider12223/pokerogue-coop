@@ -7,6 +7,8 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
+import { sourceUrlOf } from "#coop/source-link";
+import { coopText } from "#coop/text";
 import { getSplashMessages } from "#data/splash-messages";
 import { SpeciesId } from "#enums/species-id";
 import { TextStyle } from "#enums/text-style";
@@ -116,6 +118,19 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       this.splashMessageText,
       this.appVersionText,
     ]);
+
+    // The source of this build, as the AGPL asks of a service that runs a modified version (D25)
+    const source = sourceUrlOf(import.meta.env.VITE_SOURCE_URL);
+    if (source !== null) {
+      const link = addTextObject(2, height - 11, coopText("sourceLink", "Source"), TextStyle.MESSAGE, {
+        fontSize: "54px",
+      })
+        .setOrigin(0, 0)
+        .setName("source-link")
+        .setInteractive({ useHandCursor: true });
+      link.on("pointerup", () => window.open(source, "_blank", "noopener")?.focus());
+      this.titleContainer.add(link);
+    }
 
     eventBus.on("settings/update/success", ({ key }: SettingsUpdateEventArgs) => {
       if (key === "hideUsername" || key === "playerGender") {

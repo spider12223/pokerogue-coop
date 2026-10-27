@@ -28,6 +28,9 @@ import { TurnCommandManager } from "#app/turn-command-manager";
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
+import { arrangeCoopParty } from "#coop/arrange";
+import { withCoopDoubleVariant } from "#coop/doubles";
+import { getCoopSession } from "#coop/session";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { getDailyMysteryEncounter } from "#data/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
@@ -1154,7 +1157,7 @@ export class BattleScene extends SceneBase {
 
     // Reset RNG after end of game or save & quit.
     // This needs to happen after clearing this.currentBattle or the seed will be affected by the last wave played
-    this.setSeed(activeOverrides.SEED_OVERRIDE || randomString(24));
+    this.setSeed(activeOverrides.SEED_OVERRIDE || getCoopSession()?.runSeed || randomString(24));
     console.log("Seed:", this.seed);
     this.resetSeed();
 
@@ -1395,6 +1398,10 @@ export class BattleScene extends SceneBase {
     this.executeWithSeedOffset(
       () => {
         trainer = battleConfig.getTrainer();
+        // Co-op (D6): a trainer that has a double variant uses it
+        if (this.gameMode.isCoop) {
+          trainer = withCoopDoubleVariant(trainer);
+        }
       },
       // TODO: This is only used to ensure evil team leaders get pre-generated as the same team, which is EXTREMELY susceptible to internal RNG changes
       // Instead, the save data can store the evil team/gym leader preset used upon run creation
@@ -1470,7 +1477,8 @@ export class BattleScene extends SceneBase {
     ) {
       doubleTrainer = false;
     } else {
-      doubleTrainer = randSeedInt(this.getDoubleBattleChance(waveIndex)) === 0;
+      // Co-op: a trainer that has a double variant always uses it
+      doubleTrainer = this.gameMode.isCoop || randSeedInt(this.getDoubleBattleChance(waveIndex)) === 0;
     }
 
     const overrideVariant = doubleTrainer
@@ -1491,6 +1499,11 @@ export class BattleScene extends SceneBase {
     const doubleBattleOverride = this.doCheckDoubleOverride(waveIndex);
     if (doubleBattleOverride != null) {
       return doubleBattleOverride;
+    }
+
+    // Co-op (D6): every battle is a double. The classic finale too: its enemy side stays one Pokémon (see `Battle`).
+    if (this.gameMode.isCoop) {
+      return true;
     }
 
     // Edge cases
@@ -1561,6 +1574,11 @@ export class BattleScene extends SceneBase {
       for (const pokemon of playerField) {
         pokemon.lapseTag(BattlerTagType.COMMANDED);
       }
+    }
+
+    // Co-op: put the two seats' Pokémon into the two slots first (D7); the phase below then recalls and sends out
+    if (this.gameMode.isCoop) {
+      arrangeCoopParty();
     }
 
     // Recalls, repositions and sends out the player's Pokemon as needed for the new battle
@@ -3045,13 +3063,25 @@ export class BattleScene extends SceneBase {
   }
 
   validateVoucher(voucher: Voucher, args?: unknown[]): boolean {
-    if (!Object.hasOwn(this.gameData.voucherUnlocks, voucher.id) && voucher.validate(args)) {
-      this.gameData.voucherUnlocks[voucher.id] = Date.now();
-      this.ui.achvBar.showAchv(voucher);
+    if (this.recordVoucherUnlock(voucher, args)) {
       this.gameData.voucherCounts[voucher.voucherType]++;
       return true;
     }
 
+    return false;
+  }
+
+  /**
+   * Record that this account unlocked a voucher, without giving it (co-op gives a boss's voucher through the reward phase
+   * on both clients, D30)
+   * @returns Whether it was unlocked now
+   */
+  recordVoucherUnlock(voucher: Voucher, args?: unknown[]): boolean {
+    if (!Object.hasOwn(this.gameData.voucherUnlocks, voucher.id) && voucher.validate(args)) {
+      this.gameData.voucherUnlocks[voucher.id] = Date.now();
+      this.ui.achvBar.showAchv(voucher);
+      return true;
+    }
     return false;
   }
 

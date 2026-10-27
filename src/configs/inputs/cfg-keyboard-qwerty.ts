@@ -220,6 +220,8 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     [SettingKeyboard.ALT_BUTTON_SLOW_DOWN]: Button.SLOW_DOWN,
     [SettingKeyboard.ALT_BUTTON_CYCLE_TERA]: Button.CYCLE_TERA,
     ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: Button.DEV_CUSTOM } : {}),
+    [SettingKeyboard.BUTTON_COOP_PING]: Button.COOP_PING,
+    [SettingKeyboard.BUTTON_COOP_EMOTE]: Button.COOP_EMOTE,
   },
   default: {
     KEY_ARROW_UP: SettingKeyboard.BUTTON_UP,
@@ -249,8 +251,9 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     KEY_L: -1,
     KEY_M: SettingKeyboard.ALT_BUTTON_MENU,
     KEY_O: -1,
-    KEY_P: -1,
-    KEY_Q: isDev ? SettingKeyboard.BUTTON_DEV_CUSTOM : -1,
+    KEY_P: SettingKeyboard.BUTTON_COOP_PING,
+    // (a development build has its own use for Q: the emote wheel is not on a key there until one is chosen)
+    KEY_Q: isDev ? SettingKeyboard.BUTTON_DEV_CUSTOM : SettingKeyboard.BUTTON_COOP_EMOTE,
     KEY_S: SettingKeyboard.ALT_BUTTON_DOWN,
     KEY_T: SettingKeyboard.ALT_BUTTON_CYCLE_FORM,
     KEY_U: -1,

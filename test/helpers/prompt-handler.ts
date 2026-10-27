@@ -40,6 +40,7 @@ const endBySetMode: readonly PhaseString[] = [
   "SelectGenderPhase",
   "SelectStarterPhase",
   "SelectModifierPhase",
+  "CoopTradePhase",
   "MysteryEncounterPhase",
   "PostMysteryEncounterPhase",
 ];

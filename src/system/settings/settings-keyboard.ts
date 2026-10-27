@@ -42,6 +42,9 @@ export enum SettingKeyboard {
   BUTTON_SUBMIT = "BUTTON_SUBMIT",
   ALT_BUTTON_SUBMIT = "ALT_BUTTON_SUBMIT",
   BUTTON_DEV_CUSTOM = "BUTTON_DEV_CUSTOM",
+  /** Co-op: the ping and the emote wheel (DECISIONS D16) */
+  BUTTON_COOP_PING = "BUTTON_COOP_PING",
+  BUTTON_COOP_EMOTE = "BUTTON_COOP_EMOTE",
 }
 
 const pressAction = i18next.t("settings:pressToBind");
@@ -83,6 +86,8 @@ export const settingKeyboardOptions = {
   [SettingKeyboard.ALT_BUTTON_SLOW_DOWN]: [`KEY ${Button.SLOW_DOWN.toString()}`, pressAction],
   [SettingKeyboard.ALT_BUTTON_SUBMIT]: [`KEY ${Button.SUBMIT.toString()}`, pressAction],
   ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: [`KEY ${Button.DEV_CUSTOM.toString()}`, pressAction] } : {}),
+  [SettingKeyboard.BUTTON_COOP_PING]: [`KEY ${Button.COOP_PING.toString()}`, pressAction],
+  [SettingKeyboard.BUTTON_COOP_EMOTE]: [`KEY ${Button.COOP_EMOTE.toString()}`, pressAction],
 };
 
 export const settingKeyboardDefaults = {
@@ -123,6 +128,8 @@ export const settingKeyboardDefaults = {
   [SettingKeyboard.ALT_BUTTON_SLOW_DOWN]: 0,
   [SettingKeyboard.ALT_BUTTON_SUBMIT]: 0,
   ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: 0 } : {}),
+  [SettingKeyboard.BUTTON_COOP_PING]: 0,
+  [SettingKeyboard.BUTTON_COOP_EMOTE]: 0,
 };
 
 export const settingKeyboardBlackList = [
@@ -172,6 +179,8 @@ export function setSettingKeyboard(setting: SettingKeyboard, value: number): boo
     case SettingKeyboard.ALT_BUTTON_SLOW_DOWN:
     case SettingKeyboard.ALT_BUTTON_SUBMIT:
     case SettingKeyboard.BUTTON_DEV_CUSTOM:
+    case SettingKeyboard.BUTTON_COOP_PING:
+    case SettingKeyboard.BUTTON_COOP_EMOTE:
       if (value && globalScene.ui) {
         const cancelHandler = (success = false): boolean => {
           globalScene.ui.revertMode();

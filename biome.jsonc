@@ -310,7 +310,7 @@
       "arrowParentheses": "asNeeded",
       "operatorLinebreak": "before"
     },
-    "globals": ["Phaser"],
+    "globals": ["Phaser", "__COOP_GIT_SHA__", "__COOP_DIRTY_HASH__"],
     "parser": {
       "jsxEverywhere": false
     }
@@ -408,6 +408,13 @@
       "includes": ["src/data/balance/moves/egg-moves.ts"],
       "formatter": {
         "lineWidth": 150
+      }
+    },
+    // The co-op relay on Cloudflare Workers runs in the Workers runtime, which has its own globals
+    {
+      "includes": ["coop-worker/**/*.ts"],
+      "javascript": {
+        "globals": ["WebSocketPair"]
       }
     }
   ]

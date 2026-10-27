@@ -63,6 +63,7 @@
       "#biomes/*": ["./src/data/balance/biomes/*.ts"],
       "#balance/*": ["./src/data/balance/species/*.ts", "./src/data/balance/moves/*.ts", "./src/data/balance/*.ts"],
       "#constants/*": ["./src/constants/*.ts"],
+      "#coop/*": ["./src/coop/*.ts"],
       "#enums/*": ["./src/enums/*.ts"],
       "#events/*": ["./src/events/*.ts"],
       "#field/*": ["./src/field/*.ts"],

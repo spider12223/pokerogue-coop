@@ -2,6 +2,9 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { passOwnership } from "#coop/me-run";
+import { isCoop } from "#coop/session";
+import { writesForPokemon } from "#coop/sim-account";
 import { modifierTypes } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
 import type { PokemonSpecies } from "#data/pokemon-species";
@@ -201,6 +204,8 @@ export const WeirdDreamEncounter: MysteryEncounter = MysteryEncounterBuilder.wit
         for (const transformation of globalScene.currentBattle.mysteryEncounter!.misc.teamTransformations) {
           globalScene.removePokemonFromPlayerParty(transformation.previousPokemon, false);
           globalScene.getPlayerParty().push(transformation.newPokemon);
+          // Co-op (D29): each new Pokémon belongs to the owner of the one it replaces
+          passOwnership(transformation.previousPokemon, transformation.newPokemon);
         }
       })
       .withOptionPhase(async () => {
@@ -424,6 +429,11 @@ function getTeamTransformations(): PokemonTransformation[] {
     } else {
       newBstRange = STANDARD_BST_TRANSFORM_BASE_VALUES;
     }
+    // Co-op (D29): `getTransformedSpecies` widens the range it is given, which would widen these constants for the rest of
+    // the page's life; a client that reloaded (or played this encounter before) would then draw other species
+    if (isCoop()) {
+      newBstRange = [...newBstRange];
+    }
 
     const newSpecies = getTransformedSpecies(
       bst,
@@ -564,8 +574,10 @@ async function postProcessTransformedPokemon(
   newPokemon.nature = [Nature.HARDY, Nature.DOCILE, Nature.BASHFUL, Nature.QUIRKY, Nature.SERIOUS][randSeedInt(5)];
 
   // For pokemon at/below 570 BST or any shiny pokemon, unlock it permanently as if you had caught it
+  // (co-op, D4a: in its owner's account)
   if (
     !forBattle
+    && writesForPokemon(newPokemon)
     && (newPokemon.getSpeciesForm().getBaseStatTotal() <= NON_LEGENDARY_BST_THRESHOLD || newPokemon.isShiny())
   ) {
     if (
@@ -611,7 +623,7 @@ async function postProcessTransformedPokemon(
   });
 
   // For pokemon that the player owns (including ones just caught), gain a candy
-  if (!forBattle && globalScene.gameData.dexData[speciesRootForm].caughtAttr) {
+  if (!forBattle && writesForPokemon(newPokemon) && globalScene.gameData.dexData[speciesRootForm].caughtAttr) {
     globalScene.gameData.addStarterCandy(speciesRootForm, 1);
   }
 
@@ -809,7 +821,12 @@ async function addEggMoveToNewPokemonMoveset(
       }
 
       // For pokemon that the player owns (including ones just caught), unlock the egg move
-      if (!forBattle && randomEggMoveIndex != null && globalScene.gameData.dexData[speciesRootForm].caughtAttr) {
+      if (
+        !forBattle
+        && randomEggMoveIndex != null
+        && writesForPokemon(newPokemon)
+        && globalScene.gameData.dexData[speciesRootForm].caughtAttr
+      ) {
         await globalScene.gameData.setEggMoveUnlocked(
           speciesDataRegistry.getSpecies(speciesRootForm),
           randomEggMoveIndex,

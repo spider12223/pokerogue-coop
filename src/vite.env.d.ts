@@ -14,6 +14,12 @@ interface ImportMetaEnv {
   readonly VITE_BYPASS_TUTORIAL?: "0" | "1";
   readonly VITE_API_BASE_URL?: HTTP_URL;
   readonly VITE_SERVER_URL?: HTTP_URL;
+  /** The co-op relay, for example `wss://relay.example.com/coop`; default `/coop` of the page's own origin (D22) */
+  readonly VITE_COOP_RELAY_URL?: string;
+  /** The repository of this fork, linked from the title screen (D25); a production build needs it */
+  readonly VITE_SOURCE_URL?: string;
+  /** `1` in the image the browser tests run against: it has the debug API `window.__coop`. Never in a deployed image. */
+  readonly VITE_COOP_E2E?: "0" | "1";
   readonly VITE_DISCORD_CLIENT_ID?: string;
   readonly VITE_GOOGLE_CLIENT_ID?: string;
   readonly VITE_I18N_DEBUG?: "0" | "1";
@@ -28,3 +34,7 @@ interface ImportMetaEnv {
 interface ViteTypeOptions {
   strictImportMetaEnv: unknown;
 }
+
+/** Co-op build identity, injected by `vite.config.ts` (see `src/coop/build-info.ts`). */
+declare const __COOP_GIT_SHA__: string;
+declare const __COOP_DIRTY_HASH__: string;

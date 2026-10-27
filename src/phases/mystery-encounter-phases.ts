@@ -1,6 +1,19 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
+import { arrangeCoopParty } from "#coop/arrange";
+import { isLinked, reportBridgeError } from "#coop/bridge";
+import { getCosmeticView } from "#coop/cosmetic-view";
+import {
+  askWhoGoes,
+  beginCoopEncounter,
+  choosableOptions,
+  isOnePokemonEncounter,
+  meDecide,
+  queueLoneEnemyBoost,
+  showChooserWaiting,
+} from "#coop/me-run";
+import { isCoop } from "#coop/session";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
@@ -12,9 +25,13 @@ import { UiMode } from "#enums/ui-mode";
 import { IvScannerModifier } from "#modifiers/modifier";
 import { getEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-utils";
-import { transitionMysteryEncounterIntroVisuals } from "#mystery-encounters/encounter-phase-utils";
+import {
+  leaveEncounterWithoutBattle,
+  transitionMysteryEncounterIntroVisuals,
+} from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption, OptionPhaseCallback } from "#mystery-encounters/mystery-encounter-option";
 import { SeenEncounterData } from "#mystery-encounters/mystery-encounter-save-data";
+import type { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
 import { randSeedItem } from "#utils/common";
 import { inSpeedOrder } from "#utils/speed-order-generator";
 import i18next from "i18next";
@@ -60,10 +77,89 @@ export class MysteryEncounterPhase extends Phase {
       globalScene.mysteryEncounterSaveData.encounteredEvents.push(
         new SeenEncounterData(encounter.encounterType, encounter.encounterTier, globalScene.currentBattle.waveIndex),
       );
+      if (isLinked()) {
+        beginCoopEncounter();
+        if (isOnePokemonEncounter(encounter.encounterType)) {
+          // Co-op (D29): only one Pokémon takes part; the host first decides who goes, or that nobody does
+          askWhoGoes(encounter.encounterType)
+            .then(seat => (seat === null ? this.coopLeave() : this.showOptions()))
+            .catch(reportBridgeError);
+          return;
+        }
+      }
     }
 
-    // Initiates encounter dialogue window and option select
-    globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
+    this.showOptions();
+  }
+
+  /** Initiates encounter dialogue window and option select */
+  private showOptions(): void {
+    const shown = globalScene.ui.setMode(UiMode.MYSTERY_ENCOUNTER, this.optionSelectSettings);
+    if (isLinked()) {
+      // Co-op (D29): the chooser picks the option, as a sequenced decision that both clients carry out
+      shown.then(() => this.coopChooseOption());
+    }
+  }
+
+  /** Co-op (D29): nobody goes in a one-Pokémon encounter: it is left without a battle, and its shop of healing items opens */
+  private async coopLeave(): Promise<void> {
+    await transitionMysteryEncounterIntroVisuals(true, true);
+    leaveEncounterWithoutBattle(true);
+    this.end();
+  }
+
+  /** Co-op: the answer to the open option decision, while this client is the one who picks (or takes it over, D17) */
+  private coopAnswer: ((index: number) => void) | null = null;
+
+  /** Co-op (D29): ask the chooser which option; both clients carry it out, and ask again if it led back here */
+  private coopChooseOption(): void {
+    const encounter = globalScene.currentBattle.mysteryEncounter!;
+    const options = this.optionSelectSettings?.overrideOptions ?? encounter.options;
+    meDecide(
+      { k: "option", enabled: choosableOptions(options) },
+      () =>
+        new Promise(resolve => {
+          this.coopAnswer = index => resolve({ k: "option", index });
+          // the encounter's question again (a taker waited a moment ago, D17), and the partner's screen follows this
+          // player's cursor from where it is now
+          if (globalScene.ui.mode === UiMode.MYSTERY_ENCOUNTER) {
+            const handler = globalScene.ui.getHandler() as MysteryEncounterUiHandler;
+            handler.setWaitingLine(null);
+            handler.announceCursor();
+          }
+        }),
+      // the other player keeps the screen, read-only, and its cursor follows the chooser's
+      () => {
+        showChooserWaiting();
+        getCosmeticView()?.drawMeCursor();
+      },
+    )
+      .then(({ index }) => {
+        this.coopAnswer = null;
+        if (!this.handleOptionSelect(options[index], index)) {
+          this.coopChooseOption();
+        }
+      })
+      .catch(reportBridgeError);
+  }
+
+  /** Co-op: whether this client picks the open option decision (the chooser, or a taker, D17) */
+  public coopChoosing(): boolean {
+    return this.coopAnswer !== null;
+  }
+
+  /**
+   * Co-op: this player picked option `index` on the screen.
+   * @returns Whether it counts: only the chooser's pick does (or a taker's, D17)
+   */
+  public coopPick(index: number): boolean {
+    const answer = this.coopAnswer;
+    if (answer === null) {
+      return false;
+    }
+    this.coopAnswer = null;
+    answer(index);
+    return true;
   }
 
   /**
@@ -93,11 +189,16 @@ export class MysteryEncounterPhase extends Phase {
 
     if (option.onPreOptionPhase) {
       globalScene.executeWithSeedOffset(async () => {
-        return await option.onPreOptionPhase!().then(result => {
+        const preOption = option.onPreOptionPhase!().then(result => {
           if (result == null || result) {
             this.continueEncounter();
+          } else if (isLinked()) {
+            // Co-op (D29): the chooser went back to the options: a new decision
+            this.coopChooseOption();
           }
         });
+        // Co-op: a decision of a world that was reloaded rejects (D18); anything else is reported
+        return await (isLinked() ? preOption.catch(reportBridgeError) : preOption);
       }, globalScene.currentBattle.mysteryEncounter?.getSeedOffset());
     } else {
       this.continueEncounter();
@@ -187,17 +288,23 @@ export class MysteryEncounterOptionSelectedPhase extends Phase {
     if (globalScene.currentBattle.mysteryEncounter?.autoHideIntroVisuals) {
       transitionMysteryEncounterIntroVisuals().then(() => {
         globalScene.executeWithSeedOffset(() => {
-          this.onOptionSelect().finally(() => {
-            this.end();
-          });
+          this.runOption();
         }, globalScene.currentBattle.mysteryEncounter?.getSeedOffset() * 500);
       });
     } else {
       globalScene.executeWithSeedOffset(() => {
-        this.onOptionSelect().finally(() => {
-          this.end();
-        });
+        this.runOption();
       }, globalScene.currentBattle.mysteryEncounter?.getSeedOffset() * 500);
+    }
+  }
+
+  private runOption(): void {
+    const done = this.onOptionSelect().finally(() => {
+      this.end();
+    });
+    // Co-op: a decision of a world that was reloaded rejects (D18); anything else is reported
+    if (isLinked()) {
+      done.catch(reportBridgeError);
     }
   }
 }
@@ -288,6 +395,12 @@ export class MysteryEncounterBattlePhase extends Phase {
    */
   start() {
     super.start();
+
+    // Co-op (D7, D29): what the encounter did to the party (a Pokémon taken, one added) may have moved the leads. The
+    // party is off the field before an encounter's battle, so the arrange step only reorders it.
+    if (isCoop() && !globalScene.getPlayerParty().some(pokemon => pokemon.isOnField())) {
+      arrangeCoopParty();
+    }
 
     this.doMysteryEncounterBattle();
   }
@@ -445,6 +558,11 @@ export class MysteryEncounterBattlePhase extends Phase {
           globalScene.phaseManager.pushNew("CheckSwitchPhase", 1, globalScene.currentBattle.double);
         }
       }
+    }
+
+    // Co-op (D29): a lone wild Pokémon against two is stronger, once both sides are out
+    if (isCoop()) {
+      queueLoneEnemyBoost();
     }
 
     globalScene.phaseManager.pushNew("InitEncounterPhase");

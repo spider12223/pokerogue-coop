@@ -5,6 +5,15 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE } from "#balance/rates";
+import { isLinked } from "#coop/bridge";
+import {
+  coopEncounterDouble,
+  coopSelectOptionThenPokemon,
+  coopSelectPokemonForOption,
+  markLoneEnemy,
+} from "#coop/me-run";
+import { drawUniquePokemonId } from "#coop/pokemon-id";
+import { isCoop } from "#coop/session";
 import { initMoveAnim, loadMoveAnimAssets } from "#data/battle-anims";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";
@@ -143,6 +152,11 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
   const battle: Battle = globalScene.currentBattle;
 
   let doubleBattle: boolean = partyConfig?.doubleBattle ?? false;
+  // Co-op (D29): every encounter battle is a double, two against two (a one-Pokémon encounter's party stays single)
+  const coopDouble = coopEncounterDouble();
+  if (coopDouble) {
+    doubleBattle = true;
+  }
 
   // Trainer
   const trainerType = partyConfig?.trainerType;
@@ -158,7 +172,8 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
     trainerConfig = partyTrainerConfig ? partyTrainerConfig : trainerConfigs[trainerType!];
 
     const doubleTrainer = trainerConfig.doubleOnly || (trainerConfig.hasDouble && !!partyConfig.doubleBattle);
-    doubleBattle = doubleTrainer;
+    // Co-op: a single trainer still sends out two at a time
+    doubleBattle = doubleTrainer || coopDouble;
     const trainerFemale = partyConfig.female == null ? !!randSeedInt(2) : partyConfig.female;
     const newTrainer = new Trainer(
       trainerConfig.trainerType,
@@ -175,6 +190,10 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
     loadEnemyAssets.push(newTrainer.loadAssets().then(() => newTrainer.initSprite()));
 
     battle.enemyLevels = globalScene.currentBattle.trainer.getPartyLevels(globalScene.currentBattle.waveIndex);
+    if (coopDouble && battle.enemyLevels.length < 2) {
+      // Co-op (D29): a trainer with one Pokémon gets a second one of its own pool, so that it is two against two
+      battle.enemyLevels.push(battle.enemyLevels[0]);
+    }
   } else {
     // Wild
     globalScene.currentBattle.mysteryEncounter!.encounterMode = MysteryEncounterMode.WILD_BATTLE;
@@ -277,7 +296,13 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
 
       // Generate new id, reset status and HP in case using data source
       if (config.dataSource) {
-        enemyPokemon.id = randSeedInt(4294967296);
+        // Co-op (D3): unique among the Pokémon that exist, like any other
+        enemyPokemon.id = isCoop()
+          ? drawUniquePokemonId(
+              () => randSeedInt(4294967296),
+              new Set([...globalScene.getPlayerParty(), ...globalScene.getEnemyParty()].map(pokemon => pokemon.id)),
+            )
+          : randSeedInt(4294967296);
       }
 
       // Set form
@@ -426,6 +451,11 @@ export async function initBattleWithEnemyConfig(partyConfig: EnemyPartyConfig): 
     console.log("Moveset:", moveset);
   });
 
+  if (coopDouble && battle.trainer == null && battle.enemyParty.length === 1) {
+    // Co-op (D29): a lone wild Pokémon against two is made stronger, and pays more
+    markLoneEnemy(battle.enemyParty[0]);
+  }
+
   globalScene.phaseManager.pushNew("MysteryEncounterBattlePhase", partyConfig.disableSwitch);
 
   await Promise.all(loadEnemyAssets);
@@ -541,6 +571,10 @@ export function selectPokemonForOption(
   onPokemonNotSelected?: () => void,
   selectablePokemonFilter?: PokemonSelectFilter,
 ): Promise<boolean> {
+  // Co-op with a network (D29): the chooser picks, as a sequenced decision, and both clients carry on with it
+  if (isLinked()) {
+    return coopSelectPokemonForOption(onPokemonSelected, onPokemonNotSelected, selectablePokemonFilter);
+  }
   return new Promise(resolve => {
     const modeToSetOnExit = globalScene.ui.mode;
 
@@ -639,6 +673,15 @@ export function selectOptionThenPokemon(
   selectablePokemonFilter?: PokemonSelectFilter,
   onHoverOverCancelOption?: () => void,
 ): Promise<PokemonAndOptionSelected | null> {
+  // Co-op with a network (D29): the chooser picks both, as one sequenced decision
+  if (isLinked()) {
+    return coopSelectOptionThenPokemon(
+      options,
+      optionSelectPromptKey,
+      selectablePokemonFilter,
+      onHoverOverCancelOption,
+    );
+  }
   return new Promise<PokemonAndOptionSelected | null>(resolve => {
     const modeToSetOnExit = globalScene.ui.mode;
 

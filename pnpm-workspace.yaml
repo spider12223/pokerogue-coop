@@ -1,3 +1,7 @@
+# Co-op relay server (no game code): its own package so it can be deployed without the game's dependencies.
+packages:
+  - coop-server
+
 minimumReleaseAge: 1440
 
 onlyBuiltDependencies:

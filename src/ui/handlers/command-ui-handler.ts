@@ -1,5 +1,8 @@
 import { MAX_TERAS_PER_ARENA } from "#app/constants";
 import { globalScene } from "#app/global-scene";
+import { coopSwitchFilter } from "#coop/control";
+import { sendIntent } from "#coop/cosmetic-view";
+import { isCoop } from "#coop/session";
 import { getTypeRgb } from "#data/type";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
@@ -88,6 +91,8 @@ export class CommandUiHandler extends UiHandler {
     this.toggleTeraButton();
 
     const pokemonName = commandPhase.getPokemon().getNameToRender({ prependFormName: false });
+    // Co-op (D16): back at the command menu, nothing is chosen yet
+    sendIntent(commandPhase.getPokemon().id, null, null);
     const messageHandler = this.getUi().getMessageHandler();
     messageHandler.bg.setVisible(true);
     messageHandler.commandWindow.setVisible(true);
@@ -131,7 +136,13 @@ export class CommandUiHandler extends UiHandler {
               PartyUiMode.SWITCH,
               (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getPokemon().getFieldIndex(),
               null,
-              PartyUiHandler.FilterNonFainted,
+              isCoop()
+                ? coopSwitchFilter(
+                    (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getPokemon().getFieldIndex(),
+                    "voluntary",
+                    PartyUiHandler.FilterNonFainted,
+                  )
+                : PartyUiHandler.FilterNonFainted,
             );
             success = true;
             break;

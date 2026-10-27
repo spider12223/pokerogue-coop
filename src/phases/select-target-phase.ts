@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { isLinked } from "#coop/bridge";
 import { allMoves } from "#data/data-lists";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
@@ -59,7 +60,7 @@ export class SelectTargetPhase extends PokemonPhase {
         } else {
           turnCommand.targets = targets;
         }
-        if (turnCommand.command === Command.BALL && this.fieldIndex) {
+        if (turnCommand.command === Command.BALL && this.fieldIndex && !isLinked()) {
           globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
         }
         this.end();

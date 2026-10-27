@@ -5,6 +5,14 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin } from "#constants/app-constants";
+import { coopDecide, coopText, reportBridgeError } from "#coop/bridge";
+import { deciderOf } from "#coop/control";
+import { retryKey } from "#coop/decision-keys";
+import type { Seat } from "#coop/protocol";
+import { issueResync, trySafeApply } from "#coop/resync-run";
+import { isRetryPayload, type RetryPayload } from "#coop/retry";
+import { getCoopSession, requireCoopSession } from "#coop/session";
+import { writesForPokemon } from "#coop/sim-account";
 import { modifierTypes } from "#data/data-lists";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import type { PokemonSpecies } from "#data/pokemon-species";
@@ -27,7 +35,7 @@ import { awardRibbonsToSpeciesLine } from "#system/ribbon-methods";
 import { TrainerData } from "#system/trainer-data";
 import { trainerConfigs } from "#trainers/trainer-config";
 import type { SessionSaveData } from "#types/save-data";
-import type { ConfirmModeConfig } from "#types/ui-types";
+import type { ConfirmModeConfig, OptionSelectItem } from "#types/ui-types";
 import { applyChallenges, getRibbonsToAward } from "#utils/challenge-utils";
 import { fixedInt, isLocalServerConnected } from "#utils/common";
 import { ValueHolder } from "#utils/value-holder";
@@ -82,7 +90,12 @@ export class GameOverPhase extends BattlePhase {
       return;
     }
 
-    if (this.isVictory || !settings.general.enableRetries) {
+    // Co-op (D4a): after a wipe the host chooses to retry the wave or end the run; `enableRetries` is not read (it is pinned)
+    if (!this.isVictory && globalScene.gameMode.isCoop && this.decideCoopRetry()) {
+      return;
+    }
+
+    if (this.isVictory || !settings.general.enableRetries || globalScene.gameMode.isCoop) {
       this.handleGameOver();
       return;
     }
@@ -138,6 +151,10 @@ export class GameOverPhase extends BattlePhase {
     // Award ribbons to all Pokémon in the player's party that are considered valid
     // for the current game mode and challenges (as in, they can be used in battle).
     for (const pokemon of globalScene.getPlayerParty()) {
+      // Co-op (D4a): ribbons go per owner, each client writing for its own player's Pokémon
+      if (!writesForPokemon(pokemon)) {
+        continue;
+      }
       const species = pokemon.species;
       const challengeAllowed = new ValueHolder(true);
       applyChallenges(ChallengeType.POKEMON_IN_BATTLE, pokemon, challengeAllowed);
@@ -147,7 +164,121 @@ export class GameOverPhase extends BattlePhase {
     }
   }
 
+  /**
+   * Co-op (D4a, amended): the party is wiped in a run with a network. The host chooses to play the wave again from its start or
+   * to end the run, as a sequenced decision (`RETRY`); the guest waits, and may take it over (D17). A retry is the reload of
+   * D13 with the reason `retry`: the host sequences a `RESYNC` with its wave-start save, and both clients load it under the next
+   * epoch. Nothing is written to the run history then. An end is {@linkcode handleCoopRunEnd} on both clients.
+   *
+   * Without a network (the rules harness) or a wave-start save there is nothing to go back to: the run ends as before. Both
+   * clients take the wave-start save at the same point of the simulation (D19), so they agree on whether to ask.
+   * @returns Whether the decision was opened (the phase waits for it)
+   */
+  private decideCoopRetry(): boolean {
+    const session = getCoopSession();
+    const link = session?.link ?? null;
+    if (session == null || link === null || link.isClosed || session.waveSave === null) {
+      return false;
+    }
+    // A decision of a world that was reloaded meanwhile (a rejoin) belongs to the abandoned phase: nothing more is done here
+    const epoch = link.epoch;
+    const partner = session.partnerName;
+    coopDecide<RetryPayload>({
+      key: retryKey(globalScene.currentBattle.waveIndex),
+      decider: deciderOf({ kind: "RETRY" }) as Seat,
+      ask: () => this.askCoopRetry(),
+      wait: () => {
+        const { ui } = globalScene;
+        ui.setMode(UiMode.MESSAGE);
+        ui.showText(
+          coopText("retryWait", "{{partner}} is deciding whether to retry the wave…", { partner }),
+          null,
+          undefined,
+          null,
+          false,
+        );
+      },
+      isPayload: isRetryPayload,
+    })
+      .then(decision => {
+        if (link.epoch !== epoch) {
+          return;
+        }
+        if (!decision.payload.retry) {
+          this.handleGameOver();
+        } else if (session.isHost) {
+          issueResync(session, "retry");
+        } else {
+          // The host's reload is on its way, or already here: this phase only waits for it, so it may be abandoned now
+          session.retryPending = true;
+          trySafeApply(session);
+        }
+      })
+      .catch(error => reportBridgeError(error));
+    return true;
+  }
+
+  /** The host's menu after a wipe (D4a): retry the wave from its start, or end the run */
+  private askCoopRetry(): Promise<RetryPayload> {
+    const { ui } = globalScene;
+    return new Promise(resolve => {
+      const choose =
+        (retry: boolean): (() => boolean) =>
+        () => {
+          ui.setMode(UiMode.MESSAGE);
+          resolve({ retry });
+          return true;
+        };
+      const options: OptionSelectItem[] = [
+        { label: coopText("retryWave", "Retry the wave"), handler: choose(true) },
+        { label: coopText("retryEnd", "End the run"), handler: choose(false) },
+      ];
+      ui.setMode(UiMode.MESSAGE);
+      ui.showText(
+        coopText("retryAsk", "Your party is out of usable Pokémon. Retry the wave from its start?"),
+        null,
+        // (the same delay as the retry prompt of a solo run: a press meant for the last message does not choose)
+        () => ui.setModeWithoutClear(UiMode.OPTION_SELECT, { options, yOffset: 48, inputDelay: 1000 }),
+        null,
+        false,
+      );
+    });
+  }
+
+  /**
+   * The end of a co-op run (DECISIONS D4a): victory and game over are shared (a game over ends the run unless the host
+   * retries the wave, {@linkcode decideCoopRetry}). A victory gives each player the ribbons of their own Pokémon and counts as
+   * a co-op clear of their own account, and nothing else: no classic-win unlocks or vouchers. The run goes into each player's
+   * run history with both display names. Both clients then return to the title screen with "Co-op run ended".
+   */
+  private handleCoopRunEnd(): void {
+    globalScene.disableMenu = true;
+    if (this.isVictory) {
+      this.awardRibbons();
+      globalScene.gameData.gameStats.coopRunsWon++;
+    }
+    void this.recordCoopRun();
+    globalScene.time.delayedCall(1000, () => {
+      const fadeDuration = this.isVictory ? 4000 : 2000;
+      audioManager.fadeOutBgm(fadeDuration);
+      const activeBattlers = globalScene.getField().filter(p => p?.isActive(true));
+      activeBattlers.map(p => p.hideInfo());
+      globalScene.ui.fadeOut(fadeDuration).then(() => {
+        activeBattlers.map(a => a.setVisible(false));
+        globalScene.setFieldScale(1, true);
+        globalScene.phaseManager.clearPhaseQueue();
+        globalScene.ui.clearText();
+        globalScene.phaseManager.pushNew("PostGameOverPhase", globalScene.sessionSlotId);
+        this.end();
+      });
+    });
+  }
+
   handleGameOver(): void {
+    if (globalScene.gameMode.isCoop) {
+      this.handleCoopRunEnd();
+      return;
+    }
     const doGameOver = (newClear: boolean) => {
       globalScene.disableMenu = true;
       globalScene.time.delayedCall(1000, () => {
@@ -309,8 +440,24 @@ export class GameOverPhase extends BattlePhase {
    * Slightly modified version of {@linkcode GameData.getSessionSaveData}.
    * @returns A promise containing the {@linkcode SessionSaveData}
    */
-  private async getRunHistoryEntry(): Promise<SessionSaveData> {
-    const preWaveSessionData = await globalScene.gameData.getSession(globalScene.sessionSlotId);
+  /**
+   * A co-op run is over: it is written to this account's run history with both display names, and the system data keeps
+   * the clear counter. A failure is told and the run still ends.
+   */
+  private async recordCoopRun(): Promise<void> {
+    try {
+      const session = requireCoopSession();
+      // (the solo slots are never read for a co-op run: they hold some other run)
+      const entry = await this.getRunHistoryEntry(false);
+      await globalScene.gameData.saveRunHistory(entry, this.isVictory, { names: session.names, seat: session.seat });
+      await globalScene.gameData.saveSystem();
+    } catch (error) {
+      console.warn("co-op: the run could not be written to the run history:", error);
+    }
+  }
+
+  private async getRunHistoryEntry(readSoloSlot = true): Promise<SessionSaveData> {
+    const preWaveSessionData = readSoloSlot ? await globalScene.gameData.getSession(globalScene.sessionSlotId) : null;
     return {
       seed: globalScene.seed,
       playTime: globalScene.sessionPlayTime,

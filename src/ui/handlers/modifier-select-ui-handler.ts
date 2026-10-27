@@ -3,6 +3,10 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
+import { coopText } from "#coop/bridge";
+import type { CosmeticTarget } from "#coop/cosmetic";
+import { getCosmeticView, sendCursor } from "#coop/cosmetic-view";
+import { getCoopSession } from "#coop/session";
 import { allMoves } from "#data/data-lists";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
@@ -24,15 +28,41 @@ export const SHOP_OPTIONS_ROW_LIMIT = 7;
 const SINGLE_SHOP_ROW_YOFFSET = 12;
 const DOUBLE_SHOP_ROW_YOFFSET = 24;
 const OPTION_BUTTON_YPOSITION = -62;
+/** The partner's color on this screen (D16): their cursor, and what they ping */
+const PARTNER_TINT = 0x8fd3ff;
+/** The cursor of the Trade button, which only exists in a linked co-op run (D11) */
+const TRADE_CURSOR = 4;
+
+/** What the co-op run needs the reward screen to show besides the solo screen (the sixth argument of `show`) */
+export interface RewardScreenCoop {
+  /** Show the Trade button (D11) */
+  trade: boolean;
+  /** A trade was already requested on this screen */
+  requested: boolean;
+  /** The player who is not picking: the reroll and lock buttons are drawn as unavailable (D9) */
+  readOnly?: boolean;
+}
 
 export class ModifierSelectUiHandler extends AwaitableUiHandler {
   private modifierContainer: Phaser.GameObjects.Container;
   private rerollButtonContainer: Phaser.GameObjects.Container;
   private lockRarityButtonContainer: Phaser.GameObjects.Container;
   private transferButtonContainer: Phaser.GameObjects.Container;
+  /** Co-op (D11): ask for a trade after this screen */
+  private tradeButtonContainer: Phaser.GameObjects.Container;
+  private tradeButtonText: Phaser.GameObjects.Text;
+  private tradeButtonWidth: number;
+  private showTradeButton = false;
+  /** Co-op (D9): this player is not the picker of this screen */
+  private coopReadOnly = false;
+  /** Co-op (D16): the partner's cursor, and the option it is on */
+  private partnerCursorObj: Phaser.GameObjects.Image | null = null;
+  private partnerTarget: ModifierOption | null = null;
   private checkButtonContainer: Phaser.GameObjects.Container;
   private continueButtonContainer: Phaser.GameObjects.Container;
   private rerollCostText: Phaser.GameObjects.Text;
+  /** Co-op: who is choosing, on the screen of the player who is not (D9) */
+  private coopLabel: Phaser.GameObjects.Text;
   private lockRarityButtonText: Phaser.GameObjects.Text;
   private moveInfoOverlay: MoveInfoOverlay;
   private moveInfoOverlayActive = false;
@@ -67,6 +97,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       context.font = styleOptions.fontSize + "px " + styleOptions.fontFamily;
       this.transferButtonWidth = context.measureText(i18next.t("modifierSelectUiHandler:manageItems")).width;
       this.checkButtonWidth = context.measureText(i18next.t("modifierSelectUiHandler:checkTeam")).width;
+      this.tradeButtonWidth = context.measureText(coopText("tradeAsked", "Trade ✓")).width;
     }
 
     this.transferButtonContainer = globalScene.add.container(
@@ -81,6 +112,20 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     transferButtonText.setName("text-transfer-btn");
     transferButtonText.setOrigin(1, 0);
     this.transferButtonContainer.add(transferButtonText);
+
+    // Co-op (D11): left of "manage items", whether that one is shown or not
+    this.tradeButtonContainer = globalScene.add.container(
+      (globalScene.game.canvas.width - this.checkButtonWidth - this.transferButtonWidth) / 6 - 33,
+      OPTION_BUTTON_YPOSITION,
+    );
+    this.tradeButtonContainer.setName("trade-btn");
+    this.tradeButtonContainer.setVisible(false);
+    ui.add(this.tradeButtonContainer);
+
+    this.tradeButtonText = addTextObject(-4, -6, coopText("trade", "Trade"), TextStyle.PARTY);
+    this.tradeButtonText.setName("text-trade-btn");
+    this.tradeButtonText.setOrigin(1, 0);
+    this.tradeButtonContainer.add(this.tradeButtonText);
 
     this.checkButtonContainer = globalScene.add.container(globalScene.scaledCanvas.width - 1, OPTION_BUTTON_YPOSITION);
     this.checkButtonContainer.setName("use-btn");
@@ -128,6 +173,24 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.continueButtonContainer.setVisible(false);
     ui.add(this.continueButtonContainer);
 
+    this.coopLabel = addTextObject(
+      globalScene.scaledCanvas.width / 2,
+      -globalScene.scaledCanvas.height + 1,
+      "",
+      TextStyle.BATTLE_INFO,
+      {
+        backgroundColor: "#000000c8",
+        padding: { x: 3, y: 1 },
+        align: "center",
+        // Between the wave and money text on the right and the left edge; a long hint takes two lines
+        wordWrap: { width: (globalScene.scaledCanvas.width - 120) * 6 },
+      },
+    );
+    this.coopLabel.setOrigin(0.5, 0);
+    this.coopLabel.setVisible(false);
+    // In this screen's container, under the screens opened from it (the party screen of Check Team), not above them
+    this.modifierContainer.add(this.coopLabel);
+
     // Create continue button
     const continueButtonText = addTextObject(
       -24,
@@ -164,11 +227,22 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       return false;
     }
 
-    if (args.length !== 4 || !Array.isArray(args[1]) || !(args[2] instanceof Function)) {
+    // The fifth and sixth arguments are only given in co-op: a text for the player who watches the other one choose, and
+    // the Trade button (D11)
+    if (args.length < 4 || args.length > 6 || !Array.isArray(args[1]) || !(args[2] instanceof Function)) {
       return false;
     }
 
     super.show(args);
+
+    this.coopLabel.setText(typeof args[4] === "string" ? args[4] : "").setVisible(typeof args[4] === "string");
+    this.modifierContainer.bringToTop(this.coopLabel);
+    const coop = args[5] as RewardScreenCoop | undefined;
+    this.showTradeButton = coop?.trade === true;
+    this.coopReadOnly = coop?.readOnly === true;
+    this.setTradeRequested(coop?.requested === true);
+    this.tradeButtonContainer.setVisible(false);
+    this.tradeButtonContainer.setAlpha(0);
 
     this.getUi().clearText();
 
@@ -322,6 +396,11 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
     tweenPromise.then(() => {
       globalScene.time.delayedCall(500, () => {
+        if (getCoopSession() !== null && !this.active) {
+          // Co-op (D20): the screen was left while it was opening (the partner went away, a reload): it does not draw itself again
+          // over the waiting screen
+          return;
+        }
         if (partyHasHeldItem) {
           this.transferButtonContainer.setAlpha(0);
           this.transferButtonContainer.setVisible(true);
@@ -330,6 +409,12 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
             alpha: 1,
             duration: 250,
           });
+        }
+
+        if (this.showTradeButton) {
+          this.tradeButtonContainer.setAlpha(0);
+          this.tradeButtonContainer.setVisible(true);
+          globalScene.tweens.add({ targets: this.tradeButtonContainer, alpha: 1, duration: 250 });
         }
 
         this.rerollButtonContainer.setAlpha(0);
@@ -349,7 +434,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
         globalScene.tweens.add({
           targets: [this.rerollButtonContainer, this.lockRarityButtonContainer],
-          alpha: this.rerollCost < 0 ? 0.5 : 1,
+          alpha: this.rerollCost < 0 || this.coopReadOnly ? 0.5 : 1,
           duration: 250,
         });
 
@@ -358,6 +443,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         // have completed, (which, among other things, would allow the GameObjects to be destroyed
         // before the animations have completed, causing errors).
         Promise.allSettled([...shopAnimPromises, ...rewardAnimAllSettledPromises]).then(() => {
+          if (getCoopSession() !== null && !this.active) {
+            return;
+          }
           const updateCursorTarget = () => {
             if (settings.display.shopCursorTarget === ShopCursorTarget.CHECK_TEAM) {
               this.setRowCursor(0);
@@ -385,6 +473,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
             }
             this.awaitingActionInput = true;
             this.onActionInput = args[2];
+            // Co-op (D16): where the partner's cursor is
+            getCosmeticView()?.drawCursor();
           });
         });
       });
@@ -460,7 +550,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 success = this.setCursor(2);
                 break;
               case 1:
-                if (this.lockRarityButtonContainer.visible) {
+                if (this.tradeButtonContainer.visible) {
+                  success = this.setCursor(TRADE_CURSOR);
+                } else if (this.lockRarityButtonContainer.visible) {
                   success = this.setCursor(3);
                 } else {
                   success = this.rerollButtonContainer.visible && this.setCursor(0);
@@ -469,6 +561,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
               case 2:
                 if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
+                } else if (this.tradeButtonContainer.visible) {
+                  success = this.setCursor(TRADE_CURSOR);
                 } else if (this.rerollButtonContainer.visible) {
                   success = this.setCursor(0);
                 } else {
@@ -481,6 +575,14 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
                 } else {
                   success = false;
                 }
+                break;
+              case TRADE_CURSOR:
+                if (this.lockRarityButtonContainer.visible) {
+                  success = this.setCursor(3);
+                } else {
+                  success = this.rerollButtonContainer.visible && this.setCursor(0);
+                }
+                break;
             }
           } else if (this.cursor) {
             success = this.setCursor(this.cursor - 1);
@@ -494,7 +596,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
           if (!this.rowCursor) {
             switch (this.cursor) {
               case 0:
-                if (this.transferButtonContainer.visible) {
+              case 3:
+                if (this.tradeButtonContainer.visible) {
+                  success = this.setCursor(TRADE_CURSOR);
+                } else if (this.transferButtonContainer.visible) {
                   success = this.setCursor(1);
                 } else {
                   success = this.setCursor(2);
@@ -506,12 +611,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
               case 2:
                 success = this.setCursor(0);
                 break;
-              case 3:
-                if (this.transferButtonContainer.visible) {
-                  success = this.setCursor(1);
-                } else {
-                  success = this.setCursor(2);
-                }
+              case TRADE_CURSOR:
+                success = this.setCursor(this.transferButtonContainer.visible ? 1 : 2);
                 break;
             }
           } else if (this.cursor < this.getRowItems(this.rowCursor) - 1) {
@@ -617,9 +718,22 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
         OPTION_BUTTON_YPOSITION + 1,
       );
       ui.showText(i18next.t("modifierSelectUiHandler:checkTeamDesc"));
+    } else if (cursor === TRADE_CURSOR) {
+      this.cursorObj.setPosition(this.getCursorSpot(0, TRADE_CURSOR)!.x, OPTION_BUTTON_YPOSITION + 1);
+      ui.showText(
+        coopText("tradeDesc", "Ask {{partner}} for a trade after this screen.", {
+          partner: getCoopSession()?.partnerName ?? "",
+        }),
+      );
     } else {
       this.cursorObj.setPosition(6, OPTION_BUTTON_YPOSITION + 1);
       ui.showText(i18next.t("modifierSelectUiHandler:lockRaritiesDesc"));
+    }
+
+    // Co-op (D16): the partner sees where the cursor is
+    const session = getCoopSession();
+    if (session?.link != null && cursor >= 0) {
+      sendCursor(session.rewardPickCount - 1, this.rowCursor, cursor);
     }
 
     return ret;
@@ -713,6 +827,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   clear() {
     super.clear();
 
+    this.coopLabel.setVisible(false);
     this.moveInfoOverlay.clear();
     this.moveInfoOverlayActive = false;
     this.awaitingActionInput = false;
@@ -720,6 +835,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.getUi().clearText();
     this.getUi().getMessageHandler().hideNameText();
     this.eraseCursor();
+    this.erasePartnerCursor();
 
     // Reset cursor positions
     this.cursor = 0;
@@ -751,6 +867,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
       this.rerollButtonContainer,
       this.checkButtonContainer,
       this.transferButtonContainer,
+      this.tradeButtonContainer,
       this.lockRarityButtonContainer,
       this.continueButtonContainer,
     ].forEach(container => {
@@ -778,6 +895,167 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     }
     this.cursorObj = null;
   }
+
+  // #region Co-op (D11, D16)
+
+  /** The line that says who is choosing, on the screen of the player who is not (D9, D17); `null` takes it away */
+  public setCoopLabel(text: string | null): void {
+    this.coopLabel.setText(text ?? "").setVisible(text !== null);
+    this.modifierContainer.bringToTop(this.coopLabel);
+  }
+
+  /** Co-op (D17): the player took over the screen, so the picker's buttons are theirs now */
+  public setCoopReadOnly(readOnly: boolean): void {
+    this.coopReadOnly = readOnly;
+    for (const button of [this.rerollButtonContainer, this.lockRarityButtonContainer]) {
+      if (button.visible) {
+        button.setAlpha(this.rerollCost < 0 || readOnly ? 0.5 : 1);
+      }
+    }
+  }
+
+  /** @returns The line that is shown now (empty if none) */
+  public getCoopLabel(): string {
+    return this.coopLabel.visible ? this.coopLabel.text : "";
+  }
+
+  /** The Trade button says whether a trade was asked for already */
+  public setTradeRequested(requested: boolean): void {
+    this.tradeButtonText.setText(requested ? coopText("tradeAsked", "Trade ✓") : coopText("trade", "Trade"));
+    const style = requested ? TextStyle.SUMMARY_BLUE : TextStyle.PARTY;
+    this.tradeButtonText.setColor(getTextColor(style));
+    this.tradeButtonText.setShadowColor(getTextColor(style, true));
+  }
+
+  /** @returns Whether the cursor is on the Trade button */
+  public isOnTradeButton(): boolean {
+    return this.rowCursor === 0 && this.cursor === TRADE_CURSOR && this.tradeButtonContainer.visible;
+  }
+
+  /** @returns What the cursor points at, for a ping (D16); `null` if it is on a button */
+  public getPingTarget(): CosmeticTarget | null {
+    if (this.rowCursor === 1) {
+      return this.options.length > 0 ? { k: "reward", index: this.cursor } : null;
+    }
+    if (this.rowCursor >= 2) {
+      const rowIndex = this.shopOptionsRows.length - (this.rowCursor - 1);
+      return rowIndex >= 0 ? { k: "shop", index: rowIndex * SHOP_OPTIONS_ROW_LIMIT + this.cursor } : null;
+    }
+    return null;
+  }
+
+  /** Where a cursor on `row` and `cursor` is drawn; the same places as {@linkcode setCursor} puts it */
+  private getCursorSpot(row: number, cursor: number): { x: number; y: number; scale: number } | null {
+    const { scaledCanvas, game } = globalScene;
+    if (row === 0) {
+      switch (cursor) {
+        case 0:
+          return {
+            x: 6,
+            y: this.lockRarityButtonContainer.visible ? OPTION_BUTTON_YPOSITION - 11 : OPTION_BUTTON_YPOSITION + 1,
+            scale: 1,
+          };
+        case 1:
+          return {
+            x: (game.canvas.width - this.transferButtonWidth - this.checkButtonWidth) / 6 - 30,
+            y: OPTION_BUTTON_YPOSITION + 1,
+            scale: 1,
+          };
+        case 2:
+          return { x: (game.canvas.width - this.checkButtonWidth) / 6 - 10, y: OPTION_BUTTON_YPOSITION + 1, scale: 1 };
+        case 3:
+          return { x: 6, y: OPTION_BUTTON_YPOSITION + 1, scale: 1 };
+        case TRADE_CURSOR:
+          return {
+            x: (game.canvas.width - this.checkButtonWidth - this.transferButtonWidth - this.tradeButtonWidth) / 6 - 42,
+            y: OPTION_BUTTON_YPOSITION + 1,
+            scale: 1,
+          };
+        default:
+          return null;
+      }
+    }
+    const options = row === 1 ? this.options : this.shopOptionsRows.at(-(row - 1));
+    if (options === undefined || cursor >= options.length) {
+      return null;
+    }
+    const sliceWidth = scaledCanvas.width / (options.length + 2);
+    if (row < 2) {
+      return {
+        x: sliceWidth * (cursor + 1) + sliceWidth * 0.5 - 20,
+        y:
+          -scaledCanvas.height / 2
+          - (this.shopOptionsRows.length > 1 ? SINGLE_SHOP_ROW_YOFFSET - 2 : DOUBLE_SHOP_ROW_YOFFSET - 2),
+        scale: 2,
+      };
+    }
+    return {
+      x: sliceWidth * (cursor + 1) + sliceWidth * 0.5 - 16,
+      y: -scaledCanvas.height / 2 - game.canvas.height / 32 - (-14 + 28 * (row - (this.shopOptionsRows.length - 1))),
+      scale: 1.5,
+    };
+  }
+
+  /**
+   * Show where the partner's cursor is (D16): a cursor in the partner's color. On an item it points from the other side, so
+   * that it does not hide this player's own cursor when both are on the same item.
+   * @param row - `null` to take it away
+   */
+  public setPartnerCursor(row: number | null, cursor = 0): void {
+    this.partnerTarget?.setPartnerTint(null);
+    this.partnerTarget = null;
+    const spot = row === null ? null : this.getCursorSpot(row, cursor);
+    if (row === null || spot === null) {
+      this.partnerCursorObj?.setVisible(false);
+      return;
+    }
+    if (this.partnerCursorObj === null) {
+      this.partnerCursorObj = globalScene.add.image(0, 0, "cursor");
+      this.partnerCursorObj.setTint(PARTNER_TINT);
+      this.modifierContainer.add(this.partnerCursorObj);
+    }
+    // The own cursor is left of an item, 20 (rewards) or 16 (shop) units from its middle: the partner's mirrors it
+    const mirror = row === 1 ? 40 : row > 1 ? 32 : 0;
+    this.partnerCursorObj
+      .setVisible(true)
+      // a negative width mirrors the cursor around its middle
+      .setScale(mirror > 0 ? -spot.scale : spot.scale, spot.scale)
+      .setPosition(spot.x + mirror, spot.y);
+  }
+
+  /**
+   * The partner pinged an option (D16): it lights up for a moment, with a short text above it
+   * @param text - What the bubble says, with the partner's name
+   */
+  public pingOption(shop: boolean, index: number, text: string): void {
+    const option = shop ? this.shopOptionsRows.flat()[index] : this.options[index];
+    if (option === undefined) {
+      return;
+    }
+    option.setPartnerTint(PARTNER_TINT);
+    // Right above a reward's icon; a shop item has its name and price under the icon, so the bubble goes under them
+    const bubble = addTextObject(option.x, option.y + (shop ? 18 : -11), text, TextStyle.BATTLE_INFO, {
+      color: "#8fd3ff",
+      backgroundColor: "#000000b0",
+      padding: { x: 2, y: 1 },
+    });
+    bubble.setOrigin(0.5, shop ? 0 : 1);
+    this.modifierContainer.add(bubble);
+    globalScene.time.delayedCall(2500, () => {
+      bubble.destroy();
+      if (this.partnerTarget !== option) {
+        option.setPartnerTint(null);
+      }
+    });
+  }
+
+  private erasePartnerCursor(): void {
+    this.partnerTarget = null;
+    this.partnerCursorObj?.destroy();
+    this.partnerCursorObj = null;
+  }
+
+  // #endregion
 }
 
 class ModifierOption extends Phaser.GameObjects.Container {
@@ -796,6 +1074,15 @@ class ModifierOption extends Phaser.GameObjects.Container {
     this.modifierTypeOption = modifierTypeOption;
 
     this.setup();
+  }
+
+  /** Co-op (D16): a tint on the item, for what the partner's cursor or ping is on; `null` takes it off */
+  public setPartnerTint(tint: number | null): void {
+    if (tint === null) {
+      this.item?.clearTint();
+    } else {
+      this.item?.setTint(tint);
+    }
   }
 
   setup() {
@@ -940,7 +1227,9 @@ class ModifierOption extends Phaser.GameObjects.Container {
               duration: 1000,
               ease: "Sine.easeIn",
               onComplete: () => {
-                this.pb.setTexture("pb", this.getPbAtlasKey(-this.modifierTypeOption.upgradeCount + (u + 1)));
+                if (this.pb?.scene) {
+                  this.pb.setTexture("pb", this.getPbAtlasKey(-this.modifierTypeOption.upgradeCount + (u + 1)));
+                }
               },
             },
             {
@@ -961,6 +1250,11 @@ class ModifierOption extends Phaser.GameObjects.Container {
 
     const finalPromises: Promise<void>[] = [];
     globalScene.time.delayedCall(remainingDuration + 2000, () => {
+      // The screen may have been left before the animation was done: the option is gone with it (a shop item has no Poké
+      // Ball: only a reward's is checked)
+      if (!this.scene || (isReward && !this.pb?.scene)) {
+        return;
+      }
       if (isReward) {
         this.pb.setTexture("pb", `${this.getPbAtlasKey(0)}_open`);
         audioManager.playSound("se/pb_rel");

@@ -5,14 +5,20 @@
  */
 
 import { defineConfig, loadEnv, type PluginOption, type UserConfig, type UserConfigFnPromise } from "vite";
+import { coopBuildIdentity } from "./plugins/vite/coop-build-identity.ts";
 
 /**
  * Default config object used for both Vitest and local dev runs.
  */
 export const sharedConfig: UserConfigFnPromise = async ({ mode }) => {
+  const coopBuild = coopBuildIdentity(process.cwd());
   const opts = {
     clearScreen: false,
     appType: "mpa",
+    define: {
+      __COOP_GIT_SHA__: JSON.stringify(coopBuild.gitSha),
+      __COOP_DIRTY_HASH__: JSON.stringify(coopBuild.dirtyHash),
+    },
     build: {
       sourcemap: mode !== "production",
       chunkSizeWarningLimit: 10000,
@@ -68,6 +74,8 @@ export const sharedConfig: UserConfigFnPromise = async ({ mode }) => {
       (await import("./plugins/vite/namespaces-i18n-plugin.ts")).LocaleNamespace(),
       (await import("unplugin-inline-enum/vite")).default({ scanDir: "src" }),
       (await import("./plugins/vite/static-shell-plugin.ts")).staticShellPlugin(),
+      // A production build must say where its source is (D25)
+      (await import("./plugins/vite/require-source-url.ts")).requireSourceUrl(),
     ];
   }
   return opts;

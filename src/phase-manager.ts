@@ -12,6 +12,7 @@ import { globalScene } from "#app/global-scene";
 import type { Phase } from "#app/phase";
 import { PhaseTree } from "#app/phase-tree";
 import { PHASE_START_COLOR } from "#constants/colors";
+import { tracePhaseStart } from "#coop/checkpoints";
 import { MovePhaseTimingModifier } from "#enums/move-phase-timing-modifier";
 import type { Pokemon } from "#field/pokemon";
 import { AddEnemyBuffModifierPhase } from "#phases/add-enemy-buff-modifier-phase";
@@ -24,6 +25,9 @@ import { CheckStatusEffectPhase } from "#phases/check-status-effect-phase";
 import { CheckSwitchPhase } from "#phases/check-switch-phase";
 import { CommandPhase } from "#phases/command-phase";
 import { CommonAnimPhase } from "#phases/common-anim-phase";
+import { CoopResyncPhase } from "#phases/coop-resync-phase";
+import { CoopTradePhase } from "#phases/coop-trade-phase";
+import { CoopTurnSyncPhase } from "#phases/coop-turn-sync-phase";
 import { DamageAnimPhase } from "#phases/damage-anim-phase";
 import { DancerPhase } from "#phases/dancer-phase";
 import { DynamicPhaseMarker } from "#phases/dynamic-phase-marker";
@@ -135,6 +139,9 @@ const PHASES = Object.freeze({
   CheckSwitchPhase,
   CommandPhase,
   CommonAnimPhase,
+  CoopResyncPhase,
+  CoopTradePhase,
+  CoopTurnSyncPhase,
   DancerPhase,
   DamageAnimPhase,
   DynamicPhaseMarker,
@@ -339,6 +346,17 @@ export class PhaseManager {
   }
 
   /**
+   * Co-op (D13): abandon whatever is running and start `phase` in its place. The abandoned phase is waiting for a decision
+   * or for the player, which never comes: it is left as it is, and nothing queued behind it runs.
+   * @param phase - The phase that takes over, with an empty queue behind it
+   */
+  public coopRestartWith(phase: Phase): void {
+    this.clearAllPhases();
+    this.currentPhase = phase;
+    this.startCurrentPhase();
+  }
+
+  /**
    * Determine the next phase to run and start it.
    * @privateRemarks
    * This is called by {@linkcode Phase.end} by default, and should not be called by other methods.
@@ -374,6 +392,7 @@ export class PhaseManager {
    */
   private startCurrentPhase(): void {
     console.log(`%cStart Phase ${this.currentPhase.phaseName}`, `color:${PHASE_START_COLOR};`);
+    tracePhaseStart(this.currentPhase);
     this.currentPhase.start();
   }
 

@@ -1,6 +1,6 @@
 import { pokerogueApi } from "#api/api";
 import { loggedInUser } from "#app/account";
-import { GameMode, getGameMode } from "#app/game-mode";
+import { createCoopGameMode, GameMode, getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -8,6 +8,9 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
 import { bypassLogin } from "#constants/app-constants";
+import { createCoopTitleOption } from "#coop/lobby";
+import { tryAutoRejoin } from "#coop/rejoin";
+import { CoopSaveRefusedError } from "#coop/save-block";
 import { getDailyRunStarters, startDailyEventChallenges } from "#data/daily-run";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
@@ -30,6 +33,8 @@ const NO_SAVE_SLOT = -1;
 export class TitlePhase extends Phase {
   public readonly phaseName = "TitlePhase";
   private loaded = false;
+  /** A co-op run: the lobby is connected and the game mode is the co-op one */
+  private coop = false;
   // TODO: Make `end` take a `GameModes` as a parameter rather than storing it on the class itself
   public gameMode: GameModes;
 
@@ -44,6 +49,11 @@ export class TitlePhase extends Phase {
       audioManager.playBgm("winter_title", true);
     } else {
       audioManager.playBgm("title", true);
+    }
+
+    // A client with a seat token takes its seat in the room it left, if that room is still there (D20)
+    if (await tryAutoRejoin()) {
+      return;
     }
 
     const lastSlot = await this.checkLastSaveSlot();
@@ -188,6 +198,23 @@ export class TitlePhase extends Phase {
         keepOpen: true,
       },
     );
+    // The co-op entry sits right after "New Game"
+    const coopOption = createCoopTitleOption({
+      onConnected: () => {
+        this.coop = true;
+        this.gameMode = GameModes.CLASSIC;
+        ui.setMode(UiMode.MESSAGE);
+        ui.clearText();
+        this.end();
+      },
+      onCancel: () => {
+        ui.setMode(UiMode.MESSAGE);
+        globalScene.phaseManager.toTitleScreen();
+        super.end();
+      },
+    });
+    const newGameAt = options.findIndex(option => option.label === i18next.t("menu:newGame"));
+    options.splice(newGameAt + 1, 0, coopOption);
     const config: OptionSelectModeConfig = { options, blockCancelButton: true };
     await ui.setMode(UiMode.TITLE, config);
   }
@@ -208,6 +235,11 @@ export class TitlePhase extends Phase {
       }
     } catch (err) {
       console.error(err);
+      if (err instanceof CoopSaveRefusedError) {
+        // A co-op run is not continued as a solo run: say why and go back to the menu
+        globalScene.ui.showText(err.message, null, () => globalScene.phaseManager.toTitleScreen());
+        return;
+      }
       globalScene.ui.showText(i18next.t("menu:failedToLoadSession"), null);
     }
   }
@@ -352,7 +384,7 @@ export class TitlePhase extends Phase {
   // TODO: Refactor this
   end(): void {
     if (!this.loaded && !globalScene.gameMode.isDaily) {
-      globalScene.gameMode = getGameMode(this.gameMode);
+      globalScene.gameMode = this.coop ? createCoopGameMode() : getGameMode(this.gameMode);
       if (this.gameMode === GameModes.CHALLENGE) {
         globalScene.phaseManager.pushNew("SelectChallengePhase");
       } else {

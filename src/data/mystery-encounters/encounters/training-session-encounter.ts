@@ -2,6 +2,7 @@ import type { Ability } from "#abilities/ability";
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { writesForPokemon } from "#coop/sim-account";
 import { allAbilities } from "#data/data-lists";
 import { getNatureName } from "#data/nature";
 import { AbilityAttr } from "#enums/ability-attr";
@@ -151,8 +152,11 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
 
           if (improvedCount > 0) {
             playerPokemon.calculateStats();
-            globalScene.gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs);
-            globalScene.gameData.setPokemonCaught(playerPokemon, false);
+            // Co-op (D4a): the owner's account
+            if (writesForPokemon(playerPokemon)) {
+              globalScene.gameData.updateSpeciesDexIvs(playerPokemon.species.getRootSpeciesId(true), playerPokemon.ivs);
+              globalScene.gameData.setPokemonCaught(playerPokemon, false);
+            }
           }
 
           // Add pokemon and mods back
@@ -231,7 +235,10 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
           queueEncounterMessage(`${namespace}:option.2.finished`);
           // Add the pokemon back to party with Nature change
           playerPokemon.setCustomNature(encounter.misc.chosenNature);
-          globalScene.gameData.unlockSpeciesNature(playerPokemon.species, encounter.misc.chosenNature);
+          // Co-op (D4a): the owner's account
+          if (writesForPokemon(playerPokemon)) {
+            globalScene.gameData.unlockSpeciesNature(playerPokemon.species, encounter.misc.chosenNature);
+          }
 
           // Add pokemon and modifiers back
           globalScene.getPlayerParty().push(playerPokemon);
@@ -333,6 +340,7 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
             const rootFusionSpecies = playerPokemon.fusionSpecies?.getRootSpeciesId();
             if (
               rootFusionSpecies != null
+              && writesForPokemon(playerPokemon)
               && speciesDataRegistry.isStarter(rootFusionSpecies)
               && globalScene.gameData.dexData[rootFusionSpecies].caughtAttr
             ) {
@@ -346,7 +354,10 @@ export const TrainingSessionEncounter: MysteryEncounter = MysteryEncounterBuilde
           }
 
           playerPokemon.calculateStats();
-          globalScene.gameData.setPokemonCaught(playerPokemon, false);
+          // Co-op (D4a): the owner's account
+          if (writesForPokemon(playerPokemon)) {
+            globalScene.gameData.setPokemonCaught(playerPokemon, false);
+          }
 
           // Add pokemon and mods back
           globalScene.getPlayerParty().push(playerPokemon);

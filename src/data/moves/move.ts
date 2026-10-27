@@ -13,6 +13,8 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { switchTargets } from "#coop/control";
+import { isCoop } from "#coop/session";
 import type { EntryHazardTag, PendingHealTag } from "#data/arena-tag";
 import { WeakenMoveTypeTag } from "#data/arena-tag";
 import { MoveChargeAnim } from "#data/battle-anims";
@@ -7262,10 +7264,23 @@ export class ForceSwitchOutAttr extends MoveEffectAttr {
         return false;
       }
 
+      // Co-op (D7): a Pokémon that switches itself out brings in one of its controller's own bench. One that is dragged
+      // out (Roar, Whirlwind, Dragon Tail, Red Card) is replaced at random from its owner's bench, else the partner's;
+      // with no bench on either side the move fails, as upstream.
+      const coopTargets = isCoop()
+        ? switchTargets(
+            switchOutTarget.getFieldIndex(),
+            this.switchType === SwitchType.FORCE_SWITCH ? "forced" : "voluntary",
+          )
+        : null;
       // Find indices of off-field Pokemon that are eligible to be switched into
       const eligibleNewIndices: number[] = [];
       globalScene.getPlayerParty().forEach((pokemon, index) => {
-        if (pokemon.isAllowedInBattle() && !pokemon.isOnField()) {
+        if (
+          pokemon.isAllowedInBattle()
+          && !pokemon.isOnField()
+          && (coopTargets === null || coopTargets.includes(pokemon))
+        ) {
           eligibleNewIndices.push(index);
         }
       });

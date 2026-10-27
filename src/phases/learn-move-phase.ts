@@ -3,6 +3,11 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
+import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
+import { deciderOf } from "#coop/control";
+import { learnMoveKey } from "#coop/decision-keys";
+import { isLearnMovePayload, type LearnMovePayload } from "#coop/prompt-payloads";
+import { requireCoopSession } from "#coop/session";
 import { initMoveAnim, loadMoveAnimAssets } from "#data/battle-anims";
 import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeMoveLearnedTrigger } from "#data/form-change-triggers";
@@ -61,8 +66,111 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
     globalScene.ui.setMode(this.messageMode);
     if (currentMoveset.length < 4) {
       this.learnMove(currentMoveset.length, move, pokemon);
+    } else if (isLinked()) {
+      this.startSequenced(move, pokemon);
     } else {
       this.replaceMoveCheck(move, pokemon);
+    }
+  }
+
+  /**
+   * Co-op with a network (D10): the owner of the Pokémon answers, the partner waits. What the owner chose comes back as
+   * a sequenced decision and both clients carry it out.
+   */
+  private startSequenced(move: Move, pokemon: Pokemon): void {
+    const owner = deciderOf({ kind: "LEARN_MOVE", pokemonId: pokemon.id });
+    if (owner === null || owner === "either") {
+      throw new Error("co-op: a learn-move prompt without an owner");
+    }
+    coopDecide<LearnMovePayload>({
+      key: learnMoveKey(globalScene.currentBattle.waveIndex, pokemon.id, this.moveId),
+      decider: owner,
+      ask: async () => ({ replaceIndex: await this.askReplaceIndex(move, pokemon) }),
+      wait: () => {
+        globalScene.ui.showText(
+          coopText("partnerDecidesLearn", "{{partner}} is deciding if {{pokemonName}} learns {{moveName}}…", {
+            partner: requireCoopSession().partnerName,
+            pokemonName: getPokemonNameWithAffix(pokemon),
+            moveName: move.name,
+          }),
+          null,
+          undefined,
+          null,
+          false,
+        );
+      },
+      isPayload: isLearnMovePayload,
+    })
+      .then(async ({ payload }) => {
+        const { replaceIndex } = payload;
+        if (replaceIndex === null) {
+          await globalScene.ui.setMode(this.messageMode);
+          await globalScene.ui.showTextPromise(
+            i18next.t("battle:learnMoveNotLearned", {
+              pokemonName: getPokemonNameWithAffix(pokemon),
+              moveName: move.name,
+            }),
+            undefined,
+            true,
+          );
+          this.end();
+          return;
+        }
+        const forgetSuccessText = i18next.t("battle:learnMoveForgetSuccess", {
+          pokemonName: getPokemonNameWithAffix(pokemon),
+          moveName: pokemon.moveset[replaceIndex]!.getName(),
+        });
+        const fullText = [i18next.t("battle:countdownPoof"), forgetSuccessText, i18next.t("battle:learnMoveAnd")].join(
+          "$",
+        );
+        await globalScene.ui.setMode(this.messageMode);
+        await this.learnMove(replaceIndex, move, pokemon, fullText);
+      })
+      .catch(reportBridgeError);
+  }
+
+  /**
+   * The owner's side of {@linkcode startSequenced}: the same questions as in solo play, but nothing is changed.
+   * @returns The move slot to replace, or `null` if the Pokémon does not learn the move
+   */
+  private async askReplaceIndex(move: Move, pokemon: Pokemon): Promise<number | null> {
+    const { ui } = globalScene;
+    const pokemonName = getPokemonNameWithAffix(pokemon);
+    const moveName = move.name;
+    const confirm = (): Promise<boolean> =>
+      new Promise(resolve => {
+        ui.setModeWithoutClear(UiMode.CONFIRM, { yesHandler: () => resolve(true), noHandler: () => resolve(false) });
+      });
+
+    for (;;) {
+      const preQText = [
+        i18next.t("battle:learnMovePrompt", { pokemonName, moveName }),
+        i18next.t("battle:learnMoveLimitReached", { pokemonName }),
+      ].join("$");
+      await ui.showTextPromise(preQText);
+      await ui.showTextPromise(i18next.t("battle:learnMoveReplaceQuestion", { moveName }), undefined, false);
+
+      if (await confirm()) {
+        ui.setMode(this.messageMode);
+        await ui.showTextPromise(i18next.t("battle:learnMoveForgetQuestion"), undefined, true);
+        const moveIndex = await new Promise<number>(resolve => {
+          ui.setModeWithoutClear(UiMode.SUMMARY, pokemon, SummaryUiMode.LEARN_MOVE, move, resolve);
+        });
+        if (moveIndex !== 4) {
+          return moveIndex;
+        }
+      }
+      await ui.setMode(this.messageMode);
+
+      if (!settings.general.levelMoveConfirmation) {
+        return null;
+      }
+      await ui.showTextPromise(i18next.t("battle:learnMoveStopTeaching", { moveName }), undefined, false);
+      const stop = await confirm();
+      ui.setMode(this.messageMode);
+      if (stop) {
+        return null;
+      }
     }
   }
 

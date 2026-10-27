@@ -3,6 +3,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { SHINY_CATCH_RATE_MULTIPLIER } from "#balance/rates";
 import { CLASSIC_CANDY_FRIENDSHIP_MULTIPLIER } from "#balance/starters";
 import { timedEvents } from "#balance/timed-events";
+import { isCoop } from "#coop/session";
 import type { PokemonSpeciesFilter } from "#data/pokemon-species";
 import type { BiomeId } from "#enums/biome-id";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -24,7 +25,8 @@ export class TimedEventManager {
   private cachedReplacementMap: Map<number, { speciesId: SpeciesId; formIndex: number }> | null = null;
 
   isActive(event: TimedEvent) {
-    if (this.disabled) {
+    // Events read the wall clock, which two co-op clients do not share (DECISIONS D3, D12)
+    if (this.disabled || isCoop()) {
       return false;
     }
     const now = new Date();

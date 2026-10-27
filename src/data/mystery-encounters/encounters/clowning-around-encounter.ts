@@ -1,6 +1,8 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { isLinked } from "#coop/bridge";
+import { coopConfirm } from "#coop/me-run";
 import { EncounterBattleAnim } from "#data/battle-anims";
 import { allAbilities, modifierTypes } from "#data/data-lists";
 import { CustomPokemonData } from "#data/pokemon-data";
@@ -441,9 +443,49 @@ async function handleSwapAbility(): Promise<boolean> {
   await showEncounterText(`${namespace}:option.1.applyAbilityMessage`);
 
   await globalScene.ui.setMode(UiMode.MESSAGE);
+  if (isLinked()) {
+    return coopSwapAbility();
+  }
   displayYesNoOptions(resolve);
 
   return promise;
+}
+
+/**
+ * Co-op with a network (D29): the chooser answers the question and picks one of their own Pokémon, as sequenced decisions;
+ * both clients carry them out. Going back from the party screen asks the question again, as in solo play.
+ */
+async function coopSwapAbility(): Promise<boolean> {
+  for (;;) {
+    const yes = await coopConfirm(
+      () =>
+        new Promise<boolean>(answer => {
+          showEncounterText(`${namespace}:option.1.abilityPrompt`, null, 500, false);
+          globalScene.ui.setModeWithoutClear(UiMode.CONFIRM, {
+            yesHandler: () => {
+              answer(true);
+              return true;
+            },
+            noHandler: () => {
+              answer(false);
+              return true;
+            },
+          } satisfies ConfirmModeConfig);
+        }),
+    );
+    if (!yes) {
+      return false;
+    }
+    const swapped = await selectPokemonForOption((pokemon: PlayerPokemon): void => {
+      const encounter = globalScene.currentBattle.mysteryEncounter!;
+      applyAbilityOverrideToPokemon(pokemon, encounter.misc.ability);
+      encounter.setDialogueToken("chosenPokemon", pokemon.getNameToRender());
+    });
+    await globalScene.ui.setMode(UiMode.MESSAGE);
+    if (swapped) {
+      return true;
+    }
+  }
 }
 
 function displayYesNoOptions(resolve: { (value: boolean | PromiseLike<boolean>): void; (arg0: boolean): void }): void {

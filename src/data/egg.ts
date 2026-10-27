@@ -153,6 +153,8 @@ export class Egg {
   // #endregion Public facing properties
 
   constructor(eggOptions?: IEggOptions) {
+    // Co-op (D30): an egg belongs to one account and never reaches the simulation. Its draws are made under a random seed
+    // override (below), and `executeWithSeedOffset` puts the run's stream back afterwards, so each client may make its own.
     const generateEggProperties = (eggOptions?: IEggOptions) => {
       //if (eggOptions.tier && eggOptions.species) throw Error("Error egg can't have species and tier as option. only choose one of them.")
 

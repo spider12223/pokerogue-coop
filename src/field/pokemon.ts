@@ -18,6 +18,12 @@ import { FusionSpeciesFormEvolution, SpeciesFormEvolution, validateShedinjaEvo }
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE, SHINY_EPIC_CHANCE, SHINY_VARIANT_CHANCE } from "#balance/rates";
 import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/signature-moves";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
+import { isLinked, reportBridgeError } from "#coop/bridge";
+import { coopSwitchFilter, isAllowedSwitch, switchTargets } from "#coop/control";
+import { drawUniquePokemonId } from "#coop/pokemon-id";
+import { isCoop } from "#coop/session";
+import { ownerSeat, simAccount, writesForPokemon } from "#coop/sim-account";
+import { coopDecideSwitch } from "#coop/switch-bridge";
 import type { SuppressAbilitiesTag } from "#data/arena-tag";
 import { NoCritTag, WeakenMoveScreenTag } from "#data/arena-tag";
 import {
@@ -396,7 +402,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.isTerastallized = dataSource.isTerastallized;
       this.stellarTypesBoosted = dataSource.stellarTypesBoosted ?? [];
     } else {
-      this.id = randSeedInt(4294967296);
+      this.id = isCoop() ? this.drawUniqueCoopId() : randSeedInt(4294967296);
       this.ivs = ivs || getIvsFromId(this.id);
 
       if (this.gender === undefined) {
@@ -457,6 +463,18 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (!dataSource) {
       this.calculateStats();
     }
+  }
+
+  /**
+   * Co-op: draw a `pokemon.id` that no Pokémon in either party has (DECISIONS D3).
+   * @see {@linkcode drawUniquePokemonId}
+   */
+  private drawUniqueCoopId(): number {
+    const taken = new Set<number>();
+    for (const pokemon of [...globalScene.getPlayerParty(), ...globalScene.getEnemyParty()]) {
+      taken.add(pokemon.id);
+    }
+    return drawUniquePokemonId(() => randSeedInt(4294967296), taken);
   }
 
   /** The amount of EXP the Pokemon has earned within its current level */
@@ -1907,8 +1925,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       this.metSpecies in speciesEggMoves ? this.metSpecies : this.getSpeciesForm(true).getRootSpeciesId(true);
 
     if (species in speciesEggMoves) {
+      const unlockedEggMoves = simAccount().getEggMoves(species, ownerSeat(this));
       for (let i = 0; i < 4; i++) {
-        if (globalScene.gameData.starterData[species].eggMoves & (1 << i)) {
+        if (unlockedEggMoves & (1 << i)) {
           moves.push(speciesEggMoves[species][i]);
         }
       }
@@ -3054,7 +3073,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     const rand1 = (this.id & 0xffff0000) >>> 16;
     const rand2 = this.id & 0x0000ffff;
 
-    const E = globalScene.gameData.trainerId ^ globalScene.gameData.secretId;
+    const [trainerId, secretId] = simAccount().getTrainerAndSecretId();
+    const E = trainerId ^ secretId;
     const F = rand1 ^ rand2;
 
     const shinyThreshold = new NumberHolder(BASE_SHINY_CHANCE);
@@ -3308,7 +3328,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       !ignoreValidate
       && !this.getSpeciesForm().validateStarterMoveset(
         moveset,
-        globalScene.gameData.starterData[this.species.getRootSpeciesId()].eggMoves,
+        simAccount().getEggMoves(this.species.getRootSpeciesId(), ownerSeat(this)),
       )
     ) {
       return;
@@ -6117,6 +6137,29 @@ export class PlayerPokemon extends Pokemon {
    * the field.
    */
   switchOut(switchType: SwitchType = SwitchType.SWITCH): Promise<void> {
+    // Co-op (D7): only the controller's own bench can come in; with none, this Pokémon stays
+    if (isCoop() && switchTargets(this.getFieldIndex(), "voluntary").length === 0) {
+      return Promise.resolve();
+    }
+    if (isLinked()) {
+      // Co-op with a network: the replacement is a sequenced decision (D2, D7)
+      this.leaveField(switchType === SwitchType.SWITCH);
+      const fieldIndex = this.getFieldIndex();
+      return coopDecideSwitch({
+        fieldIndex,
+        reason: "voluntary",
+        leavingId: this.id,
+        partyMode: PartyUiMode.FAINT_SWITCH,
+      })
+        .then(({ partyIndex }) => {
+          if (partyIndex !== null) {
+            globalScene.phaseManager.queueDeferred("SwitchSummonPhase", switchType, fieldIndex, partyIndex, false);
+          }
+          return globalScene.ui.setMode(UiMode.MESSAGE);
+        })
+        .then(() => undefined)
+        .catch(reportBridgeError);
+    }
     return new Promise(resolve => {
       this.leaveField(switchType === SwitchType.SWITCH);
 
@@ -6125,7 +6168,11 @@ export class PlayerPokemon extends Pokemon {
         PartyUiMode.FAINT_SWITCH,
         this.getFieldIndex(),
         (slotIndex: number, _option: PartyOption) => {
-          if (slotIndex >= globalScene.currentBattle.getBattlerCount() && slotIndex < 6) {
+          if (
+            slotIndex >= globalScene.currentBattle.getBattlerCount()
+            && slotIndex < 6
+            && (!isCoop() || isAllowedSwitch(this.getFieldIndex(), slotIndex, "voluntary"))
+          ) {
             globalScene.phaseManager.queueDeferred(
               "SwitchSummonPhase",
               switchType,
@@ -6136,7 +6183,9 @@ export class PlayerPokemon extends Pokemon {
           }
           globalScene.ui.setMode(UiMode.MESSAGE).then(resolve);
         },
-        PartyUiHandler.FilterNonFainted,
+        isCoop()
+          ? coopSwitchFilter(this.getFieldIndex(), "voluntary", PartyUiHandler.FilterNonFainted)
+          : PartyUiHandler.FilterNonFainted,
       );
     });
   }
@@ -6178,7 +6227,9 @@ export class PlayerPokemon extends Pokemon {
         : newFriendship;
 
     this.friendship = Math.min(finalFriendship, 255);
-    if (this.friendship >= 255) {
+    // Co-op (D4a): each client writes to its own account only for the Pokémon its player owns
+    const writesAccount = writesForPokemon(this);
+    if (this.friendship >= 255 && writesAccount) {
       globalScene.validateAchv(achvs.MAX_FRIENDSHIP);
       awardRibbonsToSpeciesLine(this.species.speciesId, RibbonData.FRIENDSHIP);
     }
@@ -6189,7 +6240,7 @@ export class PlayerPokemon extends Pokemon {
     }
     const candyFriendshipAmount = Math.floor(friendship * candyFriendshipMultiplier);
     // Add to candy progress for this mon's starter species and its fused species (if it has one)
-    starterData.forEach(([sd, id]: [StarterDataEntry, SpeciesId]) => {
+    (writesAccount ? starterData : []).forEach(([sd, id]: [StarterDataEntry, SpeciesId]) => {
       sd.friendship = (sd.friendship || 0) + candyFriendshipAmount;
       const friendshipCap = getStarterValueFriendshipCap(speciesDataRegistry.getStarterCost(id));
       if (sd.friendship >= friendshipCap) {
@@ -6334,9 +6385,15 @@ export class PlayerPokemon extends Pokemon {
         }
       }
       if (!globalScene.gameMode.isDaily || this.metBiome > -1) {
-        globalScene.gameData.updateSpeciesDexIvs(this.species.speciesId, this.ivs);
-        globalScene.gameData.setPokemonSeen(this, false);
-        globalScene.gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
+        if (writesForPokemon(this)) {
+          globalScene.gameData.updateSpeciesDexIvs(this.species.speciesId, this.ivs);
+          globalScene.gameData.setPokemonSeen(this, false);
+          globalScene.gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
+        } else {
+          // A Pokémon of the partner: only seen (D4a)
+          globalScene.gameData.setPokemonSeen(this, false);
+          updateAndResolve();
+        }
       } else {
         updateAndResolve();
       }
@@ -6443,7 +6500,11 @@ export class PlayerPokemon extends Pokemon {
       };
       if (!globalScene.gameMode.isDaily || this.metBiome > -1) {
         globalScene.gameData.setPokemonSeen(this, false);
-        globalScene.gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
+        if (writesForPokemon(this)) {
+          globalScene.gameData.setPokemonCaught(this, false).then(() => updateAndResolve());
+        } else {
+          updateAndResolve();
+        }
       } else {
         updateAndResolve();
       }
@@ -6486,7 +6547,7 @@ export class PlayerPokemon extends Pokemon {
     if (!this.isFainted()) {
       // If this Pokemon hasn't fainted, make sure the HP wasn't set over the new maximum
       this.hp = Math.min(this.hp, maxHp);
-      this.status = getRandomStatus(this.status, pokemon.status); // Get a random valid status between the two
+      this.status = getRandomStatus(this.status, pokemon.status, `${this.id}:${pokemon.id}`); // Get a random valid status between the two
     } else if (!pokemon.isFainted()) {
       // If this Pokemon fainted but the other hasn't, make sure the HP wasn't set to zero
       this.hp = Math.max(this.hp, 1);

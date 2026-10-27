@@ -1,12 +1,13 @@
 import "vitest-canvas-mock";
 import "#app/i18n"; // tests don't go through `main.ts`, requiring this to be imported here as well
 
+import { endCoopSession, getCoopSession } from "#coop/session";
 import { PromptHandler } from "#test/helpers/prompt-handler";
 import { MockConsole } from "#test/mocks/mock-console/mock-console";
 import { logTestEnd, logTestStart } from "#test/setup/test-end-log";
 import { initTests } from "#test/setup/test-file-initialization";
 import fs from "node:fs";
-import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 
 // #region Mocking
 
@@ -121,6 +122,13 @@ beforeAll(async () => {
 afterAll(() => {
   global.server.close();
   MockConsole.printPostTestWarnings();
+  // Co-op: a file must end the co-op session it started. The files of a worker share their modules (`isolate: false`), so
+  // one left running would make the next file's tests co-op ones, and its late screens (the stop screen of D13) would
+  // be drawn in them. Say which file, and end it.
+  if (getCoopSession() !== null) {
+    process.stderr.write(`co-op: ${expect.getState().testPath} left a co-op session running; it is ended\n`);
+    endCoopSession();
+  }
 });
 
 beforeEach(context => {

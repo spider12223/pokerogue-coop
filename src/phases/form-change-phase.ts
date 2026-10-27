@@ -2,6 +2,7 @@ import type { Animation } from "#app/animations";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { writesForPokemon } from "#coop/sim-account";
 import { getSpeciesFormChangeMessage } from "#data/form-change-triggers";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -86,14 +87,19 @@ export class FormChangePhase extends EvolutionPhase {
       completeDelay: 1250,
       onComplete: () => {
         let playEvolutionFanfare = false;
+        const writesAccount = writesForPokemon(this.pokemon);
         if (this.formChange.formKey.indexOf(SpeciesFormKey.MEGA) > -1) {
-          globalScene.validateAchv(achvs.MEGA_EVOLVE);
+          if (writesAccount) {
+            globalScene.validateAchv(achvs.MEGA_EVOLVE);
+          }
           playEvolutionFanfare = true;
         } else if (
           this.formChange.formKey.indexOf(SpeciesFormKey.GIGANTAMAX) > -1
           || this.formChange.formKey.indexOf(SpeciesFormKey.ETERNAMAX) > -1
         ) {
-          globalScene.validateAchv(achvs.GIGANTAMAX);
+          if (writesAccount) {
+            globalScene.validateAchv(achvs.GIGANTAMAX);
+          }
           playEvolutionFanfare = true;
         }
 

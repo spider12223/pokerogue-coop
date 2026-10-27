@@ -534,3 +534,53 @@ a {
   -ms-animation: blink normal 4s infinite ease-in-out; /* IE */
   animation: blink normal 4s infinite ease-in-out; /* Opera and prob css3 final iteration */
 }
+
+/* co-op: the emote and ping buttons of the touch pad (src/coop/touch-emote.ts); only while a co-op run is linked */
+#coopEmoteTouch,
+#coopPingTouch {
+  display: none;
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 4;
+}
+
+#coopPingTouch {
+  right: calc(16px + var(--small-control-size));
+}
+
+#touchControls.coop-linked #coopEmoteTouch,
+#touchControls.coop-linked #coopPingTouch {
+  display: flex;
+}
+
+/* co-op: "Report a problem" (src/coop/report-button.ts), at the top left, quiet until it is pointed at */
+#coopReport {
+  position: fixed;
+  top: 6px;
+  left: 6px;
+  z-index: 5;
+  padding: 2px 8px;
+  font: 12px/1.4 sans-serif;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  opacity: 0.55;
+  cursor: pointer;
+}
+
+#coopReport:hover,
+#coopReport:focus-visible {
+  opacity: 1;
+}
+
+#coopReport[hidden] {
+  display: none;
+}
+
+/* the starter select has its species number at the top left, and nothing at the bottom left */
+#touchControls[data-ui-mode="STARTER_SELECT"] ~ #coopReport {
+  top: auto;
+  bottom: 6px;
+}

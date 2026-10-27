@@ -5,3 +5,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
 * -crlf
+
+# The Windows pack: cmd.exe and Windows PowerShell expect CRLF
+pack/windows/** text eol=crlf

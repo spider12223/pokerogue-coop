@@ -3,6 +3,9 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { passOwnership } from "#coop/me-run";
+import { isCoop } from "#coop/session";
+import { writesForPokemon } from "#coop/sim-account";
 import { Gender, getGenderSymbol } from "#data/gender";
 import { getNatureName } from "#data/nature";
 import { getPokeballAtlasKey, getPokeballTintColor } from "#data/pokeball";
@@ -219,8 +222,8 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
 
         // Set data properly, then generate the new Pokemon's assets
         receivedPokemonData.passive = tradedPokemon.passive;
-        // Pokeball to Ultra ball, randomly
-        receivedPokemonData.pokeball = randInt(4) as PokeballType;
+        // Pokeball to Ultra ball, randomly (co-op, D29: seeded, so both clients roll the same)
+        receivedPokemonData.pokeball = (isCoop() ? randSeedInt(4) : randInt(4)) as PokeballType;
         const dataSource = new PokemonData(receivedPokemonData);
         const newPlayerPokemon = globalScene.addPlayerPokemon(
           receivedPokemonData.species,
@@ -235,6 +238,8 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
           dataSource,
         );
         globalScene.getPlayerParty().push(newPlayerPokemon);
+        // Co-op (D29): it belongs to the owner of the one traded away
+        passOwnership(tradedPokemon, newPlayerPokemon);
         await newPlayerPokemon.loadAssets();
 
         for (const mod of modifiers) {
@@ -247,7 +252,10 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
         await doPokemonTradeSequence(tradedPokemon, newPlayerPokemon);
         await showEncounterText(`${namespace}:tradeReceived`, null, 0, true, 4000);
         audioManager.playBgm(encounter.misc.bgmKey);
-        await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon);
+        // Co-op (D4a): the owner's account gets it
+        if (writesForPokemon(newPlayerPokemon)) {
+          await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon);
+        }
         await hideTradeBackground();
         tradedPokemon.destroy();
 
@@ -324,7 +332,8 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
 
         // Set data properly, then generate the new Pokemon's assets
         receivedPokemonData.passive = tradedPokemon.passive;
-        receivedPokemonData.pokeball = randInt(4) as PokeballType;
+        // Co-op (D29): seeded, so both clients roll the same
+        receivedPokemonData.pokeball = (isCoop() ? randSeedInt(4) : randInt(4)) as PokeballType;
         const dataSource = new PokemonData(receivedPokemonData);
         const newPlayerPokemon = globalScene.addPlayerPokemon(
           receivedPokemonData.species,
@@ -339,6 +348,8 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
           dataSource,
         );
         globalScene.getPlayerParty().push(newPlayerPokemon);
+        // Co-op (D29): it belongs to the owner of the one traded away
+        passOwnership(tradedPokemon, newPlayerPokemon);
         await newPlayerPokemon.loadAssets();
 
         for (const mod of modifiers) {
@@ -351,7 +362,10 @@ export const GlobalTradeSystemEncounter: MysteryEncounter = MysteryEncounterBuil
         await doPokemonTradeSequence(tradedPokemon, newPlayerPokemon);
         await showEncounterText(`${namespace}:tradeReceived`, null, 0, true, 4000);
         audioManager.playBgm(encounter.misc.bgmKey);
-        await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon);
+        // Co-op (D4a): the owner's account gets it
+        if (writesForPokemon(newPlayerPokemon)) {
+          await addPokemonDataToDexAndValidateAchievements(newPlayerPokemon);
+        }
         await hideTradeBackground();
         tradedPokemon.destroy();
 

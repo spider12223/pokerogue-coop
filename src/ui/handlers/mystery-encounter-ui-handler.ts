@@ -1,4 +1,9 @@
 import { globalScene } from "#app/global-scene";
+import { isLinked } from "#coop/bridge";
+import { MARK_COLORS } from "#coop/cosmetic-tag";
+import { getCosmeticView, sendMeCursor } from "#coop/cosmetic-view";
+import { coopMeetsRequirements, showChooserWaiting } from "#coop/me-run";
+import { getCoopSession } from "#coop/session";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
@@ -39,6 +44,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
   private showDexProgress = false;
 
   private overrideSettings?: OptionSelectSettings | undefined;
+  /** The encounter's question under the description, and its text (co-op: replaced by who the player waits for) */
+  private queryTextObject?: BBCodeText | undefined;
+  private queryText = "";
   private encounterOptions: MysteryEncounterOption[] = [];
   private optionsMeetsReqs: boolean[];
 
@@ -115,6 +123,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
       }, 1000);
     }
     this.displayOptionTooltip();
+    // Co-op (D29): the chooser's cursor, if it came before this screen opened
+    getCosmeticView()?.drawMeCursor();
 
     return true;
   }
@@ -150,6 +160,14 @@ export class MysteryEncounterUiHandler extends UiHandler {
               || selected.optionMode === MysteryEncounterOptionMode.DISABLED_OR_SPECIAL))
         ) {
           success = false;
+        } else if (isLinked()) {
+          // Co-op (D29): the chooser's pick is a sequenced decision that both clients carry out; the other player waits
+          if ((globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase).coopPick(cursor)) {
+            success = true;
+          } else {
+            ui.playError();
+            showChooserWaiting();
+          }
         } else if (
           (globalScene.phaseManager.getCurrentPhase() as MysteryEncounterPhase).handleOptionSelect(selected, cursor)
         ) {
@@ -176,6 +194,11 @@ export class MysteryEncounterUiHandler extends UiHandler {
       }
 
       this.displayOptionTooltip();
+      if (success) {
+        // Co-op: this player's own cursor again, not the chooser's it was following
+        this.cursorObj?.clearTint();
+        this.announceCursor();
+      }
     }
 
     if (success) {
@@ -343,6 +366,42 @@ export class MysteryEncounterUiHandler extends UiHandler {
     return changed;
   }
 
+  /**
+   * Co-op (D29): the line under the description says who the player is waiting for ("Sam is choosing…") instead of the
+   * encounter's question; the message box is under the options on this screen
+   * @param text - `null` for the encounter's question again
+   */
+  public setWaitingLine(text: string | null): void {
+    const line = this.queryTextObject;
+    if (line?.scene == null) {
+      return;
+    }
+    line.setText(text ?? this.queryText);
+    line.setX(75 - line.displayWidth / 2);
+  }
+
+  /** Co-op (D29): while this player chooses the option, the partner's screen follows this cursor */
+  public announceCursor(): void {
+    const session = getCoopSession();
+    const phase = globalScene.phaseManager.getCurrentPhase();
+    if (isLinked() && session !== null && phase.is("MysteryEncounterPhase") && phase.coopChoosing()) {
+      sendMeCursor(session.meStep - 1, this.getCursor());
+    }
+  }
+
+  /**
+   * Co-op (D29): the partner chooses the option, and this screen's cursor follows theirs, in their color. The player can
+   * still move it to read another option; the partner's next move takes it back.
+   */
+  public followPartnerCursor(index: number): void {
+    if (this.cursorObj === undefined || index > this.viewPartyIndex) {
+      return;
+    }
+    this.setCursor(index);
+    this.cursorObj?.setTint(MARK_COLORS.partner);
+    this.displayOptionTooltip();
+  }
+
   displayEncounterOptions(slideInDescription = true): void {
     this.getUi().clearText();
     const mysteryEncounter = globalScene.currentBattle.mysteryEncounter!;
@@ -393,7 +452,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
           break;
       }
 
-      this.optionsMeetsReqs.push(option.meetsRequirements());
+      // Co-op (D29): the check is drawn apart from the run's stream; this screen is drawn again on one client alone
+      this.optionsMeetsReqs.push(isLinked() ? coopMeetsRequirements(option) : option.meetsRequirements());
       const optionDialogue = option.dialogue!;
       const label =
         !this.optionsMeetsReqs[i] && optionDialogue.disabledButtonLabel
@@ -536,6 +596,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
     });
     this.descriptionContainer.add(queryTextObject);
     queryTextObject.setPosition(75 - queryTextObject.displayWidth / 2, 90);
+    this.queryTextObject = queryTextObject;
+    this.queryText = queryText ?? "";
 
     // Slide in description container
     if (slideInDescription) {

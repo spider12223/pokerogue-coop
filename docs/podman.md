@@ -11,7 +11,7 @@ SPDX-License-Identifier: CC-BY-NC-SA-4.0
 
 ## Steps
 
-1. `podman build -t pokerogue -f Dockerfile .`
+1. `podman build -t pokerogue -f Dockerfile.dev .`
 2. `podman create --name temp-pokerogue localhost/pokerogue`
 3. `podman cp temp-pokerogue:/app/node_modules ./`
 4. `podman cp temp-pokerogue:/app/assets ./assets/`

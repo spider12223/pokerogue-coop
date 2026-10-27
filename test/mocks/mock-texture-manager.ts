@@ -2,6 +2,7 @@ import type { MockGameObject } from "#test/mocks/mock-game-object";
 import { MockVideoGameObject } from "#test/mocks/mock-video-game-object";
 import { MockBBCodeText } from "#test/mocks/mocks-container/mock-bbcode-text";
 import { MockContainer } from "#test/mocks/mocks-container/mock-container";
+import { MockGraphics } from "#test/mocks/mocks-container/mock-graphics";
 import { MockImage } from "#test/mocks/mocks-container/mock-image";
 import { MockInputText } from "#test/mocks/mocks-container/mock-input-text";
 import { MockNineslice } from "#test/mocks/mocks-container/mock-nineslice";
@@ -31,6 +32,7 @@ export class MockTextureManager {
       tileSprite: this.sprite.bind(this),
       existing: this.existing.bind(this),
       rectangle: this.rectangle.bind(this),
+      graphics: this.graphics.bind(this),
       nineslice: this.nineslice.bind(this),
       image: this.image.bind(this),
       polygon: this.polygon.bind(this),
@@ -75,6 +77,12 @@ export class MockTextureManager {
     const rectangle = new MockRectangle(this, x, y, width, height, fillColor);
     this.list.push(rectangle);
     return rectangle;
+  }
+
+  graphics(config) {
+    const graphics = new MockGraphics(this, config);
+    this.list.push(graphics);
+    return graphics;
   }
 
   nineslice(x, y, texture, frame, width, height, leftWidth, rightWidth, topHeight, bottomHeight) {

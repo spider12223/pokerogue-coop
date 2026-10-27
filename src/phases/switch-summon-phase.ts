@@ -2,6 +2,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { isCoop } from "#coop/session";
 import { SubstituteTag } from "#data/battler-tags";
 import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
@@ -127,6 +128,12 @@ export class SwitchSummonPhase extends SummonPhase {
     const party = this.player ? this.getParty() : globalScene.getEnemyParty();
     const switchedInPokemon: Pokemon | undefined = party[this.slotIndex];
     this.lastPokemon = this.getPokemon();
+
+    // Co-op (D6): nobody to send out (see `Trainer.getNextSummonIndex`): the slot stays empty, two against one
+    if (isCoop() && !switchedInPokemon) {
+      this.end();
+      return;
+    }
 
     // Defensive programming: Overcome the bug where the summon data has somehow not been reset
     // prior to switching in a new Pokemon.

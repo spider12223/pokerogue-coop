@@ -3,6 +3,17 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
+import { arrangeCoopParty } from "#coop/arrange";
+import { isLinked, reportBridgeError } from "#coop/bridge";
+import { coopLog } from "#coop/coop-log";
+import { closeStarterLobby, getStarterLobby } from "#coop/lobby";
+import { interleaveStarters } from "#coop/ownership";
+import type { StartPayload } from "#coop/protocol";
+import { isCoop, requireCoopSession } from "#coop/session";
+import { ownerSeat, simAccount } from "#coop/sim-account";
+import { applyCoopRunSeed } from "#coop/sim-rng";
+import { fromCoopStarter } from "#coop/starter-select-coop";
+import { setTouchEmoteVisible } from "#coop/touch-emote";
 import { SpeciesFormChangeMoveLearnedTrigger } from "#data/form-change-triggers";
 import { Gender } from "#data/gender";
 import { ChallengeType } from "#enums/challenge-type";
@@ -19,6 +30,11 @@ export class SelectStarterPhase extends Phase {
 
     audioManager.playBgm("menu");
 
+    if (isLinked()) {
+      this.startCoop();
+      return;
+    }
+
     globalScene.ui.setMode(UiMode.STARTER_SELECT, (starters: Starter[]) => {
       globalScene.ui.clearText();
       globalScene.ui.setMode(UiMode.SAVE_SLOT, SaveSlotUiMode.SAVE, (slotId: number) => {
@@ -32,6 +48,57 @@ export class SelectStarterPhase extends Phase {
         this.initBattle(starters);
       });
     });
+  }
+
+  /**
+   * Co-op with a network (DECISIONS D3, D4, D7): both players pick at once on the same screen and press ready; the run
+   * starts when the host's `START` arrives, with both parties and both accounts. The starter select does not call back
+   * with the player's starters: in co-op, confirming only makes the player ready (`CoopStarterSelectController`).
+   */
+  private startCoop(): void {
+    const lobby = getStarterLobby();
+    if (lobby === null) {
+      throw new Error("co-op: the starter select needs a lobby");
+    }
+    globalScene.ui.setMode(UiMode.STARTER_SELECT, () => undefined);
+    const begin = (start: StartPayload): void => {
+      try {
+        this.startCoopRun(start);
+      } catch (error) {
+        reportBridgeError(error);
+      }
+    };
+    if (lobby.startInfo === null) {
+      const stop = lobby.onStart(start => {
+        stop();
+        begin(start);
+      });
+    } else {
+      begin(lobby.startInfo);
+    }
+  }
+
+  /** Both players are ready: build the party they picked, in the same order on both clients. */
+  private startCoopRun(start: StartPayload): void {
+    const session = requireCoopSession();
+    const { starters, owners } = interleaveStarters(start.starters.host, start.starters.guest);
+    coopLog().info("session", "the run starts", {
+      host: start.starters.host.map(starter => starter.speciesId),
+      guest: start.starters.guest.map(starter => starter.speciesId),
+    });
+    session.setRunSeed(start.runSeed);
+    session.setAccountSnapshot(start.snapshots);
+    session.setStarterOwners(owners);
+    closeStarterLobby();
+    globalScene.ui.clearText();
+    // The battle message box still holds what the lobby last said
+    globalScene.ui.getMessageHandler().showText("", 0);
+    globalScene.ui.setMode(UiMode.MESSAGE);
+    // The emote button works from the first battle on (it does nothing on the starter select)
+    setTouchEmoteVisible(true);
+    applyCoopRunSeed();
+    globalScene.money = globalScene.gameMode.getStartingMoney();
+    this.initBattle(starters.map(fromCoopStarter));
   }
 
   /**
@@ -77,8 +144,16 @@ export class SelectStarterPhase extends Phase {
       if (starter.passive) {
         starterPokemon.passive = true;
       }
+      if (isCoop()) {
+        // The owner first: the luck below reads the owner's dex
+        const owner = requireCoopSession().starterOwners[i];
+        if (owner === undefined) {
+          throw new Error(`Starter ${i} has no owner`);
+        }
+        requireCoopSession().ownership.set(starterPokemon.id, owner);
+      }
       starterPokemon.luck = globalScene.gameData.getDexAttrLuck(
-        globalScene.gameData.dexData[species.speciesId].caughtAttr,
+        simAccount().getCaughtAttr(species.speciesId, ownerSeat(starterPokemon)),
       );
       if (starter.pokerus) {
         starterPokemon.pokerus = true;
@@ -106,6 +181,10 @@ export class SelectStarterPhase extends Phase {
       }
       loadPokemonAssets.push(starterPokemon.loadAssets());
     });
+    if (isCoop()) {
+      // The two seats' Pokémon take the two slots (D7)
+      arrangeCoopParty();
+    }
     overrideModifiers();
     overrideHeldItems(party[0]);
     Promise.all(loadPokemonAssets).then(() => {

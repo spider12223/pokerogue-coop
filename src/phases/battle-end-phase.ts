@@ -1,5 +1,6 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { globalScene } from "#app/global-scene";
+import { coopCheckpoint } from "#coop/checkpoints";
 import { LapsingPersistentModifier, LapsingPokemonHeldItemModifier } from "#modifiers/modifier";
 import { BattlePhase } from "#phases/battle-phase";
 
@@ -87,6 +88,7 @@ export class BattleEndPhase extends BattlePhase {
         });
       }
     }
+    coopCheckpoint("waveEnd", this.phaseName);
     this.end();
   }
 }

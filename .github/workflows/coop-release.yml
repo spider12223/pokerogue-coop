@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 pokerogue-coop contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# Builds the Windows pack (docs/coop/HOSTING.md, "Host from your own PC") and attaches it to a GitHub release.
+# Push a tag (git tag v1.0.0 && git push mine v1.0.0), or run it by hand with a tag name.
+name: Co-op release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (created at this commit if it does not exist), e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    if: github.repository != 'pagefaultgames/pokerogue'
+    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # 7.0.0
+        with:
+          submodules: "recursive"
+
+      - uses: ./.github/actions/setup-deps
+
+      # No VITE_COOP_RELAY_URL: the pack's game uses the relay of its own server
+      - name: Build
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          VITE_BYPASS_LOGIN: "1"
+          VITE_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          COOP_GIT_SHA: ${{ github.sha }}
+          COOP_DIRTY_HASH: clean
+
+      - name: Pack
+        shell: pwsh
+        run: ./scripts/pack-windows.ps1
+        env:
+          VITE_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          COOP_GIT_SHA: ${{ github.sha }}
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --title "PokeRogue Co-op $TAG" --notes "$(cat <<'EOF'
+          **Play in the browser:** see the [README](${{ github.server_url }}/${{ github.repository }}#play).
+
+          **Host from your Windows PC:** download `PokeRogue-Coop-windows.zip`, unzip it, double-click `Start.bat`, and send
+          your friend the link it shows. [How to play](${{ github.server_url }}/${{ github.repository }}/blob/coop/docs/coop/HOW-TO-PLAY.md).
+          EOF
+          )"
+          fi
+          gh release upload "$TAG" pack-out/PokeRogue-Coop-windows.zip --clobber

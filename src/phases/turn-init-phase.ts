@@ -1,4 +1,6 @@
 import { globalScene } from "#app/global-scene";
+import { isLinked } from "#coop/bridge";
+import { coopCheckpoint } from "#coop/checkpoints";
 import { BattlerIndex } from "#enums/battler-index";
 import { TurnInitEvent } from "#events/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
@@ -13,6 +15,7 @@ export class TurnInitPhase extends FieldPhase {
   public readonly phaseName = "TurnInitPhase";
   start() {
     super.start();
+    coopCheckpoint("turn", this.phaseName);
 
     globalScene.getPlayerField().forEach(p => {
       // If this pokemon is in play and evolved into something illegal under the current challenge, force a switch
@@ -56,6 +59,14 @@ export class TurnInitPhase extends FieldPhase {
       return;
     }
 
+    // Co-op (D8): the commands of both players are collected after the command phases, before the enemies choose
+    let commandsSynced = !isLinked();
+    const syncCommands = (): void => {
+      if (!commandsSynced) {
+        commandsSynced = true;
+        globalScene.phaseManager.pushNew("CoopTurnSyncPhase");
+      }
+    };
     globalScene.getField().forEach((pokemon, i) => {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {
@@ -67,10 +78,12 @@ export class TurnInitPhase extends FieldPhase {
         if (pokemon.isPlayer()) {
           globalScene.phaseManager.pushNew("CommandPhase", i);
         } else {
+          syncCommands();
           globalScene.phaseManager.pushNew("EnemyCommandPhase", i - BattlerIndex.ENEMY);
         }
       }
     });
+    syncCommands();
 
     globalScene.phaseManager.pushNew("TurnStartPhase");
 

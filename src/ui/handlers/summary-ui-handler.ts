@@ -4,6 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getStarterValueFriendshipCap } from "#balance/starters";
+import { isCoop } from "#coop/session";
 import { getLevelRelExp, getLevelTotalExp } from "#data/exp";
 import { getGenderColor, getGenderSymbol } from "#data/gender";
 import { getNatureName, getNatureStatMultiplier } from "#data/nature";
@@ -548,7 +549,9 @@ export class SummaryUiHandler extends UiHandler {
           } else if (this.selectedMoveIndex === -1) {
             const movesetLength = this.pokemon.moveset.length;
             const moveSelectOptions: OptionSelectItem[] = [];
-            if (movesetLength <= 1) {
+            // Co-op: swapping or deleting a move would change the moveset on this client only, outside the sequenced
+            // decisions (the moveset is hashed, and a command names its move by slot), so neither is offered
+            if (movesetLength <= 1 || isCoop()) {
               ui.playError();
               return false;
             }

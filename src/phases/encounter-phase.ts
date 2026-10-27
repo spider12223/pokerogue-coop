@@ -6,6 +6,9 @@ import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
+import { coopCheckpoint } from "#coop/checkpoints";
+import { isCoop } from "#coop/session";
+import { saveCoopWaveStart } from "#coop/wave-save";
 import { initEncounterAnims, loadEncounterAnimAssets } from "#data/battle-anims";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import { getNatureName } from "#data/nature";
@@ -292,21 +295,28 @@ export class EncounterPhase extends BattlePhase {
         if (this.loaded) {
           this.doEncounter();
           globalScene.resetSeed();
+          coopCheckpoint("waveStart", this.phaseName);
         } else {
           // Set weather and terrain before session gets saved
           this.trySetWeatherIfNewBiome();
           this.trySetTerrainIfNewBiome();
           // Game syncs to server on waves X1 and X6 (As of 1.2.0)
-          globalScene.gameData
-            .saveAll(true, battle.waveIndex % 5 === 1 || (globalScene.lastSavePlayTime ?? 0) >= 300)
-            .then(success => {
-              globalScene.disableMenu = false;
-              if (!success) {
-                return globalScene.reset(true);
-              }
-              this.doEncounter();
-              globalScene.resetSeed();
-            });
+          // Co-op: the wave start goes to the co-op slot (the host's) and to memory, never to a solo slot (D19)
+          (isCoop()
+            ? Promise.resolve(saveCoopWaveStart())
+            : globalScene.gameData.saveAll(
+                true,
+                battle.waveIndex % 5 === 1 || (globalScene.lastSavePlayTime ?? 0) >= 300,
+              )
+          ).then(success => {
+            globalScene.disableMenu = false;
+            if (!success) {
+              return globalScene.reset(true);
+            }
+            this.doEncounter();
+            globalScene.resetSeed();
+            coopCheckpoint("waveStart", this.phaseName);
+          });
         }
       });
     });

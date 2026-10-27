@@ -6,6 +6,15 @@ import { Phase } from "#app/phase";
 import type { BackgroundMusic } from "#audio/background-music";
 import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
+import { coopDecide, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
+import { deciderOf } from "#coop/control";
+import { evolutionCancelKey, evolutionPauseKey } from "#coop/decision-keys";
+import {
+  type EvolutionCancelPayload,
+  type EvolutionPausePayload,
+  isEvolutionCancelPayload,
+  isEvolutionPausePayload,
+} from "#coop/prompt-payloads";
 import { getTypeRgb } from "#data/type";
 import { LearnMoveSituation } from "#enums/learn-move-situation";
 import { UiMode } from "#enums/ui-mode";
@@ -266,14 +275,19 @@ export class EvolutionPhase extends Phase {
   private prepareForCycle(evolvedPokemon: Pokemon): void {
     globalScene.time.delayedCall(1500, () => {
       this.pokemonEvoTintSprite.setScale(0.25).setVisible(true);
-      this.evolutionHandler.canCancel = this.canCancel;
-      globalScene.animations.doCycle(1, 15, this.pokemonTintSprite, this.pokemonEvoTintSprite).then(() => {
-        if (this.evolutionHandler.cancelled) {
-          this.handleFailedEvolution(evolvedPokemon);
-        } else {
-          this.handleSuccessEvolution(evolvedPokemon);
-        }
-      });
+      // Co-op (D10): only the owner of the Pokémon can stop its evolution
+      this.evolutionHandler.canCancel = this.canCancel && this.isOwnedLocally();
+      globalScene.animations
+        .doCycle(1, 15, this.pokemonTintSprite, this.pokemonEvoTintSprite)
+        .then(() => this.resolveCancelled())
+        .then(cancelled => {
+          if (cancelled) {
+            this.handleFailedEvolution(evolvedPokemon);
+          } else {
+            this.handleSuccessEvolution(evolvedPokemon);
+          }
+        })
+        .catch(reportBridgeError);
     });
   }
 
@@ -308,12 +322,85 @@ export class EvolutionPhase extends Phase {
     this.evolutionBgm?.fadeOut(100);
   }
 
+  /** @returns Whether the player of this client may decide about this evolution: always in solo play, else the owner */
+  private isOwnedLocally(): boolean {
+    return !isLinked() || deciderOf({ kind: "EVOLUTION_CANCEL", pokemonId: this.pokemon.id }) === mySeat();
+  }
+
+  /**
+   * @returns Whether the evolution was stopped. In co-op with a network that is a sequenced decision of the owner,
+   * taken when the evolution animation is over: the same answer on both clients.
+   */
+  private async resolveCancelled(): Promise<boolean> {
+    if (!isLinked() || !this.canCancel) {
+      return this.evolutionHandler.cancelled;
+    }
+    const owner = deciderOf({ kind: "EVOLUTION_CANCEL", pokemonId: this.pokemon.id });
+    if (owner === null || owner === "either") {
+      throw new Error("co-op: an evolution without an owner");
+    }
+    const decision = await coopDecide<EvolutionCancelPayload>({
+      key: evolutionCancelKey(globalScene.currentBattle.waveIndex, this.pokemon.id, this.evolution?.speciesId ?? -1),
+      decider: owner,
+      ask: async () => ({ cancel: this.evolutionHandler.cancelled }),
+      // The animation is over: the partner sees the finished evolution scene for the moment the answer takes
+      wait: () => undefined,
+      isPayload: isEvolutionCancelPayload,
+    });
+    return decision.payload.cancel;
+  }
+
+  /** Co-op with a network: the owner decides whether evolutions are paused; both clients apply it (D10). */
+  private showSequencedPauseConfirmation(endCallback: () => void): void {
+    const owner = deciderOf({ kind: "EVOLUTION_CANCEL", pokemonId: this.pokemon.id });
+    if (owner === null || owner === "either") {
+      throw new Error("co-op: an evolution without an owner");
+    }
+    coopDecide<EvolutionPausePayload>({
+      key: evolutionPauseKey(globalScene.currentBattle.waveIndex, this.pokemon.id, this.evolution?.speciesId ?? -1),
+      decider: owner,
+      ask: () =>
+        new Promise<EvolutionPausePayload>(resolve => {
+          globalScene.ui.setOverlayMode(UiMode.CONFIRM, {
+            yesHandler: () => {
+              globalScene.ui.revertMode();
+              resolve({ pause: true });
+            },
+            noHandler: () => {
+              globalScene.ui.revertMode();
+              resolve({ pause: false });
+            },
+          });
+        }),
+      wait: () => undefined,
+      isPayload: isEvolutionPausePayload,
+    })
+      .then(({ payload }) => {
+        if (payload.pause) {
+          this.pokemon.pauseEvolutions = true;
+          globalScene.ui.showText(
+            i18next.t("menu:evolutionsPaused", { pokemonName: this.preEvolvedPokemonName }),
+            null,
+            endCallback,
+            3000,
+          );
+        } else {
+          globalScene.time.delayedCall(3000, endCallback);
+        }
+      })
+      .catch(reportBridgeError);
+  }
+
   /**
    * Show the confirmation prompt for pausing evolutions
    * @param endCallback - The callback to call after either option is selected.
    *  This should end the evolution phase
    */
   private showPauseEvolutionConfirmation(endCallback: () => void): void {
+    if (isLinked()) {
+      this.showSequencedPauseConfirmation(endCallback);
+      return;
+    }
     const options: ConfirmModeConfig = {
       yesHandler: () => {
         globalScene.ui.revertMode();

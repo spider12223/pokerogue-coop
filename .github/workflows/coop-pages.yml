@@ -1,0 +1,72 @@
+# SPDX-FileCopyrightText: 2026 pokerogue-coop contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# Builds the game and publishes it on GitHub Pages (docs/coop/HOSTING.md, "A free website").
+# Needs: Settings > Pages > Source "GitHub Actions", and the repository variable COOP_RELAY_URL
+# (the relay, e.g. wss://pokerogue-coop-relay.<you>.workers.dev/coop).
+name: Co-op website
+
+on:
+  push:
+    branches:
+      - coop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Skipped until the relay's address is set
+    if: github.repository != 'pagefaultgames/pokerogue' && vars.COOP_RELAY_URL != ''
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the relay address
+        env:
+          COOP_RELAY_URL: ${{ vars.COOP_RELAY_URL }}
+        run: |
+          if [[ ! "$COOP_RELAY_URL" =~ ^wss?:// ]]; then
+            echo "::error::COOP_RELAY_URL must be the relay's WebSocket address (wss://...workers.dev/coop): Settings > Secrets and variables > Actions > Variables"
+            exit 1
+          fi
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # 7.0.0
+        with:
+          submodules: "recursive"
+
+      - uses: ./.github/actions/setup-deps
+
+      - name: Build
+        run: pnpm build
+        env:
+          NODE_ENV: production
+          VITE_BYPASS_LOGIN: "1"
+          VITE_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          VITE_COOP_RELAY_URL: ${{ vars.COOP_RELAY_URL }}
+          COOP_GIT_SHA: ${{ github.sha }}
+          COOP_DIRTY_HASH: clean
+
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

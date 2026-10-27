@@ -13,6 +13,7 @@ import {
   getValueReductionCandyCounts,
 } from "#balance/starters";
 import { getTmNumber, tmPoolTiers } from "#balance/tm-pool-tiers";
+import { isCoop } from "#coop/session";
 import { allAbilities, allMoves, catchableSpecies } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { GrowthRate, getGrowthRateColor } from "#data/exp";
@@ -2014,52 +2015,55 @@ export class PokedexPageUiHandler extends MessageUiHandler {
               speciesDataRegistry.getStarterCost(this.starterId),
               hatchCount,
             );
-            options.push({
-              label: `×${sameSpeciesEggCost} ${i18next.t("pokedexUiHandler:sameSpeciesEgg")}`,
-              handler: () => {
-                if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE && candyCount < sameSpeciesEggCost) {
-                  return false;
-                }
-
-                if (globalScene.gameData.eggs.length >= 99 && !activeOverrides.UNLIMITED_EGG_COUNT_OVERRIDE) {
-                  // Egg list full, show error message at the top of the screen and abort
-                  this.showText(
-                    i18next.t("egg:tooManyEggs"),
-                    undefined,
-                    () => this.showText("", 0, () => (this.tutorialActive = false)),
-                    2000,
-                    false,
-                    undefined,
-                    true,
-                  );
-                  return false;
-                }
-                if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
-                  starterData.candyCount -= sameSpeciesEggCost;
-                }
-                this.pokemonCandyCountText.setText(`×${starterData.candyCount}`);
-                updateCandyCountTextStyle(this.pokemonCandyCountText, starterData.candyCount);
-
-                const egg = new Egg({
-                  scene: globalScene,
-                  species: this.starterId,
-                  sourceType: EggSourceType.SAME_SPECIES_EGG,
-                });
-                egg.addEggToGameData();
-
-                globalScene.gameData.saveSystem().then(saveSuccess => {
-                  if (!saveSuccess) {
-                    return globalScene.reset(true);
+            // Co-op: eggs are off (D12); the option would take the candy and then fail to make the egg
+            if (!isCoop()) {
+              options.push({
+                label: `×${sameSpeciesEggCost} ${i18next.t("pokedexUiHandler:sameSpeciesEgg")}`,
+                handler: () => {
+                  if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE && candyCount < sameSpeciesEggCost) {
+                    return false;
                   }
-                });
-                ui.setMode(UiMode.POKEDEX_PAGE, "refresh");
-                audioManager.playSound("se/buy");
 
-                return true;
-              },
-              color: isSameSpeciesEggAvailable(this.starterId) ? TextStyle.WINDOW : TextStyle.SHADOW_TEXT,
-              iconsConfig: getCandyIconsConfig(getColors(isSameSpeciesEggAvailable)),
-            });
+                  if (globalScene.gameData.eggs.length >= 99 && !activeOverrides.UNLIMITED_EGG_COUNT_OVERRIDE) {
+                    // Egg list full, show error message at the top of the screen and abort
+                    this.showText(
+                      i18next.t("egg:tooManyEggs"),
+                      undefined,
+                      () => this.showText("", 0, () => (this.tutorialActive = false)),
+                      2000,
+                      false,
+                      undefined,
+                      true,
+                    );
+                    return false;
+                  }
+                  if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
+                    starterData.candyCount -= sameSpeciesEggCost;
+                  }
+                  this.pokemonCandyCountText.setText(`×${starterData.candyCount}`);
+                  updateCandyCountTextStyle(this.pokemonCandyCountText, starterData.candyCount);
+
+                  const egg = new Egg({
+                    scene: globalScene,
+                    species: this.starterId,
+                    sourceType: EggSourceType.SAME_SPECIES_EGG,
+                  });
+                  egg.addEggToGameData();
+
+                  globalScene.gameData.saveSystem().then(saveSuccess => {
+                    if (!saveSuccess) {
+                      return globalScene.reset(true);
+                    }
+                  });
+                  ui.setMode(UiMode.POKEDEX_PAGE, "refresh");
+                  audioManager.playSound("se/buy");
+
+                  return true;
+                },
+                color: isSameSpeciesEggAvailable(this.starterId) ? TextStyle.WINDOW : TextStyle.SHADOW_TEXT,
+                iconsConfig: getCandyIconsConfig(getColors(isSameSpeciesEggAvailable)),
+              });
+            }
             options.push({
               label: i18next.t("menu:cancel"),
               handler: () => {

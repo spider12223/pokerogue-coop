@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
+import { isCoop } from "#coop/session";
 import type { IEggOptions } from "#data/egg";
 import { Egg, getLegendaryGachaSpeciesForTimestamp } from "#data/egg";
 import { Button } from "#enums/buttons";
@@ -14,7 +15,7 @@ import { getVoucherTypeIcon } from "#system/voucher";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { addTextObject, getEggTierTextTint, getTextStyleOptions } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
-import { fixedInt, randSeedShuffle } from "#utils/common";
+import { fixedInt, randInt, randSeedShuffle } from "#utils/common";
 import { getEnumValues } from "#utils/enums";
 import i18next from "i18next";
 
@@ -491,6 +492,15 @@ export class EggGachaUiHandler extends MessageUiHandler {
       eggs.push(egg);
     }
     // Shuffle the eggs in case the guaranteed one got added as last egg
+    if (isCoop()) {
+      // Co-op (D30): the eggs are this player's own, made outside the run's stream (`Egg`); so is their order: the run's
+      // stream is the simulation's, and the partner's client draws nothing here
+      for (let i = eggs.length - 1; i > 0; i--) {
+        const j = randInt(i + 1);
+        [eggs[i], eggs[j]] = [eggs[j], eggs[i]];
+      }
+      return eggs;
+    }
     return randSeedShuffle(eggs);
   }
 
@@ -509,7 +519,8 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.eggGachaOptionsContainer.setVisible(false);
     this.setTransitioning(true);
 
-    const saveSuccess = await (globalScene.currentBattle
+    // Co-op: only the account is saved; the run is saved at the start of a wave, to the co-op slot (D19)
+    const saveSuccess = await (globalScene.currentBattle && !isCoop()
       ? globalScene.gameData.saveAll(true, true, true)
       : globalScene.gameData.saveSystem()
     ).then(success => {

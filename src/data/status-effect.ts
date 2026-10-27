@@ -1,3 +1,4 @@
+import { simRandInt } from "#coop/sim-rng";
 import { StatusEffect } from "#enums/status-effect";
 import { randIntRange } from "#utils/common";
 import type { ParseKeys } from "i18next";
@@ -152,8 +153,13 @@ export function getRandomStatusEffect(statusEffectA: StatusEffect, statusEffectB
  * Returns a random non-volatile StatusEffect between the two provided
  * @param statusA The first Status
  * @param statusB The second Status
+ * @param discriminator - Names this occurrence for the co-op seeded draw (both clients must pass the same value); unused in solo play
  */
-export function getRandomStatus(statusA: Status | null, statusB: Status | null): Status | null {
+export function getRandomStatus(
+  statusA: Status | null,
+  statusB: Status | null,
+  discriminator: string | number = "",
+): Status | null {
   if (!statusA || statusA.effect === StatusEffect.NONE || statusA.effect === StatusEffect.FAINT) {
     return statusB;
   }
@@ -161,7 +167,7 @@ export function getRandomStatus(statusA: Status | null, statusB: Status | null):
     return statusA;
   }
 
-  return randIntRange(0, 1) ? statusA : statusB;
+  return simRandInt("fusionStatus", discriminator, 2) ? statusA : statusB;
 }
 
 /**

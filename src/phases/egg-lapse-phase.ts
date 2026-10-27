@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
+import { isCoop } from "#coop/session";
 import type { Egg } from "#data/egg";
 import { EGG_SEED } from "#data/egg";
 import { EggHatchData } from "#data/egg-hatch-data";
@@ -29,6 +30,14 @@ export class EggLapsePhase extends Phase {
       return activeOverrides.EGG_IMMEDIATE_HATCH_OVERRIDE ? true : --egg.hatchWaves < 1;
     });
     this.eggHatchData = [];
+
+    // Co-op (D30): each client hatches its own account's eggs, without the animation and without a question, and both
+    // run the same phases: the summary always comes (it shows this client's hatches, or ends at once if there are none)
+    if (isCoop()) {
+      this.hatchEggsSkipped(eggsToHatch);
+      this.showSummary();
+      return;
+    }
 
     if (eggsToHatch.length === 0) {
       this.end();

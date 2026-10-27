@@ -26,6 +26,21 @@ export abstract class AwaitableUiHandler extends UiHandler {
   }
 
   /**
+   * Co-op (DECISIONS D27): close what waits for a press, as the press would, without its sound. The guest's screen does this
+   * once the host is past the line.
+   * @returns Whether something was waiting
+   */
+  public closeAwaited(): boolean {
+    if (!this.awaitingActionInput || !this.onActionInput) {
+      return false;
+    }
+    const originalOnActionInput = this.onActionInput;
+    this.onActionInput = null;
+    originalOnActionInput();
+    return true;
+  }
+
+  /**
    * Create a semi transparent overlay that will get shown during tutorials
    * @param container the container to add the overlay to
    */

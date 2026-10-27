@@ -38,6 +38,8 @@ export class GameStats {
   public epicEggsPulled: number;
   public legendaryEggsPulled: number;
   public manaphyEggsPulled: number;
+  /** Co-op runs this account won together with a partner (DECISIONS D4a) */
+  public coopRunsWon: number;
 
   constructor(source?: any) {
     this.playTime = source?.playTime || 0;
@@ -77,5 +79,6 @@ export class GameStats {
     this.epicEggsPulled = source?.epicEggsPulled || 0;
     this.legendaryEggsPulled = source?.legendaryEggsPulled || 0;
     this.manaphyEggsPulled = source?.manaphyEggsPulled || 0;
+    this.coopRunsWon = source?.coopRunsWon || 0;
   }
 }

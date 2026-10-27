@@ -1,7 +1,7 @@
 import { pokerogueApi } from "#api/api";
 import { clientSessionId, getSessionDataLocalStorageKey, loggedInUser, updateUserInfo } from "#app/account";
 import { defaultStarterSpecies, saveKey } from "#app/constants";
-import { getGameMode } from "#app/game-mode";
+import { createCoopGameMode, getGameMode } from "#app/game-mode";
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -13,6 +13,17 @@ import { Tutorial } from "#app/tutorial";
 import { speciesEggMoves } from "#balance/egg-moves";
 import { bypassLogin, isBeta, isDev, systemSaveShortKeyMap } from "#constants/app-constants";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
+import {
+  decodeSaveText,
+  gameImportCatalog,
+  type ImportCatalog,
+  importInCoopText,
+  prepareSystemImport,
+  type SystemImportResult,
+  showImportNotes,
+  systemImportNotes,
+} from "#coop/import-account";
+import { checkSessionSaveBlock, isCoop, requireCoopSession } from "#coop/session";
 import { EntryHazardTag } from "#data/arena-tag";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed-utils";
 import { allMoves } from "#data/data-lists";
@@ -57,6 +68,7 @@ import type {
   AchvUnlocks,
   AppliedMigrators,
   DexAttrProps,
+  RunEntry,
   RunHistoryData,
   SeenDialogues,
   SessionSaveData,
@@ -155,7 +167,8 @@ export class GameData {
       trainerId: this.trainerId,
       secretId: this.secretId,
       // TODO: save some settings (such as player gender) separately, outside of system data
-      gender: settings.general.playerGender,
+      // The persisted value: a co-op settings overlay must never reach the saved system data.
+      gender: settings.persistedGeneral.playerGender,
       dexData: this.dexData,
       starterData: this.starterData,
       gameStats: this.gameStats,
@@ -483,7 +496,7 @@ export class GameData {
    * Arbitrary limit of 25 runs per player - Will delete runs, starting with the oldest one, if needed
    */
   // TODO: save run history data to server?
-  async saveRunHistory(runEntry: SessionSaveData, isVictory: boolean): Promise<boolean> {
+  async saveRunHistory(runEntry: SessionSaveData, isVictory: boolean, coop?: RunEntry["coop"]): Promise<boolean> {
     const runHistoryData = await this.getRunHistoryData();
     // runHistoryData should always return run history or {} empty object
     let timestamps = Object.keys(runHistoryData).map(Number);
@@ -500,6 +513,7 @@ export class GameData {
       entry: runEntry,
       isVictory,
       isFavorite: false,
+      ...(coop === undefined ? {} : { coop }),
     };
     localStorage.setItem(
       `runHistoryData_${loggedInUser?.username}`,
@@ -549,6 +563,23 @@ export class GameData {
     }
 
     return dataStr;
+  }
+
+  /**
+   * Co-op: read an exported account (a `.prsv` file of pokerogue.net, or its JSON) for the system import of
+   * `importData`: decrypt it, convert its keys, and check it; a save from a newer version is made into one of this version
+   * (`import-account.ts`). The account keeps this browser's trainer and secret IDs, as the import always did.
+   * @param fileText - The text of the chosen file
+   * @param catalog - What this build knows (a test can pass a stand-in)
+   */
+  public readSystemImport(fileText: string, catalog: ImportCatalog = gameImportCatalog()): SystemImportResult {
+    const decoded = decodeSaveText(fileText);
+    if (decoded === null) {
+      return { ok: false, reason: "unreadable" };
+    }
+    let dataStr = this.convertSystemDataStr(decoded);
+    dataStr = dataStr.replace(/"playTime":\d+/, `"playTime":${this.gameStats.playTime + 60}`);
+    return prepareSystemImport(dataStr, this, GameData.parseSystemData, catalog);
   }
 
   public async verify(): Promise<boolean> {
@@ -782,6 +813,8 @@ export class GameData {
       mysteryEncounterType: globalScene.currentBattle.mysteryEncounter?.encounterType ?? -1,
       mysteryEncounterSaveData: globalScene.mysteryEncounterSaveData,
       playerFaints: globalScene.arena.playerFaints,
+      // A co-op run says so in its save (and only then): it is never continued as a solo run
+      ...(isCoop() ? { coop: requireCoopSession().toSaveBlock(globalScene.getPlayerParty().map(p => p.id)) } : {}),
     } as SessionSaveData;
   }
 
@@ -866,8 +899,21 @@ export class GameData {
     if (!sessionData) {
       return false;
     }
+    // A co-op save only in a co-op session of the same two accounts, a solo save only outside one
+    checkSessionSaveBlock(sessionData.coop);
     await this.initSessionFromData(sessionData);
     return true;
+  }
+
+  /**
+   * Co-op (D13, D19, D21): load the wave-start save that came with a `RESYNC`, or from the co-op slot. A save that is not a
+   * co-op save, or one of two other accounts, is refused like `loadSession` does.
+   * @param json - The session save, as `JSON.stringify` wrote it
+   */
+  public async loadCoopSession(json: string): Promise<void> {
+    const sessionData = this.parseSessionData(json);
+    checkSessionSaveBlock(sessionData.coop);
+    await this.initSessionFromData(sessionData);
   }
 
   // TODO: This needs a giant refactor and overhaul
@@ -882,7 +928,13 @@ export class GameData {
       }
     }
 
-    globalScene.gameMode = getGameMode(fromSession.gameMode || GameModes.CLASSIC);
+    if (fromSession.coop) {
+      // Before the party: the owners of its members are in the block
+      requireCoopSession().restoreFromSaveBlock(fromSession.coop);
+      globalScene.gameMode = createCoopGameMode();
+    } else {
+      globalScene.gameMode = getGameMode(fromSession.gameMode || GameModes.CLASSIC);
+    }
     if (fromSession.challenges) {
       globalScene.gameMode.challenges = fromSession.challenges.map(c => c.toChallenge());
     }
@@ -1321,6 +1373,11 @@ export class GameData {
 
   // TODO: Refactor this spaghetti monster
   public importData(dataType: GameDataType, slotId = 0, confirmWindowXOffset?: number): void {
+    // Co-op: an import reloads the page, which would end the co-op session
+    if (isCoop()) {
+      globalScene.ui.showText(importInCoopText(), null, () => globalScene.ui.showText("", 0), fixedInt(1500));
+      return;
+    }
     const dataKey = `${getDataTypeKey(dataType, slotId)}_${loggedInUser?.username}`;
 
     document.getElementById("saveFile")?.remove();
@@ -1392,12 +1449,22 @@ export class GameData {
 
       reader.onload = (_ => {
         return e => {
+          // Co-op: a session may have begun while the file was being picked (the import reloads the page)
+          if (isCoop()) {
+            globalScene.ui.showText(importInCoopText(), null, () => globalScene.ui.showText("", 0), fixedInt(1500));
+            return;
+          }
           let valid = false;
           const dataName = i18next.t(`gameData:${toCamelCase(GameDataType[dataType])}`);
           const saveData = e.target?.result?.toString() ?? "";
 
           let dataStr: string;
-          if (isValidJSON(saveData)) {
+          /** What the player is told before the question (`systemImportNotes`) */
+          let notes: string[] = [];
+          if (dataType === GameDataType.SYSTEM) {
+            // Co-op: decrypted in `readSystemImport`, where a file that is not a save is refused instead of throwing here
+            dataStr = saveData;
+          } else if (isValidJSON(saveData)) {
             dataStr = saveData;
           } else {
             dataStr = AES.decrypt(saveData, saveKey).toString(enc.Utf8);
@@ -1406,10 +1473,13 @@ export class GameData {
           try {
             switch (dataType) {
               case GameDataType.SYSTEM: {
-                dataStr = this.convertSystemDataStr(dataStr);
-                dataStr = dataStr.replace(/"playTime":\d+/, `"playTime":${this.gameStats.playTime + 60}`);
-                const systemData = GameData.parseSystemData(dataStr);
-                valid = !!systemData.dexData && !!systemData.timestamp;
+                // Co-op: one step, tested on its own; a save from a newer version is made into one of this version
+                const result = this.readSystemImport(saveData);
+                valid = result.ok;
+                if (result.ok) {
+                  dataStr = result.dataStr;
+                  notes = systemImportNotes(result);
+                }
                 break;
               }
               case GameDataType.SESSION: {
@@ -1446,6 +1516,12 @@ export class GameData {
           // TODO: move this outside of game data
           const importDataConfirmOptions: ConfirmModeConfig = {
             yesHandler: () => {
+              // Co-op: nothing is written, and the page is not reloaded, once a session has begun
+              if (isCoop()) {
+                globalScene.ui.revertMode();
+                globalScene.ui.showText(importInCoopText(), null, () => globalScene.ui.showText("", 0), fixedInt(1500));
+                return;
+              }
               localStorage.setItem(dataKey, encrypt(dataStr, bypassLogin));
 
               if (!bypassLogin && dataType < GameDataType.SETTINGS) {
@@ -1484,9 +1560,11 @@ export class GameData {
             },
             xOffset: confirmWindowXOffset,
           };
-          globalScene.ui.showText(i18next.t("menuUiHandler:confirmImport", { dataName }), null, () => {
-            globalScene.ui.setOverlayMode(UiMode.CONFIRM, importDataConfirmOptions);
-          });
+          showImportNotes(notes, () =>
+            globalScene.ui.showText(i18next.t("menuUiHandler:confirmImport", { dataName }), null, () => {
+              globalScene.ui.setOverlayMode(UiMode.CONFIRM, importDataConfirmOptions);
+            }),
+          );
         };
       })((ev.target as any).files[0]);
 

@@ -1,5 +1,6 @@
 import type { PokeballCounts } from "#app/battle-scene";
 import type { Tutorial } from "#app/tutorial";
+import type { CoopSaveBlock } from "#coop/save-block";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
 import type { MoveId } from "#enums/move-id";
@@ -73,6 +74,8 @@ export interface SessionSaveData {
    * Counts the amount of pokemon fainted in your party during the current arena encounter.
    */
   playerFaints: number;
+  /** Only in a co-op run (see `src/coop/save-block.ts`); a save without it is a solo run */
+  coop?: CoopSaveBlock;
 }
 
 export interface Unlocks {
@@ -147,6 +150,8 @@ export interface RunEntry {
   isVictory: boolean;
   /** Automatically set to false at the moment - implementation TBD */
   isFavorite: boolean;
+  /** A co-op run (DECISIONS D4a): who played it, and which of the two this account was */
+  coop?: { names: { host: string; guest: string }; seat: "host" | "guest" } | undefined;
 }
 
 export interface StarterDataEntry {

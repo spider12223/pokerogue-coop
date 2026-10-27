@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { isCoop } from "#coop/session";
 import { modifierTypes } from "#data/data-lists";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import { BiomeId } from "#enums/biome-id";
@@ -27,11 +28,21 @@ export class TrainerVictoryPhase extends BattlePhase {
     }
 
     const trainerType = globalScene.currentBattle.trainer?.config.trainerType!; // TODO: is this bang correct?
+    // Co-op (D30): both clients run the same phases whatever each account has unlocked already. The first win's unlock
+    // is recorded per account without a voucher, and the voucher of a boss always comes through the reward phase.
+    const coopBossVoucher =
+      isCoop()
+      && Object.hasOwn(vouchers, TrainerType[trainerType])
+      && globalScene.currentBattle.trainer?.config.isBoss === true;
+    if (coopBossVoucher) {
+      globalScene.recordVoucherUnlock(vouchers[TrainerType[trainerType]]);
+    }
     // Validate Voucher for boss trainers
     if (
-      Object.hasOwn(vouchers, TrainerType[trainerType])
-      && !globalScene.validateVoucher(vouchers[TrainerType[trainerType]])
-      && globalScene.currentBattle.trainer?.config.isBoss
+      coopBossVoucher
+      || (Object.hasOwn(vouchers, TrainerType[trainerType])
+        && !globalScene.validateVoucher(vouchers[TrainerType[trainerType]])
+        && globalScene.currentBattle.trainer?.config.isBoss)
     ) {
       if (timedEventManager.getUpgradeUnlockedVouchers()) {
         globalScene.phaseManager.unshiftNew(

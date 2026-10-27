@@ -4,6 +4,7 @@ import { settings } from "#app/global-settings-manager";
 import type { InputsController } from "#app/inputs-controller";
 import { isDev } from "#constants/app-constants";
 import { SETTINGS_UI_MODES } from "#constants/ui-constants";
+import { openEmoteWheel, pingNow } from "#coop/hotkeys";
 import { Button } from "#enums/buttons";
 import { GameSpeed } from "#enums/game-speed";
 import { UiMode } from "#enums/ui-mode";
@@ -107,6 +108,9 @@ export class UiInputs {
           import("./dev-function").then(m => m.customDevFunction());
         }
       },
+      // Co-op (D16): they do something only in a linked run, on the screens where a cursor or a message is up
+      [Button.COOP_PING]: () => void pingNow(),
+      [Button.COOP_EMOTE]: () => void openEmoteWheel(),
     };
     return actions;
   }
@@ -131,6 +135,8 @@ export class UiInputs {
       [Button.SPEED_UP]: () => {},
       [Button.SLOW_DOWN]: () => {},
       [Button.DEV_CUSTOM]: () => {},
+      [Button.COOP_PING]: () => {},
+      [Button.COOP_EMOTE]: () => {},
     };
     return actions;
   }
@@ -231,6 +237,12 @@ export class UiInputs {
       globalScene.ui.processInput(button);
     } else if (button === Button.CYCLE_TERA) {
       this.buttonInfo(true);
+    } else if (button === Button.CYCLE_GENDER) {
+      // Co-op (D16): a pad has no free button for the ping and the emote wheel; outside the screens above, the two
+      // triggers (LT, RT; G and E on a keyboard) do them. They do nothing outside a linked run.
+      void pingNow();
+    } else if (button === Button.CYCLE_ABILITY) {
+      void openEmoteWheel();
     }
   }
 

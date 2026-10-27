@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { sendIntent } from "#coop/cosmetic-view";
 import { SubstituteTag } from "#data/battler-tags";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
@@ -143,6 +144,12 @@ export class TargetSelectUiHandler extends UiHandler {
     this.targetsHighlighted = this.isMultipleTargets ? multipleTargets : [singleTarget];
 
     const ret = super.setCursor(cursor);
+
+    // Co-op (D16): the partner sees the move and the target this player is looking at
+    const user = globalScene.getPlayerField()[this.fieldIndex];
+    if (user !== undefined) {
+      sendIntent(user.id, this.move, cursor);
+    }
 
     if (this.targetFlashTween) {
       this.targetFlashTween.stop();

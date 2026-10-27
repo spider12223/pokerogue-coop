@@ -2,6 +2,10 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { coopText, isLinked } from "#coop/bridge";
+import { isPartnersPokemon, notYourPokemonText, switchTargets } from "#coop/control";
+import { canEditInCoop, ownCount, proposePartyEdit } from "#coop/party-edit-run";
+import { getCoopSession, isCoop } from "#coop/session";
 import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
@@ -43,6 +47,10 @@ const DISCARD_BUTTON_X = 60;
 const DISCARD_BUTTON_X_DOUBLES = 64;
 const DISCARD_BUTTON_Y = -73;
 const DISCARD_BUTTON_Y_DOUBLES = -58;
+
+/** Co-op (D7): the name of the partner's Pokémon on the party screen is drawn in this colour, with a darker shadow */
+const PARTNER_NAME_COLOR = "#8fd3ff";
+const PARTNER_NAME_SHADOW = "#405f73";
 
 export enum PartyOption {
   CANCEL = -1,
@@ -310,9 +318,25 @@ export class PartyUiHandler extends MessageUiHandler {
       );
     }
     this.showPartyText();
-    this.setCursor(0);
+    // Co-op (D7): a switch opens on the first Pokémon that may go in; the top of the party is on the field, and often the
+    // partner's
+    this.setCursor(isCoop() ? this.coopSwitchCursor() : 0);
 
     return true;
+  }
+
+  /** Co-op (D7): where the party screen of a switch opens: the first Pokémon that may go into the slot, else the top */
+  private coopSwitchCursor(): number {
+    const switching =
+      this.partyUiMode === PartyUiMode.SWITCH
+      || this.partyUiMode === PartyUiMode.FAINT_SWITCH
+      || this.partyUiMode === PartyUiMode.POST_BATTLE_SWITCH;
+    if (!switching || this.fieldIndex < 0) {
+      return 0;
+    }
+    const reason = this.partyUiMode === PartyUiMode.FAINT_SWITCH ? "faint" : "voluntary";
+    const [first] = switchTargets(this.fieldIndex, reason);
+    return first === undefined ? 0 : Math.max(globalScene.getPlayerParty().indexOf(first), 0);
   }
 
   private processSummaryOption(pokemon: Pokemon): boolean {
@@ -339,9 +363,13 @@ export class PartyUiHandler extends MessageUiHandler {
     const ui = this.getUi();
     this.clearOptions();
     ui.playSelect();
-    pokemon.pauseEvolutions = !pokemon.pauseEvolutions;
+    const paused = !pokemon.pauseEvolutions;
+    // Co-op (D28): both clients set it when the edit comes back sequenced
+    if (!proposePartyEdit({ k: "evolution", pokemonId: pokemon.id, paused })) {
+      pokemon.pauseEvolutions = paused;
+    }
     this.showText(
-      i18next.t(pokemon.pauseEvolutions ? "partyUiHandler:pausedEvolutions" : "partyUiHandler:unpausedEvolutions", {
+      i18next.t(paused ? "partyUiHandler:pausedEvolutions" : "partyUiHandler:unpausedEvolutions", {
         pokemonName: getPokemonNameWithAffix(pokemon, false),
       }),
       undefined,
@@ -365,6 +393,12 @@ export class PartyUiHandler extends MessageUiHandler {
       () => {
         const options: ConfirmModeConfig = {
           yesHandler: () => {
+            // Co-op (D28): both clients undo the fusion when the edit comes back sequenced
+            if (proposePartyEdit({ k: "unsplice", pokemonId: pokemon.id })) {
+              ui.setMode(UiMode.PARTY);
+              this.showPartyText();
+              return;
+            }
             const fusionName = pokemon.getName();
             pokemon.unfuse().then(() => {
               this.clearPartySlots();
@@ -399,6 +433,22 @@ export class PartyUiHandler extends MessageUiHandler {
     ui.playSelect();
     // In release mode, we do not ask for confirmation when clicking release.
     if (this.partyUiMode === PartyUiMode.RELEASE) {
+      // Co-op (D10): a thrower at the cap releases one of their own, never the partner's. With a network only the
+      // thrower's client shows this; without one (the rules harness) a client plays both seats
+      const coop = getCoopSession();
+      const phase = globalScene.phaseManager.getCurrentPhase();
+      const releaser = phase.is("AttemptCapturePhase") ? phase.getThrowerSeat() : coop?.seat;
+      if (coop !== null && coop.ownership.get(pokemon.id) !== releaser) {
+        ui.playError();
+        this.showText(
+          coopText("notYours", "That one is your partner's."),
+          undefined,
+          () => this.showPartyText(),
+          undefined,
+          true,
+        );
+        return false;
+      }
       this.doRelease(this.cursor);
       return true;
     }
@@ -438,6 +488,11 @@ export class PartyUiHandler extends MessageUiHandler {
         buttonActions: [
           (nickname: string) => {
             ui.playSelect();
+            // Co-op (D28): both clients set it when the edit comes back sequenced
+            if (proposePartyEdit({ k: "rename", pokemonId: pokemon.id, nickname })) {
+              ui.setMode(UiMode.PARTY);
+              return;
+            }
             pokemon.nickname = nickname;
             pokemon.updateInfo();
             this.clearPartySlots();
@@ -739,6 +794,11 @@ export class PartyUiHandler extends MessageUiHandler {
         ],
       );
     }
+    // Co-op (D9): a DNA Splicer fuses two of the player's own Pokémon, both picks: the partner's are not theirs to
+    // give up
+    if (filterResult === null && this.partyUiMode === PartyUiMode.SPLICE && isPartnersPokemon(pokemon)) {
+      filterResult = notYourPokemonText(pokemon);
+    }
     return filterResult;
   }
 
@@ -804,8 +864,17 @@ export class PartyUiHandler extends MessageUiHandler {
     ) {
       const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
       const modifier = formChangeItemModifiers[option - PartyOption.FORM_CHANGE_ITEM];
-      modifier.active = !modifier.active;
-      globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger, false, true);
+      // Co-op (D28): both clients switch it when the edit comes back sequenced
+      const edit = {
+        k: "formItem",
+        pokemonId: pokemon.id,
+        item: modifier.formChangeItem,
+        active: !modifier.active,
+      } as const;
+      if (!proposePartyEdit(edit)) {
+        modifier.active = !modifier.active;
+        globalScene.triggerPokemonFormChange(pokemon, SpeciesFormChangeItemTrigger, false, true);
+      }
     }
 
     // This is processed before the filter result since releasing does not depend on status.
@@ -991,8 +1060,14 @@ export class PartyUiHandler extends MessageUiHandler {
     const ui = this.getUi();
     if (this.partyUiMode === PartyUiMode.CHECK && this.partySwitchCursor >= 0) {
       if (this.cursor < 6) {
+        const target = globalScene.getPlayerParty()[this.cursor];
         if (this.cursor === this.partySwitchCursor) {
           this.clearPartySwitchSelection();
+        } else if (isCoop() && target !== undefined && !canEditInCoop(target)) {
+          // Co-op (D28): a player reorders their own Pokémon only
+          ui.playError();
+          this.showText(notYourPokemonText(target), undefined, () => this.showPartyText(), undefined, true);
+          return false;
         } else if (this.isSwappable(this.cursor)) {
           this.swapPartyMembers(this.partySwitchCursor, this.cursor);
           this.clearPartySwitchSelection();
@@ -1016,6 +1091,17 @@ export class PartyUiHandler extends MessageUiHandler {
         (this.partyUiMode === PartyUiMode.MODIFIER_TRANSFER && !this.transferMode)
         || this.partyUiMode === PartyUiMode.DISCARD
       ) {
+        // Co-op (D9): items are moved or discarded only from the player's own Pokémon
+        const coop = getCoopSession();
+        if (coop !== null && coop.ownership.get(globalScene.getPlayerParty()[this.cursor].id) !== coop.seat) {
+          ui.playError();
+          const picked = globalScene.getPlayerParty()[this.cursor];
+          if (isPartnersPokemon(picked)) {
+            // Say why, the way the release branch does (a Pokémon that nobody owns keeps the error sound alone)
+            this.showText(notYourPokemonText(picked), undefined, () => this.showPartyText(), undefined, true);
+          }
+          return false;
+        }
         /** Initialize item quantities for the selected Pokemon */
         const itemModifiers = globalScene.findModifiers(
           m =>
@@ -1045,6 +1131,18 @@ export class PartyUiHandler extends MessageUiHandler {
           this.partyUiMode = PartyUiMode.MODIFIER_TRANSFER;
           break;
         case PartyUiMode.MODIFIER_TRANSFER:
+          // Co-op: a discard would remove the items on this client only (there is no sequenced decision for it, D9)
+          if (isCoop()) {
+            ui.playError();
+            this.showText(
+              coopText("noDiscard", "Items can't be thrown away in co-op."),
+              undefined,
+              () => this.showPartyText(),
+              undefined,
+              true,
+            );
+            return false;
+          }
           this.partyUiMode = PartyUiMode.DISCARD;
           break;
         default:
@@ -1406,13 +1504,20 @@ export class PartyUiHandler extends MessageUiHandler {
   private addCommonOptions(pokemon): void {
     this.options.push(PartyOption.SUMMARY);
     this.options.push(PartyOption.POKEDEX);
-    this.options.push(PartyOption.RENAME);
+    // Co-op: Rename and Pause/Unpause evolution change a Pokémon (the nickname and `pauseEvolutions` are saved, and the
+    // flag decides level-up evolutions and the evolution item pool), so they are offered only where they can be sequenced
+    // edits: a player's own Pokémon, from the reward screen (D28)
+    const editable = !isCoop() || canEditInCoop(pokemon);
+    if (editable) {
+      this.options.push(PartyOption.RENAME);
+    }
 
     if (
-      speciesDataRegistry.hasEvolutions(pokemon.species.speciesId)
-      || (pokemon.isFusion()
-        && pokemon.fusionSpecies
-        && speciesDataRegistry.hasEvolutions(pokemon.fusionSpecies.speciesId))
+      editable
+      && (speciesDataRegistry.hasEvolutions(pokemon.species.speciesId)
+        || (pokemon.isFusion()
+          && pokemon.fusionSpecies
+          && speciesDataRegistry.hasEvolutions(pokemon.fusionSpecies.speciesId)))
     ) {
       this.options.push(PartyOption.UNPAUSE_EVOLUTION);
     }
@@ -1525,7 +1630,8 @@ export class PartyUiHandler extends MessageUiHandler {
           this.options.push(PartyOption.APPLY);
         }
         this.addCommonOptions(pokemon);
-        if (pokemon.isFusion()) {
+        // Co-op: unsplicing changes the fusion (hashed) on this client only
+        if (pokemon.isFusion() && !isCoop()) {
           this.options.push(PartyOption.UNSPLICE);
         }
         break;
@@ -1533,22 +1639,28 @@ export class PartyUiHandler extends MessageUiHandler {
         this.options.push(PartyOption.RELEASE);
         this.addCommonOptions(pokemon);
         break;
-      case PartyUiMode.CHECK:
+      case PartyUiMode.CHECK: {
         this.addCommonOptions(pokemon);
-        if (globalScene.getPlayerParty().length >= 2) {
+        // Co-op (D28): reordering, unsplicing, releasing and the form change item toggles are sequenced edits of a player's
+        // own Pokémon, from the reward screen; a reorder needs two of them, and a release keeps one
+        const editable = !isCoop() || canEditInCoop(pokemon);
+        if (globalScene.getPlayerParty().length >= 2 && editable && (!isCoop() || ownCount() >= 2)) {
           this.options.splice(1, 0, PartyOption.SWITCH);
         }
-        if (globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")) {
+        if (editable && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")) {
           if (pokemon.isFusion()) {
             this.options.push(PartyOption.UNSPLICE);
           }
-          this.options.push(PartyOption.RELEASE);
+          if (!isCoop() || ownCount() > 1) {
+            this.options.push(PartyOption.RELEASE);
+          }
           const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
           for (let i = 0; i < formChangeItemModifiers.length; i++) {
             this.options.push(PartyOption.FORM_CHANGE_ITEM + i);
           }
         }
         break;
+      }
       case PartyUiMode.SELECT:
         this.options.push(PartyOption.SELECT);
         this.addCommonOptions(pokemon);
@@ -1597,7 +1709,7 @@ export class PartyUiHandler extends MessageUiHandler {
         this.options.push(PartyOption.RELEASE);
         break;
       case PartyUiMode.CHECK:
-        if (globalScene.phaseManager.getCurrentPhase().is("MysteryEncounterPhase")) {
+        if (globalScene.phaseManager.getCurrentPhase().is("MysteryEncounterPhase") || isCoop()) {
           break;
         }
         this.options.push(PartyOption.RELEASE);
@@ -1827,10 +1939,30 @@ export class PartyUiHandler extends MessageUiHandler {
       return;
     }
     const party = globalScene.getPlayerParty();
+    // Co-op (D28): both clients swap them when the edit comes back sequenced
+    if (proposePartyEdit({ k: "swap", a: party[firstIndex].id, b: party[secondIndex].id })) {
+      return;
+    }
     [party[firstIndex], party[secondIndex]] = [party[secondIndex], party[firstIndex]];
     this.cursor = secondIndex;
     this.clearPartySlots();
     this.populatePartySlots();
+    this.showPartyText();
+  }
+
+  /** Co-op (D28): a party edit was carried out, this player's or the partner's: draw the party as it is now */
+  public coopRefresh(): void {
+    if (!this.active) {
+      return;
+    }
+    this.clearOptions();
+    this.clearPartySwitchSelection();
+    this.clearPartySlots();
+    this.populatePartySlots();
+    const last = globalScene.getPlayerParty().length - 1;
+    if (this.cursor < 6 && this.cursor > last) {
+      this.setCursor(last);
+    }
     this.showPartyText();
   }
 
@@ -1839,6 +1971,21 @@ export class PartyUiHandler extends MessageUiHandler {
       this.getReleaseMessage(getPokemonNameWithAffix(globalScene.getPlayerParty()[slotIndex], false)),
       null,
       () => {
+        if (isLinked() && this.partyUiMode === PartyUiMode.RELEASE) {
+          // Co-op with a network: the release is a sequenced decision, both clients carry it out (D10)
+          const selectCallback = this.selectCallback;
+          this.selectCallback = null;
+          (selectCallback as PartySelectCallback | null)?.(slotIndex, PartyOption.RELEASE);
+          return;
+        }
+        // Co-op (D28): from the reward screen, both clients release it when the edit comes back sequenced
+        if (
+          this.partyUiMode === PartyUiMode.CHECK
+          && proposePartyEdit({ k: "release", pokemonId: globalScene.getPlayerParty()[slotIndex].id })
+        ) {
+          this.showPartyText();
+          return;
+        }
         this.clearPartySlots();
         globalScene.removePartyMemberModifiers(slotIndex);
         const releasedPokemon = globalScene.getPlayerParty().splice(slotIndex, 1)[0];
@@ -2134,6 +2281,11 @@ class PartySlot extends Phaser.GameObjects.Container {
     this.slotName = addTextObject(0, 0, displayName, TextStyle.PARTY);
     this.slotName.setPositionRelative(this.slotBg, namePosition.x, namePosition.y);
     this.slotName.setOrigin(0);
+    if (isPartnersPokemon(this.pokemon)) {
+      // Co-op: the partner's Pokémon are marked. A slot is rebuilt on every refresh and selecting only swaps its
+      // background, so the colour set here is the only place that needs it.
+      this.slotName.setColor(PARTNER_NAME_COLOR).setShadowColor(PARTNER_NAME_SHADOW);
+    }
 
     const slotLevelLabel = globalScene.add
       .image(0, 0, getLocalizedSpriteKey("party_slot_overlay_lv"))

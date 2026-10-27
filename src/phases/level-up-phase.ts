@@ -2,6 +2,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
+import { writesForPokemon } from "#coop/sim-account";
 import { allMoves } from "#data/data-lists";
 import { ExpNotification } from "#enums/exp-notification";
 import { LearnableMoveSource } from "#enums/learnable-move-source";
@@ -28,11 +29,15 @@ export class LevelUpPhase extends PlayerPartyMemberPokemonPhase {
   public override start(): void {
     super.start();
 
-    if (this.level > globalScene.gameData.gameStats.highestLevel) {
+    // Co-op (D4a): the statistics and achievements of a Pokémon are its owner's
+    const writesAccount = writesForPokemon(this.pokemon);
+    if (writesAccount && this.level > globalScene.gameData.gameStats.highestLevel) {
       globalScene.gameData.gameStats.highestLevel = this.level;
     }
 
-    globalScene.validateAchvs(LevelAchv, new NumberHolder(this.level));
+    if (writesAccount) {
+      globalScene.validateAchvs(LevelAchv, new NumberHolder(this.level));
+    }
 
     const prevStats = this.pokemon.stats.slice(0);
 

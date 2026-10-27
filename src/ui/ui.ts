@@ -20,6 +20,9 @@ import { GameChallengesUiHandler } from "#ui/challenges-select-ui-handler";
 import { ChangePasswordFormUiHandler } from "#ui/change-password-form-ui-handler";
 import { CommandUiHandler } from "#ui/command-ui-handler";
 import { ConfirmUiHandler } from "#ui/confirm-ui-handler";
+import { CoopJoinFormUiHandler } from "#ui/coop-join-form-ui-handler";
+import { CoopNameFormUiHandler } from "#ui/coop-name-form-ui-handler";
+import { CoopTradeUiHandler } from "#ui/coop-trade-ui-handler";
 import { SettingsDisplayUiHandler } from "#ui/display-settings-ui-handler";
 import { EggGachaUiHandler } from "#ui/egg-gacha-ui-handler";
 import { EggHatchSceneUiHandler } from "#ui/egg-hatch-scene-ui-handler";
@@ -108,6 +111,9 @@ const noTransitionModes = [
   UiMode.RUN_INFO,
   UiMode.CHANGE_PASSWORD_FORM,
   UiMode.ALERT_MODAL,
+  UiMode.COOP_JOIN_FORM,
+  UiMode.COOP_NAME_FORM,
+  UiMode.COOP_TRADE,
 ];
 
 // biome-ignore lint/style/useNamingConvention: a unique case (only 2 letters)
@@ -183,6 +189,9 @@ export class UI extends Phaser.GameObjects.Container {
       new MysteryEncounterUiHandler(),
       new ChangePasswordFormUiHandler(),
       new AlertModalUiHandler(),
+      new CoopJoinFormUiHandler(),
+      new CoopNameFormUiHandler(),
+      new CoopTradeUiHandler(),
     ];
   }
 

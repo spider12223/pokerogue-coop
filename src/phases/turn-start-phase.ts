@@ -1,6 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
+import { endTurnCosmetics } from "#coop/cosmetic-view";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";
@@ -50,6 +51,9 @@ export class TurnStartPhase extends FieldPhase {
   // Also need a clearer distinction between "turn command" and queued moves
   start() {
     super.start();
+
+    // Co-op (D8, D16): the partner's markers of this turn's commands go
+    endTurnCosmetics();
 
     const field = globalScene.getField();
     const moveOrder = this.getCommandOrder();
@@ -117,7 +121,13 @@ export class TurnStartPhase extends FieldPhase {
         this.handleFightCommand(turnCommand, pokemon);
         break;
       case Command.BALL:
-        globalScene.phaseManager.unshiftNew("AttemptCapturePhase", turnCommand.targets![0] % 2, turnCommand.cursor!); //TODO: is the bang correct here?
+        // The thrower is the Pokémon whose command this is: in co-op its owner owns the catch (D10)
+        globalScene.phaseManager.unshiftNew(
+          "AttemptCapturePhase",
+          turnCommand.targets![0] % 2, //TODO: is the bang correct here?
+          turnCommand.cursor!,
+          pokemon.id,
+        );
         break;
       case Command.POKEMON:
         globalScene.phaseManager.unshiftNew(

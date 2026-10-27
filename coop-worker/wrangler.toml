@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: 2026 pokerogue-coop contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# The co-op relay on Cloudflare Workers (docs/coop/HOSTING.md, "A free website").
+name = "pokerogue-coop-relay"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+# The free plan has Durable Objects with SQLite storage only
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+[vars]
+# The address of the game's pages, as the browser sends it in `Origin` (no path, no trailing slash).
+# Several: a comma list. "*": any page may use this relay.
+ALLOWED_ORIGINS = "https://spider12223.github.io"
+HOLD_MS = "60000"
+IDLE_ROOM_MS = "1800000"

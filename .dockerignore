@@ -1,7 +1,36 @@
-# .dockerignore
-node_modules
+# SPDX-FileCopyrightText: 2026 pokerogue-coop contributors
+#
+# SPDX-License-Identifier: CC0-1.0
+
+# What the image does not need. The game's assets/ and locales/ (git submodules) and the .env files (Vite reads them) stay.
+
+# version control and the machine's own files (a worktree has a .git *file*, a clone a directory)
+.git
+.gitmodules
+**/.git
+**/node_modules
+dist
+pack-out
+test-results
+coverage
+.vscode
+.idea
+.devcontainer
+.github
 *.log
-*.md
-.gitignore
+
+# what only developers use, and the other ways of hosting
+test
+docs
+scripts
+pack
+coop-worker
+lefthook.yml
+typedoc.config.js
+tsdoc.json
+**/*.md
+!assets/**/*.md
+!locales/**/*.md
 Dockerfile
-.env
+Dockerfile.*
+.dockerignore

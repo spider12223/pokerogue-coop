@@ -52,7 +52,20 @@ export function isSpreadMove(move: Move): boolean {
   return false;
 }
 
-export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: MoveTarget): MoveTargetSet {
+/**
+ * How a move with a random target (Outrage, Thrash, Struggle, ...) gets it:
+ * - `"battle"`: drawn from the battle's RNG stream (upstream)
+ * - `"all"`: every target the draw could give, and nothing is drawn (co-op: a check of a target that was drawn elsewhere)
+ * - a function: drawn by it, given how many there are to choose from (co-op: the choice of the move, see `commandTargetPick`)
+ */
+export type RandomTargetPick = "battle" | "all" | ((count: number) => number);
+
+export function getMoveTargets(
+  user: Pokemon,
+  move: MoveId,
+  replaceTarget?: MoveTarget,
+  randomTarget: RandomTargetPick = "battle",
+): MoveTargetSet {
   const variableTarget = new ValueHolder(replaceTarget ?? allMoves[move].moveTarget);
   user.getOpponents(false).forEach(p => applyMoveAttrs("VariableTargetAttr", user, p, allMoves[move], variableTarget));
 
@@ -91,7 +104,13 @@ export function getMoveTargets(user: Pokemon, move: MoveId, replaceTarget?: Move
       multiple = moveTarget !== MoveTarget.NEAR_ENEMY;
       break;
     case MoveTarget.RANDOM_NEAR_ENEMY:
-      set = [opponents[user.randBattleSeedInt(opponents.length)]];
+      if (randomTarget === "all") {
+        set = opponents;
+      } else {
+        const index =
+          randomTarget === "battle" ? user.randBattleSeedInt(opponents.length) : randomTarget(opponents.length);
+        set = [opponents[index]];
+      }
       break;
     case MoveTarget.ATTACKER:
       // TODO: Remove MoveTarget.ATTACKER and BattlerIndex.ATTACKER

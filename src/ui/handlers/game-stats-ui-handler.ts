@@ -2,6 +2,7 @@ import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { coopStatLabel } from "#coop/labels";
 import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
 import { TextStyle } from "#enums/text-style";
@@ -79,6 +80,11 @@ const displayStats: DisplayStats = {
   sessionsWon: {
     label_key: "classicWins",
     sourceFunc: gameData => gameData.gameStats.sessionsWon.toString(),
+  },
+  // Co-op: the runs this account won with a partner
+  coopRunsWon: {
+    label_key: "coopWins",
+    sourceFunc: gameData => gameData.gameStats.coopRunsWon.toString(),
   },
   dailyRunSessionsPlayed: {
     label_key: "dailyRunAttempts",
@@ -468,7 +474,9 @@ export class GameStatsUiHandler extends UiHandler {
       const value = stat.sourceFunc?.(this.gameData) ?? "-";
       const valAsInt = Number.parseInt(value);
       this.statLabels[s].setText(
-        !stat.hidden || Number.isNaN(value) || valAsInt ? i18next.t(`gameStatsUiHandler:${stat.label_key}`) : "???",
+        !stat.hidden || Number.isNaN(value) || valAsInt
+          ? i18next.t(`gameStatsUiHandler:${stat.label_key}`, coopStatLabel(stat.label_key))
+          : "???",
       );
       this.statValues[s].setText(value);
     });

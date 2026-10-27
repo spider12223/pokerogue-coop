@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
+import { registerGoerSetUp } from "#coop/me-run";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";
 import { getPokeballTintColor } from "#data/pokeball";
@@ -182,102 +183,7 @@ export const TheExpertPokemonBreederEncounter: MysteryEncounter = MysteryEncount
     ];
 
     // Determine the 3 pokemon the player can battle with
-    let partyCopy = globalScene.getPlayerParty().slice(0);
-    partyCopy = partyCopy.filter(p => p.isAllowedInBattle()).sort((a, b) => a.friendship - b.friendship);
-
-    const pokemon1 = partyCopy[0];
-    const pokemon2 = partyCopy[1];
-    const pokemon3 = partyCopy[2];
-    encounter.setDialogueToken("pokemon1Name", pokemon1.getNameToRender());
-    encounter.setDialogueToken("pokemon2Name", pokemon2.getNameToRender());
-    encounter.setDialogueToken("pokemon3Name", pokemon3.getNameToRender());
-
-    // Dialogue and egg calcs for Pokemon 1
-    const [pokemon1CommonEggs, pokemon1RareEggs] = calculateEggRewardsForPokemon(pokemon1);
-    let pokemon1Tooltip = getEncounterText(`${namespace}:option.1.tooltipBase`)!;
-    if (pokemon1RareEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon1RareEggs,
-        rarity: i18next.t("egg:greatTier"),
-      });
-      pokemon1Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon1RareEggs", eggsText);
-    }
-    if (pokemon1CommonEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon1CommonEggs,
-        rarity: i18next.t("egg:defaultTier"),
-      });
-      pokemon1Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon1CommonEggs", eggsText);
-    }
-    encounter.options[0].dialogue!.buttonTooltip = pokemon1Tooltip;
-
-    // Dialogue and egg calcs for Pokemon 2
-    const [pokemon2CommonEggs, pokemon2RareEggs] = calculateEggRewardsForPokemon(pokemon2);
-    let pokemon2Tooltip = getEncounterText(`${namespace}:option.2.tooltipBase`)!;
-    if (pokemon2RareEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon2RareEggs,
-        rarity: i18next.t("egg:greatTier"),
-      });
-      pokemon2Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon2RareEggs", eggsText);
-    }
-    if (pokemon2CommonEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon2CommonEggs,
-        rarity: i18next.t("egg:defaultTier"),
-      });
-      pokemon2Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon2CommonEggs", eggsText);
-    }
-    encounter.options[1].dialogue!.buttonTooltip = pokemon2Tooltip;
-
-    // Dialogue and egg calcs for Pokemon 3
-    const [pokemon3CommonEggs, pokemon3RareEggs] = calculateEggRewardsForPokemon(pokemon3);
-    let pokemon3Tooltip = getEncounterText(`${namespace}:option.3.tooltipBase`)!;
-    if (pokemon3RareEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon3RareEggs,
-        rarity: i18next.t("egg:greatTier"),
-      });
-      pokemon3Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon3RareEggs", eggsText);
-    }
-    if (pokemon3CommonEggs > 0) {
-      const eggsText = i18next.t(`${namespace}:numEggs`, {
-        count: pokemon3CommonEggs,
-        rarity: i18next.t("egg:defaultTier"),
-      });
-      pokemon3Tooltip += i18next.t(`${namespace}:eggsTooltip`, {
-        eggs: eggsText,
-      });
-      encounter.setDialogueToken("pokemon3CommonEggs", eggsText);
-    }
-    encounter.options[2].dialogue!.buttonTooltip = pokemon3Tooltip;
-
-    encounter.misc = {
-      pokemon1,
-      pokemon1CommonEggs,
-      pokemon1RareEggs,
-      pokemon2,
-      pokemon2CommonEggs,
-      pokemon2RareEggs,
-      pokemon3,
-      pokemon3CommonEggs,
-      pokemon3RareEggs,
-    };
+    setUpBreederChoices(encounter, globalScene.getPlayerParty());
 
     return true;
   })
@@ -757,3 +663,58 @@ function doPostEncounterCleanup() {
     restorePartyAndHeldItems();
   }
 }
+
+/**
+ * The 3 Pokémon the player can battle with (the 3 of `pool` that can fight, with the least friendship), and the dialogue
+ * and egg rewards of each
+ */
+function setUpBreederChoices(encounter: MysteryEncounter, pool: readonly PlayerPokemon[]): void {
+  const partyCopy = pool.filter(p => p.isAllowedInBattle()).sort((a, b) => a.friendship - b.friendship);
+  const chosen = [partyCopy[0], partyCopy[1], partyCopy[2]];
+  chosen.forEach((pokemon, i) => encounter.setDialogueToken(`pokemon${i + 1}Name`, pokemon.getNameToRender()));
+
+  const misc: Record<string, unknown> = {};
+  chosen.forEach((pokemon, i) => {
+    const n = i + 1;
+    // Dialogue and egg calcs for Pokemon n
+    const [commonEggs, rareEggs] = calculateEggRewardsForPokemon(pokemon);
+    let tooltip = getEncounterText(`${namespace}:option.${n}.tooltipBase`)!;
+    if (rareEggs > 0) {
+      const eggsText = i18next.t(`${namespace}:numEggs`, {
+        count: rareEggs,
+        rarity: i18next.t("egg:greatTier"),
+      });
+      tooltip += i18next.t(`${namespace}:eggsTooltip`, {
+        eggs: eggsText,
+      });
+      encounter.setDialogueToken(`pokemon${n}RareEggs`, eggsText);
+    }
+    if (commonEggs > 0) {
+      const eggsText = i18next.t(`${namespace}:numEggs`, {
+        count: commonEggs,
+        rarity: i18next.t("egg:defaultTier"),
+      });
+      tooltip += i18next.t(`${namespace}:eggsTooltip`, {
+        eggs: eggsText,
+      });
+      encounter.setDialogueToken(`pokemon${n}CommonEggs`, eggsText);
+    }
+    encounter.options[i].dialogue!.buttonTooltip = tooltip;
+    misc[`pokemon${n}`] = pokemon;
+    misc[`pokemon${n}CommonEggs`] = commonEggs;
+    misc[`pokemon${n}RareEggs`] = rareEggs;
+  });
+
+  encounter.misc = misc;
+}
+
+// Co-op (D29): only one Pokémon takes part; the 3 choices are of the player who goes
+registerGoerSetUp(MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER, pool => {
+  const encounter = globalScene.currentBattle.mysteryEncounter!;
+  // the tokens of the eggs of the choices that were set up for the whole party go
+  for (let n = 1; n <= 3; n++) {
+    delete encounter.dialogueTokens[`pokemon${n}RareEggs`];
+    delete encounter.dialogueTokens[`pokemon${n}CommonEggs`];
+  }
+  setUpBreederChoices(encounter, pool);
+});

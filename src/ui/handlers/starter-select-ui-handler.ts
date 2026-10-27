@@ -1,4 +1,4 @@
-import { PLAYER_PARTY_MAX_SIZE, VALUE_REDUCTION_MAX } from "#app/constants";
+import { VALUE_REDUCTION_MAX } from "#app/constants";
 import { eventBus } from "#app/event-bus";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
@@ -13,6 +13,10 @@ import {
   getValueReductionCandyCounts,
   POKERUS_STARTER_COUNT,
 } from "#balance/starters";
+import { getStarterLobby, returnToTitle } from "#coop/lobby";
+import { getCoopSession } from "#coop/session";
+import { CoopStarterSelectController, getStarterPickLimit } from "#coop/starter-select-coop";
+import { coopText } from "#coop/text";
 import { allMoves } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { getNatureName } from "#data/nature";
@@ -207,6 +211,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   //variables to keep track of the dynamically rendered list of instruction prompts for starter select
 
   private starterSelectCallback: StarterSelectCallback | null;
+
+  /** Co-op: the partner's picks and the ready button; `null` in solo play */
+  private coopUi: CoopStarterSelectController | null = null;
+  /** A refresh of the point label is pending (it turns back from pink after a moment) */
+  private valueRefreshPending = false;
 
   private starterPreferences: AllStarterPreferences;
   private originalStarterPreferences: AllStarterPreferences;
@@ -604,6 +613,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
       this.starterSummary.applyChallengeVisibility();
 
+      this.setUpCoop();
       this.resetFilters();
       this.updateStarters();
 
@@ -618,6 +628,34 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     }
 
     return false;
+  }
+
+  /** Co-op (D3, D7): add the partner's picks and the shared point limit to the screen, when in a co-op lobby. */
+  private setUpCoop(): void {
+    const lobby = getStarterLobby();
+    if (lobby === null) {
+      return;
+    }
+    this.coopUi?.destroy();
+    this.coopUi = new CoopStarterSelectController(
+      lobby,
+      this.starterSelectContainer,
+      {
+        iconPosition: i => [teamWindowX + 7, calcStarterIconY(i)],
+        slotIcons: this.partyIcons,
+        // The free strip at the top, between the species number and the filter bar (the grid has icons in every row)
+        statusPosition: [speciesContainerX - 3, 2],
+        statusWidth: 58,
+        // Above the team column and the starter grid, below the panels, overlays and message box drawn after them
+        drawBelow: this.starterSummary,
+      },
+      () => this.tryUpdateValue(),
+    );
+  }
+
+  /** The starter point limit of this player: the run's, or in co-op what the partner's party left of it. */
+  private getValueLimit(): number {
+    return this.coopUi?.valueLimit ?? getRunValueLimit();
   }
 
   /**
@@ -1066,7 +1104,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         // This prevents repeated rapid button presses from adding duplicate starters to the party
         this.blockInput = true;
 
-        if (this.partyStarterIds.length >= 6) {
+        if (this.partyStarterIds.length >= getStarterPickLimit()) {
           this.blockInput = false;
           error = true;
           break;
@@ -1082,7 +1120,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
             this.isPartyValid(),
           );
           const isCaught = getStarterData(starterId).dexEntry.caughtAttr;
-          return !isDupe && isValidForChallenge && currentPartyValue + starterCost <= getRunValueLimit() && isCaught;
+          return !isDupe && isValidForChallenge && currentPartyValue + starterCost <= this.getValueLimit() && isCaught;
         });
         if (validStarters.length === 0) {
           this.blockInput = false;
@@ -1605,8 +1643,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     if (
       !isDupe
       && isValidForChallenge
-      && currentPartyValue + newCost <= getRunValueLimit()
-      && this.partyStarterIds.length < PLAYER_PARTY_MAX_SIZE
+      && currentPartyValue + newCost <= this.getValueLimit()
+      && this.partyStarterIds.length < getStarterPickLimit()
     ) {
       options.push({
         label: i18next.t("starterSelectUiHandler:addToParty"),
@@ -1655,6 +1693,17 @@ export class StarterSelectUiHandler extends MessageUiHandler {
           ui.setMode(UiMode.STARTER_SELECT);
           return true;
         },
+      });
+    } else if (this.coopUi !== null && isValidForChallenge) {
+      // Co-op (D7): say why this one cannot join, where "Add to Party" would be
+      options.push({
+        label:
+          this.partyStarterIds.length >= getStarterPickLimit()
+            ? coopText("shareFull", "You have picked {{count}}", { count: getStarterPickLimit() })
+            : coopText("notEnoughPoints", "Not enough points"),
+        selectable: false,
+        color: TextStyle.SHADOW_TEXT,
+        handler: () => false,
       });
     }
 
@@ -2001,55 +2050,59 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         speciesDataRegistry.getStarterCost(this.lastStarterId),
         hatchedCount,
       );
-      useCandiesOptions.push({
-        label: `×${sameSpeciesEggCost} ${i18next.t("starterSelectUiHandler:sameSpeciesEgg")}`,
-        handler: () => {
-          if (activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE || candyCount >= sameSpeciesEggCost) {
-            if (globalScene.gameData.eggs.length >= 99 && !activeOverrides.UNLIMITED_EGG_COUNT_OVERRIDE) {
-              // Egg list full, show error message at the top of the screen and abort
-              this.showText(
-                i18next.t("egg:tooManyEggs"),
-                undefined,
-                () => this.showText("", 0, () => (this.tutorialActive = false)),
-                2000,
-                false,
-                undefined,
-                true,
-              );
-              return false;
-            }
-            if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
-              persistentStarterData.candyCount -= sameSpeciesEggCost;
-              starterData.candyCount = persistentStarterData.candyCount;
-            }
-            this.starterSummary.updateCandyCount(starterData.candyCount);
-
-            const egg = new Egg({
-              species: this.lastStarterId,
-              sourceType: EggSourceType.SAME_SPECIES_EGG,
-            });
-            egg.addEggToGameData();
-
-            globalScene.gameData.saveSystem().then(success => {
-              if (!success) {
-                return globalScene.reset(true);
+      // Co-op (the session starts in the lobby): eggs are off (D12); the option would take the candy and then fail to make
+      // the egg
+      if (getCoopSession() === null) {
+        useCandiesOptions.push({
+          label: `×${sameSpeciesEggCost} ${i18next.t("starterSelectUiHandler:sameSpeciesEgg")}`,
+          handler: () => {
+            if (activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE || candyCount >= sameSpeciesEggCost) {
+              if (globalScene.gameData.eggs.length >= 99 && !activeOverrides.UNLIMITED_EGG_COUNT_OVERRIDE) {
+                // Egg list full, show error message at the top of the screen and abort
+                this.showText(
+                  i18next.t("egg:tooManyEggs"),
+                  undefined,
+                  () => this.showText("", 0, () => (this.tutorialActive = false)),
+                  2000,
+                  false,
+                  undefined,
+                  true,
+                );
+                return false;
               }
-            });
-            ui.setMode(UiMode.STARTER_SELECT);
-            audioManager.playSound("se/buy");
+              if (!activeOverrides.FREE_CANDY_UPGRADE_OVERRIDE) {
+                persistentStarterData.candyCount -= sameSpeciesEggCost;
+                starterData.candyCount = persistentStarterData.candyCount;
+              }
+              this.starterSummary.updateCandyCount(starterData.candyCount);
 
-            // update the icon/animation for available upgrade
-            if (starterContainer) {
-              this.updateCandyUpgradeDisplay(starterContainer);
+              const egg = new Egg({
+                species: this.lastStarterId,
+                sourceType: EggSourceType.SAME_SPECIES_EGG,
+              });
+              egg.addEggToGameData();
+
+              globalScene.gameData.saveSystem().then(success => {
+                if (!success) {
+                  return globalScene.reset(true);
+                }
+              });
+              ui.setMode(UiMode.STARTER_SELECT);
+              audioManager.playSound("se/buy");
+
+              // update the icon/animation for available upgrade
+              if (starterContainer) {
+                this.updateCandyUpgradeDisplay(starterContainer);
+              }
+
+              return true;
             }
-
-            return true;
-          }
-          return false;
-        },
-        color: isSameSpeciesEggAvailable(this.lastStarterId) ? TextStyle.WINDOW : TextStyle.SHADOW_TEXT,
-        iconsConfig: getCandyIconsConfig(getColors(isSameSpeciesEggAvailable)),
-      });
+            return false;
+          },
+          color: isSameSpeciesEggAvailable(this.lastStarterId) ? TextStyle.WINDOW : TextStyle.SHADOW_TEXT,
+          iconsConfig: getCandyIconsConfig(getColors(isSameSpeciesEggAvailable)),
+        });
+      }
       useCandiesOptions.push({
         label: i18next.t("menu:cancel"),
         handler: () => {
@@ -2108,6 +2161,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   public override processInput(button: Button): boolean {
     if (this.blockInput) {
       return false;
+    }
+
+    // Co-op: while the player is ready, only cancel (take the ready back) does anything
+    if (this.coopUi?.processInput(button)) {
+      return true;
     }
 
     const ui = this.getUi();
@@ -2247,6 +2305,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
     this.partyStarters.push(starter);
     this.partyStarterIds.push(starterId);
+    this.coopUi?.updatePicks(this.partyStarters);
     speciesDataRegistry.getPokemonSpeciesForm(species.speciesId, props.formIndex).cry();
     this.updateInstructions();
   }
@@ -2850,6 +2909,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.populateStarterMoveset(starterId, formIndex);
 
     this.updateSelectedStarterMoveset(starterId);
+    // Co-op: the partner sees the change of a pick (a shiny, a form) at once
+    this.coopUi?.updatePicks(this.partyStarters);
 
     // TODO: What does this do?
     this.tryUpdateValue();
@@ -2976,6 +3037,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private popPartyStarter(index: number): void {
     this.partyStarterIds.splice(index, 1);
     this.partyStarters.splice(index, 1);
+    this.coopUi?.updatePicks(this.partyStarters);
 
     for (let s = 0; s < this.partyStarterIds.length; s++) {
       const starterId = this.partyStarterIds[s];
@@ -3063,18 +3125,28 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private tryUpdateValue(add = 0, addingToParty?: boolean): boolean {
     const value = getPartyValue(this.partyStarterIds);
     const newValue = value + add;
-    const valueLimit = getRunValueLimit();
+    const valueLimit = this.getValueLimit();
     const overLimit = newValue > valueLimit;
-    let newValueStr: string = newValue.toString();
+    // Co-op (D7): the label shows the team's points, both parties together, out of the budget they share
+    const shownValue = newValue + (this.coopUi?.partnerCost ?? 0);
+    const shownLimit = this.coopUi?.sharedLimit ?? valueLimit;
+    let newValueStr: string = shownValue.toString();
     if (newValueStr.startsWith("0.")) {
       newValueStr = newValueStr.slice(1);
     }
     this.valueLimitLabel
-      .setText(`${newValueStr}/${valueLimit}`)
+      .setText(`${newValueStr}/${shownLimit}`)
       .setColor(getTextColor(overLimit ? TextStyle.SUMMARY_PINK : TextStyle.TOOLTIP_CONTENT))
       .setShadowColor(getTextColor(overLimit ? TextStyle.SUMMARY_PINK : TextStyle.TOOLTIP_CONTENT, true));
     if (overLimit) {
-      globalScene.time.delayedCall(fixedInt(500), () => this.tryUpdateValue());
+      // Co-op: every change of the partner's party refreshes the label too, and one pending refresh is enough
+      if (this.coopUi === null || !this.valueRefreshPending) {
+        this.valueRefreshPending = true;
+        globalScene.time.delayedCall(fixedInt(500), () => {
+          this.valueRefreshPending = false;
+          this.tryUpdateValue();
+        });
+      }
       return false;
     }
     let isPartyValid = this.isPartyValid();
@@ -3117,7 +3189,10 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         isPartyValid,
       );
 
-      const canBeChosen = remainValue >= speciesStarterValue && isValidForChallenge;
+      // Co-op (D7): a player whose share of the party is full can add nobody, and their own picks stay lit even when the
+      // partner's points leave none over
+      const shareFull = this.coopUi !== null && this.partyStarterIds.length >= getStarterPickLimit();
+      const canBeChosen = !shareFull && remainValue >= speciesStarterValue && isValidForChallenge;
 
       // this will get the value of `isDupe` from `isInParty`.
       // This will let us see if the pokemon in question is in our party already so we don't grey out the sprites if they're invalid
@@ -3131,7 +3206,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
        * Any other time, the sprite should be greyed out.
        * For example, if it's in your party, valid, but costs too much, or if it's not in your party and not valid, regardless of cost
        */
-      if (canBeChosen || (isPokemonInParty && remainValue >= speciesStarterValue)) {
+      if (canBeChosen || (isPokemonInParty && (this.coopUi !== null || remainValue >= speciesStarterValue))) {
         speciesSprite.setAlpha(1);
       } else {
         // TODO: fix this comment
@@ -3166,6 +3241,11 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         globalScene.money = globalScene.gameMode.getStartingMoney();
         const starters = this.partyStarters.slice(0);
         ui.setMode(UiMode.STARTER_SELECT);
+        // Co-op (D7): confirming makes the player ready; the run starts when both are
+        if (this.coopUi?.confirm(starters)) {
+          this.clearText();
+          return;
+        }
         const originalStarterSelectCallback = this.starterSelectCallback;
         this.starterSelectCallback = null;
         originalStarterSelectCallback?.(starters);
@@ -3177,7 +3257,12 @@ export class StarterSelectUiHandler extends MessageUiHandler {
         yOffset: 29,
       };
 
-      ui.showText(i18next.t("starterSelectUiHandler:confirmStartTeam"), null, () => {
+      // Co-op: "yes" makes the player ready; the run starts when the partner is too
+      const question =
+        this.coopUi === null
+          ? i18next.t("starterSelectUiHandler:confirmStartTeam")
+          : coopText("confirmReadyTeam", "Ready with these Pokémon?");
+      ui.showText(question, null, () => {
         this.blockInput = false;
         ui.setModeWithoutClear(UiMode.CONFIRM, confirmStartOptions);
       });
@@ -3258,6 +3343,14 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       this.blockInput = false;
     };
     const doExit = () => {
+      // Co-op: leaving the starter select leaves the room, so that the partner is told and this player's next game is solo
+      const session = getCoopSession();
+      if (this.coopUi !== null && session !== null) {
+        this.clearText();
+        session.link?.leave();
+        returnToTitle(null);
+        return;
+      }
       ui.setMode(UiMode.STARTER_SELECT);
       // Non-challenge modes go directly back to title, while challenge modes go to the selection screen.
       if (globalScene.gameMode.isChallenge) {
@@ -3282,6 +3375,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
 
   public override clear(): void {
     super.clear();
+
+    this.coopUi?.destroy();
+    this.coopUi = null;
 
     saveStarterPreferences(this.originalStarterPreferences);
 

@@ -3,6 +3,14 @@ import { audioManager } from "#app/global-audio-manager";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
+import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
+import { catchReleaseKey } from "#coop/decision-keys";
+import { STARTERS_PER_SEAT } from "#coop/ownership";
+import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
+import type { Seat } from "#coop/protocol";
+import { DesyncError } from "#coop/sequencer";
+import { getCoopSession } from "#coop/session";
+import { writesForSeat } from "#coop/sim-account";
 import { SubstituteTag } from "#data/battler-tags";
 import { Gender } from "#data/gender";
 import {
@@ -37,10 +45,39 @@ export class AttemptCapturePhase extends PokemonPhase {
   private pokeball: Phaser.GameObjects.Sprite;
   private originalY: number;
 
-  constructor(targetIndex: number, pokeballType: PokeballType) {
+  /**
+   * @param throwerId - The `pokemon.id` of the Pokémon that threw the ball: in co-op its owner owns the catch (D10)
+   */
+  constructor(
+    targetIndex: number,
+    pokeballType: PokeballType,
+    private readonly throwerId?: number,
+  ) {
     super(BattlerIndex.ENEMY + targetIndex);
 
     this.pokeballType = pokeballType;
+  }
+
+  /** @returns Who threw the ball in a co-op run (the owner of the thrower); `null` in solo play */
+  public getThrowerSeat(): Seat | null {
+    const session = getCoopSession();
+    if (session === null) {
+      return null;
+    }
+    return (this.throwerId === undefined ? undefined : session.ownership.get(this.throwerId)) ?? session.seat;
+  }
+
+  /** @returns Whether the thrower has no room for the catch: a full party in solo play, three of their own in co-op (D10) */
+  private isSeatFull(thrower: Seat | null): boolean {
+    const session = getCoopSession();
+    if (thrower === null || session === null) {
+      return globalScene.getPlayerParty().length === PLAYER_PARTY_MAX_SIZE;
+    }
+    const partyIds = globalScene.getPlayerParty().map(member => member.id);
+    return (
+      session.ownership.countOwned(partyIds, thrower) >= STARTERS_PER_SEAT
+      || globalScene.getPlayerParty().length >= PLAYER_PARTY_MAX_SIZE
+    );
   }
 
   start() {
@@ -247,29 +284,37 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
+    // Co-op (D4a): only the thrower's client writes to its account for what the thrower catches; the partner's client
+    // saw the Pokémon already
+    const thrower = this.getThrowerSeat();
+    const writes = thrower === null || writesForSeat(thrower);
+
     if (
-      speciesForm.abilityHidden
+      writes
+      && speciesForm.abilityHidden
       && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
         === speciesForm.getAbilityCount() - 1
     ) {
       globalScene.validateAchv(achvs.HIDDEN_ABILITY);
     }
 
-    if (pokemon.species.subLegendary) {
+    if (writes && pokemon.species.subLegendary) {
       globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
     }
 
-    if (pokemon.species.legendary) {
+    if (writes && pokemon.species.legendary) {
       globalScene.validateAchv(achvs.CATCH_LEGENDARY);
     }
 
-    if (pokemon.species.mythical) {
+    if (writes && pokemon.species.mythical) {
       globalScene.validateAchv(achvs.CATCH_MYTHICAL);
     }
 
     pokemonInfoContainer.show(pokemon, true);
 
-    gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+    if (writes) {
+      gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+    }
 
     const addStatus = new BooleanHolder(true);
     applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
@@ -295,8 +340,16 @@ export class AttemptCapturePhase extends PokemonPhase {
         };
         const addToParty = (slotIndex?: number) => {
           const newPokemon = pokemon.addToParty(this.pokeballType, slotIndex);
+          const session = getCoopSession();
+          if (session !== null && thrower !== null) {
+            // The catch belongs to the thrower (D10); a Pokémon that was released is no one's any more
+            if (newPokemon) {
+              session.ownership.set(newPokemon.id, thrower);
+            }
+            session.ownership.retain(globalScene.getPlayerParty().map(member => member.id));
+          }
           const modifiers = globalScene.findModifiers(m => m instanceof PokemonHeldItemModifier, false);
-          if (globalScene.getPlayerParty().filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
+          if (writes && globalScene.getPlayerParty().filter(p => p.isShiny()).length === PLAYER_PARTY_MAX_SIZE) {
             globalScene.validateAchv(achvs.SHINY_PARTY);
           }
           Promise.all(modifiers.map(m => globalScene.addModifier(m, true))).then(() => {
@@ -310,104 +363,158 @@ export class AttemptCapturePhase extends PokemonPhase {
             }
           });
         };
-        Promise.all([pokemon.hideInfo(), gameData.setPokemonCaught(pokemon)]).then(() => {
-          if (!addStatus.value) {
-            removePokemon();
-            end();
-            return;
-          }
-          if (globalScene.getPlayerParty().length === PLAYER_PARTY_MAX_SIZE) {
-            const addToPartyMenuConfig: OptionSelectModeConfig = {
-              options: [
-                {
-                  label: i18next.t("partyUiHandler:summary"),
-                  handler: () => {
-                    const newPokemon = globalScene.addPlayerPokemon(
-                      pokemon.species,
-                      pokemon.level,
-                      pokemon.abilityIndex,
-                      pokemon.formIndex,
-                      pokemon.gender,
-                      pokemon.shiny,
-                      pokemon.variant,
-                      pokemon.ivs,
-                      pokemon.nature,
-                      pokemon,
-                    );
-                    ui.setMode(
-                      UiMode.SUMMARY,
-                      newPokemon,
-                      0,
-                      SummaryUiMode.DEFAULT,
-                      () => {
+        Promise.all([pokemon.hideInfo(), writes ? gameData.setPokemonCaught(pokemon) : Promise.resolve(false)]).then(
+          () => {
+            if (!addStatus.value) {
+              removePokemon();
+              end();
+              return;
+            }
+            if (this.isSeatFull(thrower)) {
+              /** Co-op with a network: the thrower's answer, which the prompts below give instead of acting on it */
+              let answer: ((payload: CatchReleasePayload) => void) | null = null;
+              const addToPartyMenuConfig: OptionSelectModeConfig = {
+                options: [
+                  {
+                    label: i18next.t("partyUiHandler:summary"),
+                    handler: () => {
+                      const newPokemon = globalScene.addPlayerPokemon(
+                        pokemon.species,
+                        pokemon.level,
+                        pokemon.abilityIndex,
+                        pokemon.formIndex,
+                        pokemon.gender,
+                        pokemon.shiny,
+                        pokemon.variant,
+                        pokemon.ivs,
+                        pokemon.nature,
+                        pokemon,
+                      );
+                      ui.setMode(
+                        UiMode.SUMMARY,
+                        newPokemon,
+                        0,
+                        SummaryUiMode.DEFAULT,
+                        () => {
+                          ui.setMode(UiMode.MESSAGE).then(() => promptRelease());
+                        },
+                        false,
+                      );
+                      return true;
+                    },
+                  },
+                  {
+                    label: i18next.t("menuUiHandler:pokedex"),
+                    handler: () => {
+                      const attributes = {
+                        shiny: pokemon.shiny,
+                        variant: pokemon.variant,
+                        form: pokemon.formIndex,
+                        female: pokemon.gender === Gender.FEMALE,
+                      };
+                      ui.setOverlayMode(UiMode.POKEDEX_PAGE, pokemon.species, attributes, null, null, () => {
                         ui.setMode(UiMode.MESSAGE).then(() => promptRelease());
-                      },
-                      false,
+                      });
+                      return true;
+                    },
+                  },
+                  {
+                    label: i18next.t("menu:yes"),
+                    handler: () => {
+                      ui.setMode(
+                        UiMode.PARTY,
+                        PartyUiMode.RELEASE,
+                        this.fieldIndex,
+                        (slotIndex: number, _option: PartyOption) => {
+                          ui.setMode(UiMode.MESSAGE).then(() => {
+                            if (slotIndex < PLAYER_PARTY_MAX_SIZE) {
+                              if (answer === null) {
+                                addToParty(slotIndex);
+                              } else {
+                                answer({ release: globalScene.getPlayerParty()[slotIndex].id });
+                              }
+                            } else {
+                              promptRelease();
+                            }
+                          });
+                        },
+                      );
+                      return true;
+                    },
+                  },
+                  {
+                    label: i18next.t("menu:no"),
+                    handler: () => {
+                      ui.setMode(UiMode.MESSAGE).then(() => {
+                        if (answer === null) {
+                          removePokemon();
+                          end();
+                        } else {
+                          answer({ release: null });
+                        }
+                      });
+                      return true;
+                    },
+                  },
+                ],
+                yOffset: 48,
+                onResize: (w: number, _h: number) => {
+                  pokemonInfoContainer.makeRoomForOptionSelectUi(w);
+                },
+              };
+              const promptRelease = (): void => {
+                ui.showText(i18next.t("battle:partyFull", { pokemonName: pokemon.getNameToRender() }), null, () => {
+                  ui.setMode(UiMode.OPTION_SELECT, addToPartyMenuConfig);
+                });
+              };
+              if (isLinked() && thrower !== null) {
+                // The thrower decides, the partner waits; both carry out the sequenced answer (D10)
+                coopDecide<CatchReleasePayload>({
+                  key: catchReleaseKey(globalScene.currentBattle.waveIndex, pokemon.id),
+                  decider: thrower,
+                  ask: () =>
+                    new Promise<CatchReleasePayload>(resolve => {
+                      answer = resolve;
+                      promptRelease();
+                    }),
+                  wait: () => {
+                    ui.setMode(UiMode.MESSAGE);
+                    ui.showText(
+                      coopText("partnerDecidesCatch", "{{partner}} is deciding about the catch…", {
+                        partner: getCoopSession()?.partnerName ?? "",
+                      }),
+                      null,
                     );
-                    return true;
                   },
-                },
-                {
-                  label: i18next.t("menuUiHandler:pokedex"),
-                  handler: () => {
-                    const attributes = {
-                      shiny: pokemon.shiny,
-                      variant: pokemon.variant,
-                      form: pokemon.formIndex,
-                      female: pokemon.gender === Gender.FEMALE,
-                    };
-                    ui.setOverlayMode(UiMode.POKEDEX_PAGE, pokemon.species, attributes, null, null, () => {
-                      ui.setMode(UiMode.MESSAGE).then(() => promptRelease());
-                    });
-                    return true;
-                  },
-                },
-                {
-                  label: i18next.t("menu:yes"),
-                  handler: () => {
-                    ui.setMode(
-                      UiMode.PARTY,
-                      PartyUiMode.RELEASE,
-                      this.fieldIndex,
-                      (slotIndex: number, _option: PartyOption) => {
-                        ui.setMode(UiMode.MESSAGE).then(() => {
-                          if (slotIndex < PLAYER_PARTY_MAX_SIZE) {
-                            addToParty(slotIndex);
-                          } else {
-                            promptRelease();
-                          }
-                        });
-                      },
-                    );
-                    return true;
-                  },
-                },
-                {
-                  label: i18next.t("menu:no"),
-                  handler: () => {
-                    ui.setMode(UiMode.MESSAGE).then(() => {
+                  isPayload: isCatchReleasePayload,
+                })
+                  .then(({ payload, key, seq }) => {
+                    if (payload.release === null) {
                       removePokemon();
                       end();
-                    });
-                    return true;
-                  },
-                },
-              ],
-              yOffset: 48,
-              onResize: (w: number, _h: number) => {
-                pokemonInfoContainer.makeRoomForOptionSelectUi(w);
-              },
-            };
-            const promptRelease = (): void => {
-              ui.showText(i18next.t("battle:partyFull", { pokemonName: pokemon.getNameToRender() }), null, () => {
-                ui.setMode(UiMode.OPTION_SELECT, addToPartyMenuConfig);
-              });
-            };
-            promptRelease();
-          } else {
-            addToParty();
-          }
-        });
+                      return;
+                    }
+                    const party = globalScene.getPlayerParty();
+                    const index = party.findIndex(member => member.id === payload.release);
+                    if (index < 0 || getCoopSession()?.ownership.get(payload.release) !== thrower) {
+                      throw new DesyncError("the sequenced release is not a Pokémon of the thrower", {
+                        actual: key,
+                        seq,
+                      });
+                    }
+                    globalScene.removePartyMemberModifiers(index);
+                    party.splice(index, 1)[0].destroy();
+                    addToParty(index);
+                  })
+                  .catch(reportBridgeError);
+              } else {
+                promptRelease();
+              }
+            } else {
+              addToParty();
+            }
+          },
+        );
       },
       0,
       true,

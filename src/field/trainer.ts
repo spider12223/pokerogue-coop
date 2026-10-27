@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { signatureSpecies } from "#balance/signature-species";
+import { isCoop } from "#coop/session";
 import { EntryHazardTag } from "#data/arena-tag";
 import type { PokemonSpecies } from "#data/pokemon-species";
 import { ArenaTagSide } from "#enums/arena-tag-side";
@@ -590,6 +591,11 @@ export class Trainer extends Phaser.GameObjects.Container {
   ): number {
     if (trainerSlot && !this.isDouble()) {
       trainerSlot = TrainerSlot.NONE;
+    }
+
+    // Co-op (D6): a forced double can ask for two replacements while one reserve is left; the second finds nobody
+    if (isCoop() && partyMemberScores.length === 0) {
+      return -1;
     }
 
     const sortedPartyMemberScores = this.getSortedPartyMemberMatchupScores(partyMemberScores);
