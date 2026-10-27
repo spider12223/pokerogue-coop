@@ -180,6 +180,8 @@ export class CoopSession {
   public checkpointMismatch: { local: Checkpoint | null; remote: Checkpoint } | null = null;
   public readonly waits: WaitStats = { turns: 0, waitedMs: 0, maxWaitedMs: 0, instant: 0, samples: [] };
   private ended = false;
+  /** The timed events of the run (D33) */
+  private events: string[] = [];
 
   constructor(init: CoopSessionInit) {
     this.seat = init.seat;
@@ -220,6 +222,15 @@ export class CoopSession {
 
   public setAccountSnapshot(snapshot: CoopAccountSnapshot): void {
     this.snapshot = snapshot;
+  }
+
+  /** The timed events of the run (D33): `START` brings them, a saved run keeps them. None until the run starts. */
+  public get timedEvents(): readonly string[] {
+    return this.events;
+  }
+
+  public setTimedEvents(names: readonly string[]): void {
+    this.events = [...names];
   }
 
   public get accountIds(): Record<Seat, string> {
@@ -269,6 +280,7 @@ export class CoopSession {
       rewardPickCount: this.rewardPickCount,
       trades: this.trades,
       accounts: this.accountSnapshot,
+      events: [...this.events],
     };
   }
 
@@ -284,6 +296,7 @@ export class CoopSession {
     this.ownership.load(saved.owners);
     this.rewardPickCount = saved.rewardPickCount;
     this.trades = saved.trades;
+    this.events = saved.events ?? [];
   }
 
   /**

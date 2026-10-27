@@ -88,6 +88,7 @@ export class SelectStarterPhase extends Phase {
     });
     session.setRunSeed(start.runSeed);
     session.setAccountSnapshot(start.snapshots);
+    session.setTimedEvents(start.timedEvents);
     session.setStarterOwners(owners);
     closeStarterLobby();
     globalScene.ui.clearText();

@@ -7,6 +7,7 @@
  * code and wait) or join (type the code).
  */
 
+import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { stopAllAfkWatchers } from "#coop/afk";
@@ -467,6 +468,7 @@ async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopT
     link,
     sharedLimit: COOP_STARTER_POINTS,
     makeRunSeed: () => session.runSeed,
+    localEvents: () => timedEventManager.eventsByClock(),
   });
   starterLobby = lobby;
   // The starter select shows the Pokémon of both players (D32): it opens once the partner's are here

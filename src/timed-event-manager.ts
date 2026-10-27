@@ -3,7 +3,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { SHINY_CATCH_RATE_MULTIPLIER } from "#balance/rates";
 import { CLASSIC_CANDY_FRIENDSHIP_MULTIPLIER } from "#balance/starters";
 import { timedEvents } from "#balance/timed-events";
-import { isCoop } from "#coop/session";
+import { getCoopSession } from "#coop/session";
 import type { PokemonSpeciesFilter } from "#data/pokemon-species";
 import type { BiomeId } from "#enums/biome-id";
 import type { MysteryEncounterTier } from "#enums/mystery-encounter-tier";
@@ -25,12 +25,31 @@ export class TimedEventManager {
   private cachedReplacementMap: Map<number, { speciesId: SpeciesId; formIndex: number }> | null = null;
 
   isActive(event: TimedEvent) {
-    // Events read the wall clock, which two co-op clients do not share (DECISIONS D3, D12)
-    if (this.disabled || isCoop()) {
+    if (this.disabled) {
       return false;
     }
+    // Co-op: the two clocks may disagree, so a run has the events the host chose when it started (DECISIONS D33)
+    const session = getCoopSession();
+    if (session !== null) {
+      return session.timedEvents.includes(event.name);
+    }
+    return this.isOnByClock(event);
+  }
+
+  private isOnByClock(event: TimedEvent): boolean {
     const now = new Date();
     return event.startDate < now && now < event.endDate;
+  }
+
+  /**
+   * @returns The names of the events this computer's clock has on, in or out of co-op: what a player brings to a co-op
+   * run (D33)
+   */
+  eventsByClock(): string[] {
+    if (this.disabled) {
+      return [];
+    }
+    return timedEvents.filter(event => this.isOnByClock(event)).map(event => event.name);
   }
 
   /**
@@ -191,6 +210,10 @@ export class TimedEventManager {
 
   areFusionsBoosted(): boolean {
     return this.activeEvent()?.boostFusions ?? false;
+  }
+
+  public isSootheBellBoosted(): boolean {
+    return this.activeEvent()?.boostSootheBell ?? false;
   }
 
   /**

@@ -176,6 +176,7 @@ describe("CoopLink over the relay", () => {
       runSeed: "seed",
       starters: { host: [starter(1)], guest: [starter(4)] },
       snapshots: { host: account(1), guest: account(2) },
+      timedEvents: [],
     };
     host.sendStart(start);
     await until(() => startAtGuest.length === 1, "START");
@@ -209,12 +210,17 @@ describe("StarterLobby and the checkpoint exchange on a link", () => {
     for (const link of links.splice(0)) {
       link.close();
     }
+    clocks.host = [];
+    clocks.guest = [];
   });
+
+  /** The timed events each client's clock has on (D33) */
+  const clocks: Record<"host" | "guest", string[]> = { host: [], guest: [] };
 
   function lobbies(sharedLimit = 10) {
     const { host, guest } = pair();
     const make = (seat: "host" | "guest", link: CoopLink) =>
-      new StarterLobby({ seat, link, sharedLimit, makeRunSeed: () => "run-seed" });
+      new StarterLobby({ seat, link, sharedLimit, makeRunSeed: () => "run-seed", localEvents: () => clocks[seat] });
     return { host: make("host", host), guest: make("guest", guest), hostLink: host, guestLink: guest };
   }
 
@@ -257,9 +263,25 @@ describe("StarterLobby and the checkpoint exchange on a link", () => {
       runSeed: "run-seed",
       starters: { host: [starter(1)], guest: [starter(4), starter(7)] },
       snapshots: { host: account(1), guest: account(2) },
+      timedEvents: [],
     });
     expect(host.startInfo).not.toBeNull();
     expect(guest.startInfo).not.toBeNull();
+  });
+
+  it("starts the run with the timed events both clocks have on (D33)", async () => {
+    // The guest's clock is past the end of one event and before the start of another
+    clocks.host = ["Halloween 26", "Item Update waiting room"];
+    clocks.guest = ["Item Update waiting room", "Winter 26"];
+    const { host, guest } = lobbies();
+    const startedAtGuest: StartPayload[] = [];
+    guest.onStart(start => startedAtGuest.push(start));
+    expect(guest.setReady([starter(4)], 3, account(2))).toBe(true);
+    await until(() => host.partner.ready, "the guest being ready");
+    expect(host.setReady([starter(1)], 3, account(1))).toBe(true);
+    await until(() => startedAtGuest.length === 1, "START at the guest");
+    expect(startedAtGuest[0].timedEvents).toEqual(["Item Update waiting room"]);
+    expect(host.startInfo?.timedEvents).toEqual(["Item Update waiting room"]);
   });
 
   it("lets a ready player take the ready back and change the party", async () => {

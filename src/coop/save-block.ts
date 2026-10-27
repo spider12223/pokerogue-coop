@@ -6,7 +6,7 @@
 
 import { type CoopAccountSnapshot, isCoopAccountSnapshot } from "#coop/account-snapshot";
 import { isOwnerRecord } from "#coop/ownership";
-import type { Seat } from "#coop/protocol";
+import { isTimedEventNames, type Seat } from "#coop/protocol";
 
 /**
  * The `coop` block of a session save (DECISIONS D4, D7, D9, D13). A save with this block is a co-op run: it can only be
@@ -33,6 +33,8 @@ export interface CoopSaveBlock {
   trades: number;
   /** Both accounts as of run start (D4) */
   accounts: CoopAccountSnapshot;
+  /** The timed events of the run (D33); a save of an earlier version has none, and its run has no event */
+  events?: string[];
 }
 
 /** Why a co-op save cannot be used here. The message is for the player. */
@@ -64,6 +66,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
     && Number.isInteger(block["trades"])
     && (block["trades"] as number) >= 0
     && isCoopAccountSnapshot(block["accounts"])
+    && (block["events"] === undefined || isTimedEventNames(block["events"]))
   );
 }
 

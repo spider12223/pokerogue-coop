@@ -31,9 +31,9 @@ const ALLOWED: Record<string, { count: number; why: Why; note: string }> = {
   "src/data/challenge.ts": { count: 1, why: "off-in-coop", note: "starter value reduction in challenge validation" },
   "src/data/egg-hatch-data.ts": { count: 2, why: "off-in-coop", note: "egg hatch results" },
   "src/data/egg.ts": {
-    count: 10,
-    why: "off-in-coop",
-    note: "pity, egg list, pull statistics; the constructor throws in co-op",
+    count: 19,
+    why: "write",
+    note: "egg pity (overall and per species), egg list, pull statistics: an egg's draws are outside the run (D30)",
   },
   "src/data/mystery-encounters/encounters/training-session-encounter.ts": {
     count: 4,
@@ -47,7 +47,7 @@ const ALLOWED: Record<string, { count: number; why: Why; note: string }> = {
   },
   "src/field/pokemon.ts": { count: 2, why: "write", note: "candy per battle (starterData), gameStats.pokemonFused" },
   "src/modifier/modifier.ts": { count: 1, why: "write", note: "voucherCounts from a voucher modifier" },
-  "src/phases/battle-end-phase.ts": { count: 4, why: "write", note: "gameStats counters and high-water marks" },
+  "src/phases/battle-end-phase.ts": { count: 1, why: "write", note: "gameStats counters and high-water marks" },
   "src/phases/egg-hatch-phase.ts": { count: 3, why: "off-in-coop", note: "eggs are off" },
   "src/phases/egg-lapse-phase.ts": { count: 3, why: "off-in-coop", note: "returns before reading them in co-op" },
   "src/phases/encounter-phase.ts": {

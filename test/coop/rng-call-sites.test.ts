@@ -123,7 +123,7 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
   "src/timed-event-manager.ts": {
     counts: { "new Date": 2 },
     why: "disabled",
-    note: "isActive() is false in co-op; isAprilFoolsActive is title-screen UI",
+    note: "the clock only decides solo play: isActive() reads the run's events in co-op (D33); isAprilFoolsActive is title-screen UI",
   },
   "src/ui/containers/event-display.ts": { counts: { "new Date": 1 }, why: "ui" },
   "src/ui/handlers/achvs-ui-handler.ts": { counts: { "new Date": 2 }, why: "ui" },

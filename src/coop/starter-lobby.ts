@@ -22,7 +22,8 @@ import type { Unsubscribe } from "#coop/transport/transport";
  * The co-op starter select, as a state machine without UI (DECISIONS D3, D4, D7). Both players pick at once:
  * - they share one point budget and each picks up to {@linkcode STARTERS_PER_SEAT_MAX}
  * - a player's picks are sent as they change, so the partner sees them (faded) and the points are taken at once
- * - each presses ready with their final starters and their account; the host then sends `START`
+ * - each presses ready with their final starters, their account and the timed events their clock has on; the host then
+ *   sends `START` with the events both have on (D33)
  *
  * No game imports. What a party costs depends on the account it is picked from (candy reductions), so each player reports
  * the cost of their own party and nobody recomputes the other's.
@@ -44,6 +45,8 @@ export interface StarterLobbyOptions {
   sharedLimit: number;
   /** Host: the seed of the run, drawn when the run starts */
   makeRunSeed(): string;
+  /** The names of the timed events this client's clock has on (D33) */
+  localEvents(): string[];
 }
 
 interface Confirmed {
@@ -51,6 +54,8 @@ interface Confirmed {
   /** What the party costs, as its owner reported it */
   cost: number;
   snapshot: AccountSnapshot;
+  /** The timed events its owner's clock had on */
+  events: string[];
 }
 
 export class StarterLobby {
@@ -148,9 +153,10 @@ export class StarterLobby {
     if (starters.length === 0 || starters.length > STARTERS_PER_SEAT_MAX || cost > this.valueLimit) {
       return false;
     }
-    this.ready = { starters: [...starters], cost, snapshot };
+    const events = this.options.localEvents();
+    this.ready = { starters: [...starters], cost, snapshot, events };
     this.resetNotice = false;
-    this.options.link.sendLobby({ t: "ready", starters: [...starters], cost, snapshot });
+    this.options.link.sendLobby({ t: "ready", starters: [...starters], cost, snapshot, events });
     this.tryStart();
     this.changed();
     return true;
@@ -189,7 +195,12 @@ export class StarterLobby {
         this.partner.picks = message.starters;
         this.partner.cost = message.cost;
         this.partner.ready = true;
-        this.partnerReady = { starters: message.starters, cost: message.cost, snapshot: message.snapshot };
+        this.partnerReady = {
+          starters: message.starters,
+          cost: message.cost,
+          snapshot: message.snapshot,
+          events: message.events,
+        };
         this.tryStart();
         break;
       case "unready":
@@ -225,10 +236,14 @@ export class StarterLobby {
       this.options.link.sendLobby({ t: "reset" });
       return;
     }
+    // The run's events are those both clocks have on now: the two players may be on either side of an event's start or
+    // end, and a client whose clock has the event off has not loaded its pictures
+    const guestEvents = this.partnerReady.events;
     const start: StartPayload = {
       runSeed: this.options.makeRunSeed(),
       starters,
       snapshots: { host: this.ready.snapshot, guest: this.partnerReady.snapshot },
+      timedEvents: this.options.localEvents().filter(name => guestEvents.includes(name)),
     };
     this.options.link.sendStart(start);
     this.started(start);

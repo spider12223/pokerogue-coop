@@ -55,6 +55,7 @@ function starterEntry(entry: Partial<StarterDataEntry> = {}): StarterDataEntry {
     passiveAttr: 0,
     valueReduction: 0,
     classicWinCount: 0,
+    pity: [0, 0],
     ...entry,
   };
 }

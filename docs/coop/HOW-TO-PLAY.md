@@ -61,6 +61,12 @@ lone wild Pokémon is made stronger and gives double experience and money.
 - Your friend's Pokémon are only borrowed on the co-op starter select: they are never added to your account, and candies
   you spend there are your own.
 
+## Events
+
+Events like **Halloween** are on in co-op too: more shinies, event Pokémon in the wild, extra rewards and candy, as on
+pokerogue.net. A run has the events that were on for both of you when it started, and keeps them until it ends, even if
+the event ends first. If one of your computers has the wrong date, the run starts without the event.
+
 ## Bringing your own Pokémon from pokerogue.net
 
 On pokerogue.net: **Menu > Manage Data > Export Data**. That downloads a `.prsv` file. Here, on the title screen: **Co-op >

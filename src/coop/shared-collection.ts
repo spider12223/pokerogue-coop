@@ -93,7 +93,7 @@ function accessor<T>(get: () => T, set: (value: T) => void): PropertyDescriptor 
 
 /**
  * A starter entry of both players: the abilities, egg moves and passive either unlocked, the bigger cost reduction and win
- * count. Candies, friendship and the custom moveset are the player's own, and so is what the screen buys.
+ * count. Candies, friendship, the egg pity and the custom moveset are the player's own, and so is what the screen buys.
  * @returns The player's own entry when the partner adds nothing to it
  */
 export function mergeStarterEntry(
@@ -131,6 +131,12 @@ export function mergeStarterEntry(
       () => own.friendship,
       value => {
         own.friendship = value;
+      },
+    ),
+    pity: accessor(
+      () => own.pity,
+      value => {
+        own.pity = value;
       },
     ),
     moveset: accessor(

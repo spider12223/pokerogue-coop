@@ -22,7 +22,7 @@ import {
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 5;
+export const COOP_PROTOCOL_VERSION = 6;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -120,7 +120,8 @@ export function isDecisionKey(value: unknown): value is DecisionKey {
 /**
  * Message kinds on the wire.
  * - `HELLO` (host), `HELLO_ACK` (guest), `HELLO_OK` (host), `REFUSE` (either): the asymmetric handshake (D1)
- * - `START`: host to guest, carries the run seed, the starters of both seats and both account snapshots (D3, D4)
+ * - `START`: host to guest, carries the run seed, the starters of both seats, both account snapshots and the timed events
+ *   of the run (D3, D4, D33)
  * - `LOBBY`: either way, before the run: the starter select (live picks, ready), see {@linkcode LobbyMessage}
  * - `CHECKPOINT`: either way, a state-hash checkpoint the sender passed (D13), see {@linkcode CheckpointMessage}
  * - `PROPOSE`: guest to host, a decision the guest wants sequenced
@@ -404,11 +405,25 @@ export const COOP_STARTER_POINTS = 15;
  * - `runSeed`: host-generated; both clients assign it to `globalScene.seed`
  * - `starters`: each seat's starters, in the order the owner picked them
  * - `snapshots`: both accounts as of now (D4); the sim never reads live `gameData` in co-op
+ * - `timedEvents`: the timed events of the run (D33), those both players' clocks have on
  */
 export interface StartPayload {
   runSeed: string;
   starters: Record<Seat, CoopStarter[]>;
   snapshots: CoopAccountSnapshot;
+  timedEvents: string[];
+}
+
+/** More than the game has ever had on at once */
+const MAX_TIMED_EVENTS = 16;
+
+/** @returns Whether this is a list of timed event names (D33), as `START`, `ready` and the save block carry them */
+export function isTimedEventNames(value: unknown): value is string[] {
+  return (
+    Array.isArray(value)
+    && value.length <= MAX_TIMED_EVENTS
+    && value.every(name => typeof name === "string" && name.length > 0 && name.length <= 100)
+  );
 }
 
 export function isStartPayload(value: unknown): value is StartPayload {
@@ -429,6 +444,7 @@ export function isStartPayload(value: unknown): value is StartPayload {
       );
     })
     && isCoopAccountSnapshot(start["snapshots"])
+    && isTimedEventNames(start["timedEvents"])
   );
 }
 
@@ -436,14 +452,14 @@ export function isStartPayload(value: unknown): value is StartPayload {
  * `LOBBY` payloads: the co-op starter select, before the run exists.
  * - `picks`: the sender's current party, tentatively (the partner shows it faded); `cost` is what it costs of the shared
  *   point budget
- * - `ready`: the sender confirmed these starters, with the account the run will use
+ * - `ready`: the sender confirmed these starters, with the account the run will use and the timed events its clock has on
  * - `unready`: the sender took the confirmation back
  * - `reset`: host to guest, both parties were confirmed but together cost more than the shared budget: nobody is ready
  * - `collection`: the sender's Pokémon, for the starter select of both (D32); `ask` asks for the partner's in return
  */
 export type LobbyMessage =
   | { t: "picks"; picks: CoopStarter[]; cost: number }
-  | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot }
+  | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot; events: string[] }
   | { t: "unready" }
   | { t: "reset" }
   | { t: "collection"; collection: CollectionData; ask: boolean };
@@ -460,7 +476,10 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
       return isList(message["picks"]) && typeof message["cost"] === "number";
     case "ready":
       return (
-        isList(message["starters"]) && typeof message["cost"] === "number" && isAccountSnapshot(message["snapshot"])
+        isList(message["starters"])
+        && typeof message["cost"] === "number"
+        && isAccountSnapshot(message["snapshot"])
+        && isTimedEventNames(message["events"])
       );
     case "unready":
     case "reset":

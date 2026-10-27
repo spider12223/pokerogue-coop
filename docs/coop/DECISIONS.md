@@ -41,6 +41,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
 | Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both |
+| Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
 | Feel | D16 cosmetic channel, D17 AFK and take over, D27 pacing |
@@ -78,8 +79,9 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## D1. Pin and handshake
 
-- **Base.** The fork is based on upstream PokeRogue `main` at `a6995c571a092e762ea036589bb6f3a8fa4f5dbd` (version
-  1.12.1.3).
+- **Base.** The fork was built on upstream PokeRogue `main` at `a6995c571a092e762ea036589bb6f3a8fa4f5dbd` (version
+  1.12.1.3) and has since merged upstream `main` at `7fd2ba7058e5f6a62eca96987f16072cece383da` (version 1.12.2.2), with
+  the `assets` and `locales` submodules of that commit.
 - **What must match.** In the `HELLO` handshake both clients must match on:
   - the protocol version (`COOP_PROTOCOL_VERSION`);
   - the build identity (below);
@@ -181,7 +183,8 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
     client runs that command phase, so in co-op the target comes from its own stream instead of the battle's.
 - Mystery Encounters seed what upstream leaves unseeded on their paths, such as the GTS ball roll (D29). Eggs are drawn
   outside the simulation on purpose (D30).
-- **Timed events** are off in co-op (`TimedEventManager` treats a co-op session as disabled).
+- **Timed events** read the wall clock, which two clients do not share: a co-op run has the events the host chose when
+  it started (D33), not the clock's.
 - **`pokemon.id`.** In co-op, uniqueness is asserted when a Pokémon is created. On a collision the id is redrawn
   deterministically, identically on both clients (`src/coop/pokemon-id.ts`).
 - **Call-site tests** (`test/coop/rng-call-sites.test.ts`, `test/coop/account-call-sites.test.ts`) list every remaining
@@ -364,7 +367,6 @@ Pinned in co-op to the host's values and enforced on both clients (the guest rec
 
 ## D12. Off in co-op
 
-- Timed events (D3).
 - Upstream's retry setting: `enableRetries` stays pinned off (D5). A wipe has its own retry, decided by the host (D4a).
 - Daily mode.
 
@@ -379,7 +381,7 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   - wave end, at the end of `BattleEndPhase.start`.
 - **Hash contents** (`src/coop/state-hash.ts`): the RNG states, the parties (with exp, luck, nature, IVs, ability,
   gender and owner), the fields, the weather, the modifiers and the reward options (each with its generated
-  arguments), the run and wave seeds, and the pinned settings (D5). Not hashed: `timestamp` and `playTime` (wall
+  arguments), the run and wave seeds, the pinned settings (D5) and the run's timed events (D33). Not hashed: `timestamp` and `playTime` (wall
   clock), animation and UI state, local-only settings, and the accounts (they reach the simulation only through the
   snapshots, D4).
 - Each client sends the hash of every checkpoint it passes to the partner and compares the partner's with its own.
@@ -797,7 +799,7 @@ step; the screens would not.
     Pokémon only).
   - While the lobby is open, `gameData.dexData` and `starterData` are a merge of both (`src/coop/shared-collection.ts`):
     the forms, shinies, genders, natures, abilities, egg moves and passives either player has, the better IV of each stat,
-    the bigger cost reduction. Candies, friendship, counts, ribbons and the custom moveset are the player's own.
+    the bigger cost reduction. Candies, friendship, the egg pity, counts, ribbons and the custom moveset are the player's own.
   - **Nothing of the partner's is saved to the player's account.** The system save writes the account's own data while
     the merge is in place. In a merged entry, what the screen changes is written to the player's own entry: candies spent,
     a passive or cost reduction bought (the next one after the bigger of the two), the custom moveset. A passive only the
@@ -807,6 +809,28 @@ step; the screens would not.
   dex of what was picked; the host's dex count (critical captures) is the count of both. Account writes during the run
   are as D4a: a Pokémon picked from the partner's collection earns its candy and dex entries on its owner's account.
 - `COOP_PROTOCOL_VERSION` is 5: a page of the earlier version refuses to pair with this one.
+
+## D33. Timed events
+
+Upstream's timed events (Halloween, the winter holidays and the others in `src/data/balance/timed-events.ts`) change the
+simulation: shiny rates, the wild Pokémon, rewards at fixed waves, biome links, Mystery Encounter tiers, candy. Upstream
+turns them on by the computer's clock, and two clocks can disagree (a few minutes around an event's start or end, or a
+wrong date). So a co-op run does not read the clock:
+
+- **Chosen at run start.** Each player's `ready` (`LOBBY`) carries the names of the events their clock has on
+  (`TimedEventManager.eventsByClock`). The host's `START` has `timedEvents`: those its own clock has on now that the
+  guest's has on too. A client whose clock has an event off did not load its pictures at boot (banner, logo, sprite
+  replacements), so an event only one clock has on is left out.
+- **Kept for the run.** The session keeps them, the `coop` block of the save has them (`events`), and a reload, a rejoin
+  or a run continued later has them again (D13, D20, D21), even after the event has ended: the run goes on as it
+  started. A save of an earlier version has no `events` and its run has no event.
+- **Read through `isActive`.** In co-op `TimedEventManager.isActive(event)` is whether the run's list names the event;
+  before `START` (the lobby) the list is empty. Everything else in the manager goes through it, so every reader of an
+  event sees the same on both clients. In solo play the clock decides, as upstream.
+- **Hashed.** The list is part of the state hash (D13): a client that lost it is a desync, not a quiet difference.
+- `COOP_PROTOCOL_VERSION` is 6 (`START` and `ready` changed).
+- **Pictures and music** of an event (the title banner and logo, image replacements) are loaded at boot by the clock,
+  as upstream: they are only what each player sees.
 
 ## See also
 

@@ -76,6 +76,8 @@ export interface StateHashSnapshot {
   pinnedSettings: PinnedSettings;
   /** Reward screens started so far (D9): who picks next depends on it */
   rewardPickCount: number;
+  /** The timed events of the run (D33): shiny rates, wild Pokémon, rewards and biomes depend on them */
+  timedEvents: string[];
   /** The run seed and the wave seed derived from it */
   seed: string;
   waveSeed: string;
@@ -181,6 +183,7 @@ export function captureStateSnapshot(scene: BattleScene = globalScene): StateHas
     money: scene.money,
     pinnedSettings: readPinnedSettings(settings),
     rewardPickCount: getCoopSession()?.rewardPickCount ?? 0,
+    timedEvents: [...(getCoopSession()?.timedEvents ?? [])],
     seed: scene.seed,
     waveSeed: scene.waveSeed,
     rngState: Phaser.Math.RND.state(),

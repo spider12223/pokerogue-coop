@@ -58,6 +58,7 @@ describe("coop save block (D4, D7, D9)", () => {
     ["a negative counter", { rewardPickCount: -1 }],
     ["a fractional counter", { rewardPickCount: 1.5 }],
     ["a bad snapshot", { accounts: { host: account(1) } }],
+    ["timed events that are no names", { events: [7] }],
   ])("rejects a block with %s", (_name, change) => {
     expect(isCoopSaveBlock({ ...block(), ...change })).toBe(false);
   });
@@ -120,6 +121,7 @@ describe("the session and its save block", () => {
     saving.ownership.set(20, "guest");
     saving.ownership.set(30, "guest"); // left the party
     saving.rewardPickCount = 5;
+    saving.setTimedEvents(["Halloween 26"]);
 
     const saved = JSON.parse(JSON.stringify(saving.toSaveBlock([10, 20])));
     expect(saved.owners).toEqual({ "10": "host", "20": "guest" });
@@ -132,8 +134,19 @@ describe("the session and its save block", () => {
     expect(loading.ownership.toJSON()).toEqual({ "10": "host", "20": "guest" });
     expect(loading.rewardPickCount).toBe(5);
     expect(loading.accountSnapshot).toEqual(snapshot);
+    // the run keeps its timed events, even once the clock has them off (D33)
+    expect(loading.timedEvents).toEqual(["Halloween 26"]);
     // the block has no seat: the host's save is what both clients load
     expect(loading.seat).toBe("guest");
+  });
+
+  it("loads a save of an earlier version, which has no timed events, as a run without one (D33)", () => {
+    const old = block({ accountIds: { host: accountIdOf(snapshot.host), guest: accountIdOf(snapshot.guest) } });
+    expect(old.events).toBeUndefined();
+    const session = startCoopSession({ seat: "host", runSeed: "s", build, accountSnapshot: snapshot });
+    session.setTimedEvents(["Halloween 26"]);
+    session.restoreFromSaveBlock(JSON.parse(JSON.stringify(old)));
+    expect(session.timedEvents).toEqual([]);
   });
 
   it("will not save a party member that has no owner", () => {

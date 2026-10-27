@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { retimeAfkWatchers } from "#coop/afk";
@@ -199,6 +200,12 @@ export interface CoopDebugApi {
    * only: the test of the shared collection (D32).
    */
   catchSpecies(speciesId: number): boolean;
+  /** The names of the timed events this computer's clock has on (D33) */
+  readonly clockEvents: string[];
+  /** The timed events of the co-op run (D33), or `null` outside a co-op session */
+  readonly runEvents: string[] | null;
+  /** The name of the timed event in effect now (the first of the run's in co-op), or `null` */
+  readonly timedEvent: string | null;
 }
 
 function api(): CoopDebugApi {
@@ -449,6 +456,16 @@ function api(): CoopDebugApi {
       return handler.lastStarterId ?? null;
     },
     hasCaught: speciesId => !!globalScene.gameData.dexData[speciesId]?.caughtAttr,
+    get clockEvents() {
+      return timedEventManager.eventsByClock();
+    },
+    get runEvents() {
+      const session = getCoopSession();
+      return session === null ? null : [...session.timedEvents];
+    },
+    get timedEvent() {
+      return timedEventManager.activeEvent()?.name ?? null;
+    },
     catchSpecies: speciesId => {
       const { dexData, starterData } = globalScene.gameData;
       if (getCoopSession() !== null || dexData[speciesId] === undefined) {

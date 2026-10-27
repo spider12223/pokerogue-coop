@@ -462,6 +462,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
 | `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double | D6 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |
+| `src/timed-event-manager.ts` | `isActive` reads the run's events in co-op, the clock in solo; `eventsByClock` is what a player brings to the run | D33 |
 | `src/system/game-data.ts` | `loadCoopSession`; the run history entry with both names; the system save writes the account's own data while the starter select shows both players' (`ownAccountData`) | D4a, D13, D19, D32 |
 | `src/ui/handlers/message-ui-handler.ts` | `showPrompt` reports each line to the pacer | D27 |
 | `plugins/vite/coop-build-identity.ts`, `plugins/vite/require-source-url.ts` | The build identity; a production build without `VITE_SOURCE_URL` fails | D1, D25 |

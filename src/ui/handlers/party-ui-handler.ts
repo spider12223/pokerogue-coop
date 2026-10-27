@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
+import type { EvolutionItem } from "#balance/pokemon-evolutions";
 import { coopText, isLinked } from "#coop/bridge";
 import { isPartnersPokemon, notYourPokemonText, switchTargets } from "#coop/control";
 import { canEditInCoop, ownCount, proposePartyEdit } from "#coop/party-edit-run";
@@ -140,6 +141,7 @@ export class PartyUiHandler extends MessageUiHandler {
   private selectFilter: PokemonSelectFilter | PokemonModifierTransferSelectFilter;
   private moveSelectFilter: PokemonMoveSelectFilter;
   private tmMoveId: MoveId;
+  private modifierItemId: EvolutionItem | FormChangeItem | undefined;
   private showMovePp: boolean;
 
   private iconAnimHandler: PokemonIconAnimHelper;
@@ -206,6 +208,7 @@ export class PartyUiHandler extends MessageUiHandler {
     PartyOption.PASS_BATON,
     PartyOption.RENAME,
     PartyOption.SELECT,
+    PartyOption.SWITCH,
   ];
 
   setup() {
@@ -301,6 +304,7 @@ export class PartyUiHandler extends MessageUiHandler {
         : PartyUiHandler.FilterAllMoves;
     this.tmMoveId = args.length > 5 && args[5] ? args[5] : MoveId.NONE;
     this.showMovePp = args.length > 6 && args[6];
+    this.modifierItemId = args.length > 7 ? (args[7] as EvolutionItem | FormChangeItem | undefined) : undefined;
 
     this.partyContainer.setVisible(true);
     if (this.isItemManageMode()) {
@@ -902,6 +906,8 @@ export class PartyUiHandler extends MessageUiHandler {
     // PartyUiMode.TM_MODIFIER (TEACH)
     // PartyUiMode.REMEMBER_MOVE_MODIFIER (no specific option, callback is invoked when selecting a move)
     // PartyUiMode.MODIFIER (APPLY option)
+    // PartyUiMode.EVOLUTION_ITEM_MODIFIER (APPLY option)
+    // PartyUiMode.FORM_CHANGE_ITEM_MODIFIER (APPLY option)
     // PartyUiMode.POST_BATTLE_SWITCH (SEND_OUT)
 
     // These are the options that need a callback
@@ -1289,7 +1295,14 @@ export class PartyUiHandler extends MessageUiHandler {
 
     for (const p in party) {
       const slotIndex = Number.parseInt(p);
-      const partySlot = new PartySlot(slotIndex, party[p], this.iconAnimHandler, this.partyUiMode, this.tmMoveId);
+      const partySlot = new PartySlot(
+        slotIndex,
+        party[p],
+        this.iconAnimHandler,
+        this.partyUiMode,
+        this.tmMoveId,
+        this.modifierItemId,
+      );
       globalScene.add.existing(partySlot);
       this.partySlotsContainer.add(partySlot);
       this.partySlots.push(partySlot);
@@ -1614,6 +1627,8 @@ export class PartyUiHandler extends MessageUiHandler {
         this.addCommonOptions(pokemon);
         break;
       case PartyUiMode.MODIFIER:
+      case PartyUiMode.EVOLUTION_ITEM_MODIFIER:
+      case PartyUiMode.FORM_CHANGE_ITEM_MODIFIER:
         this.options.push(PartyOption.APPLY);
         this.addCommonOptions(pokemon);
         break;
@@ -2148,6 +2163,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     iconAnimHandler: PokemonIconAnimHelper,
     partyUiMode: PartyUiMode,
     tmMoveId: MoveId,
+    modifierItemId: EvolutionItem | FormChangeItem | undefined,
   ) {
     const isBenched = slotIndex >= globalScene.currentBattle.getBattlerCount();
     const isDoubleBattle = globalScene.currentBattle.double;
@@ -2180,14 +2196,14 @@ class PartySlot extends Phaser.GameObjects.Container {
     this.pokemon = pokemon;
     this.iconAnimHandler = iconAnimHandler;
 
-    this.setup(partyUiMode, tmMoveId);
+    this.setup(partyUiMode, tmMoveId, modifierItemId);
   }
 
   getPokemon(): PlayerPokemon {
     return this.pokemon;
   }
 
-  setup(partyUiMode: PartyUiMode, tmMoveId: MoveId) {
+  setup(partyUiMode: PartyUiMode, tmMoveId: MoveId, modifierItemId: EvolutionItem | FormChangeItem | undefined) {
     const isItemManageMode = partyUiMode === PartyUiMode.MODIFIER_TRANSFER || partyUiMode === PartyUiMode.DISCARD;
 
     this.slotBgKey = this.isBenched
@@ -2409,6 +2425,32 @@ class PartySlot extends Phaser.GameObjects.Container {
       }
 
       this.slotDescriptionLabel.setText(slotTmText);
+      this.slotDescriptionLabel.setVisible(true);
+    } else if (partyUiMode === PartyUiMode.EVOLUTION_ITEM_MODIFIER) {
+      this.slotHpLabel.setVisible(false);
+      this.slotHpBar.setVisible(false);
+      this.slotHpOverlay.setVisible(false);
+      this.slotHpText.setVisible(false);
+      this.slotDescriptionLabel.setText(
+        i18next.t(
+          this.pokemon.isEvolutionItemCompatible(modifierItemId as EvolutionItem)
+            ? "partyUiHandler:able"
+            : "partyUiHandler:notAble",
+        ),
+      );
+      this.slotDescriptionLabel.setVisible(true);
+    } else if (partyUiMode === PartyUiMode.FORM_CHANGE_ITEM_MODIFIER) {
+      this.slotHpLabel.setVisible(false);
+      this.slotHpBar.setVisible(false);
+      this.slotHpOverlay.setVisible(false);
+      this.slotHpText.setVisible(false);
+      this.slotDescriptionLabel.setText(
+        i18next.t(
+          this.pokemon.isFormChangeItemCompatible(modifierItemId as FormChangeItem)
+            ? "partyUiHandler:able"
+            : "partyUiHandler:notAble",
+        ),
+      );
       this.slotDescriptionLabel.setVisible(true);
     } else {
       this.slotDescriptionLabel.setVisible(false);

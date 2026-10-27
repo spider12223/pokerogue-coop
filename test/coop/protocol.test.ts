@@ -172,10 +172,11 @@ const start: StartPayload = {
   runSeed: "x7Kq",
   starters: { host: [starter], guest: [starter, { ...starter, speciesId: 4 }] },
   snapshots: { host: account, guest: account },
+  timedEvents: ["Halloween 26"],
 };
 
 describe("START", () => {
-  it("carries the run seed, the starters of both seats and both accounts", () => {
+  it("carries the run seed, the starters of both seats, both accounts and the timed events of the run", () => {
     expect(isStartPayload(start)).toBe(true);
     expect(isStartPayload(JSON.parse(JSON.stringify(start)))).toBe(true);
   });
@@ -191,6 +192,9 @@ describe("START", () => {
     ],
     ["a starter that is no starter", { ...start, starters: { host: [{ speciesId: "x" }], guest: [starter] } }],
     ["no snapshots", { ...start, snapshots: null }],
+    ["no timed events", { ...start, timedEvents: undefined }],
+    ["a timed event that is no name", { ...start, timedEvents: [""] }],
+    ["too many timed events", { ...start, timedEvents: Array.from({ length: 17 }, (_, i) => `event ${i}`) }],
     ["null", null],
   ])("rejects %s", (_name, payload) => {
     expect(isStartPayload(payload)).toBe(false);
@@ -201,7 +205,10 @@ describe("LOBBY", () => {
   it("accepts picks, ready, unready and reset", () => {
     expect(isLobbyMessage({ t: "picks", picks: [starter], cost: 3 })).toBe(true);
     expect(isLobbyMessage({ t: "picks", picks: [], cost: 0 })).toBe(true);
-    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account })).toBe(true);
+    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [] })).toBe(true);
+    expect(
+      isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: ["Halloween 26"] }),
+    ).toBe(true);
     expect(isLobbyMessage({ t: "unready" })).toBe(true);
     expect(isLobbyMessage({ t: "reset" })).toBe(true);
   });
@@ -210,6 +217,8 @@ describe("LOBBY", () => {
     expect(isLobbyMessage({ t: "picks", picks: [starter, starter, starter, starter], cost: 3 })).toBe(false);
     expect(isLobbyMessage({ t: "picks", picks: [starter] })).toBe(false);
     expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3 })).toBe(false);
+    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account })).toBe(false);
+    expect(isLobbyMessage({ t: "ready", starters: [starter], cost: 3, snapshot: account, events: [3] })).toBe(false);
     expect(isLobbyMessage({ t: "nope" })).toBe(false);
     expect(isLobbyMessage(null)).toBe(false);
   });

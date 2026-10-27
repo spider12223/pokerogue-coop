@@ -26,8 +26,8 @@ import {
 } from "./coop-client.ts";
 
 /**
- * End-to-end test (DECISIONS D32): the starter select shows the Pokémon of both players, and the budget they share is 15
- * points.
+ * End-to-end test (DECISIONS D32, D33): the starter select shows the Pokémon of both players, the budget they share is 15
+ * points, and the run has the timed events both players' clocks have on.
  *
  * | step | what happens | what is checked |
  * | --- | --- | --- |
@@ -35,6 +35,7 @@ import {
  * | 2 | both are on the co-op starter select | the guest has Mew there too |
  * | 3 | the guest picks Mew (5) and Charmander (3), the host Bulbasaur (3): 11 points, more than a solo run's 10 | the run starts with Mew in the guest's half of the party, without a desync |
  * | 4 | the run has started | the guest's own account does not have Mew |
+ * | 5 | the run has started | both games have the timed events both clocks had on (D33), and the same one in effect |
  */
 
 const SHOTS = shotsDir("collection");
@@ -81,6 +82,11 @@ test.describe("co-op: the starter select of both players", () => {
       expect(await hasCaught(host, MEW)).toBe(true);
       expect(await hasCaught(guest, MEW)).toBe(false);
 
+      const clockEvents = (client: Client): Promise<string[]> =>
+        client.page.evaluate(() => (window as any).__coop.clockEvents);
+      const [hostClock, guestClock] = await Promise.all([clockEvents(host), clockEvents(guest)]);
+      const soloEvent = await host.page.evaluate(() => (window as any).__coop.timedEvent);
+
       await linkClients(host, guest);
       for (const client of [host, guest]) {
         await expect
@@ -113,6 +119,12 @@ test.describe("co-op: the starter select of both players", () => {
         expect(of("host")).toEqual(["Bulbasaur"]);
         expect(of("guest")).toEqual(["Charmander", "Mew"]);
         expect(await desyncOf(client)).toBeNull();
+      }
+      // The timed events of the run (D33): those both clocks had on, the same on both games
+      const runEvents = hostClock.filter(name => guestClock.includes(name));
+      for (const client of [host, guest]) {
+        expect(await client.page.evaluate(() => (window as any).__coop.runEvents), client.label).toEqual(runEvents);
+        expect(await client.page.evaluate(() => (window as any).__coop.timedEvent), client.label).toBe(soloEvent);
       }
       // The merge came off when the run started: the guest's account has its own Pokémon again
       expect(await hasCaught(guest, MEW)).toBe(false);

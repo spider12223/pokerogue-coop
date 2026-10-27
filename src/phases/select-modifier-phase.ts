@@ -34,6 +34,8 @@ import {
 } from "#modifiers/modifier";
 import type { CustomModifierSettings, ModifierType, ModifierTypeOption } from "#modifiers/modifier-type";
 import {
+  EvolutionItemModifierType,
+  FormChangeItemModifierType,
   FusePokemonModifierType,
   getPlayerModifierTypeOptions,
   getPlayerShopModifierTypeOptionsForWave,
@@ -62,6 +64,8 @@ interface TargetMenu {
   moveSelectFilter: PokemonMoveModifierType["moveSelectFilter"] | undefined;
   tmMoveId: TmModifierType["moveId"] | undefined;
   isPpRestore: boolean;
+  /** The evolution or form change item, whose compatibility the party screen shows */
+  modifierItemId: EvolutionItemModifierType["evolutionItem"] | FormChangeItemModifierType["formChangeItem"] | undefined;
   isMove: boolean;
   isRememberMove: boolean;
 }
@@ -403,6 +407,8 @@ export class SelectModifierPhase extends BattlePhase {
     const isMove = modifierType instanceof PokemonMoveModifierType;
     const isTm = modifierType instanceof TmModifierType;
     const isRememberMove = modifierType instanceof RememberMoveModifierType;
+    const isEvolutionItem = modifierType instanceof EvolutionItemModifierType;
+    const isFormChangeItem = modifierType instanceof FormChangeItemModifierType;
     return {
       partyUiMode: isMove
         ? PartyUiMode.MOVE_MODIFIER
@@ -410,12 +416,21 @@ export class SelectModifierPhase extends BattlePhase {
           ? PartyUiMode.TM_MODIFIER
           : isRememberMove
             ? PartyUiMode.REMEMBER_MOVE_MODIFIER
-            : PartyUiMode.MODIFIER,
+            : isEvolutionItem
+              ? PartyUiMode.EVOLUTION_ITEM_MODIFIER
+              : isFormChangeItem
+                ? PartyUiMode.FORM_CHANGE_ITEM_MODIFIER
+                : PartyUiMode.MODIFIER,
       selectFilter: modifierType.selectFilter,
       moveSelectFilter: isMove ? (modifierType as PokemonMoveModifierType).moveSelectFilter : undefined,
       tmMoveId: isTm ? (modifierType as TmModifierType).moveId : undefined,
       isPpRestore:
         modifierType instanceof PokemonPpRestoreModifierType || modifierType instanceof PokemonPpUpModifierType,
+      modifierItemId: isEvolutionItem
+        ? (modifierType as EvolutionItemModifierType).evolutionItem
+        : isFormChangeItem
+          ? (modifierType as FormChangeItemModifierType).formChangeItem
+          : undefined,
       isMove,
       isRememberMove,
     };
@@ -451,6 +466,7 @@ export class SelectModifierPhase extends BattlePhase {
       menu.moveSelectFilter,
       menu.tmMoveId,
       menu.isPpRestore,
+      menu.modifierItemId,
     );
   }
 
@@ -923,6 +939,7 @@ export class SelectModifierPhase extends BattlePhase {
       menu.moveSelectFilter,
       menu.tmMoveId,
       menu.isPpRestore,
+      menu.modifierItemId,
     );
     return true;
   }
