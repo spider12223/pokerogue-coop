@@ -81,6 +81,12 @@ Import PokéRogue data**, choose that file and confirm. The game reloads with yo
 pokerogue.net is on a newer version than this game, whatever this version does not have is left out (the game tells you how
 much). Importing is not possible during a co-op run.
 
+## Keeping your save safe
+
+Your save lives only in your browser: clearing cookies or site data deletes it, and no server has a copy. Back it up with
+**Menu > Manage Data > Export Data** now and then; **Manage Data > Import Data** brings it back. Once you have played a while
+since your last backup, the title screen offers to make one.
+
 ## Taking a break
 
 - **Menu > Save and Quit** (or just close the game). The host's browser keeps the run, saved at the start of the wave.

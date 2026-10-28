@@ -74,6 +74,11 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "ui",
     note: "dev builds only: how long the phase trace has not moved; it only reads the game",
   },
+  "src/coop/save-backup-offer.ts": {
+    counts: { "Date.now": 1 },
+    why: "account",
+    note: "when the account was backed up or the offer put off (title screen); no run reads it",
+  },
   "src/coop/sim-rng.ts": { counts: { randInt: 1 }, why: "solo-only", note: "simRandInt in solo play" },
   "src/coop/transport/transport.ts": { counts: { "Date.now": 1 }, why: "ui", note: "transport clock, not simulation" },
   "src/data/egg.ts": {

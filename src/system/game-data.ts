@@ -25,6 +25,7 @@ import {
   systemImportNotes,
   systemImportRefusalText,
 } from "#coop/import-account";
+import { noteAccountExported } from "#coop/save-backup-offer";
 import { checkSessionSaveBlock, isCoop, requireCoopSession } from "#coop/session";
 import { ownAccountData } from "#coop/shared-collection";
 import { EntryHazardTag } from "#data/arena-tag";
@@ -1376,6 +1377,9 @@ export class GameData {
     link.download = `${dataKey}.prsv`;
     link.click();
     link.remove();
+    if (dataType === GameDataType.SYSTEM) {
+      noteAccountExported(this.gameStats.playTime);
+    }
 
     return true;
   }

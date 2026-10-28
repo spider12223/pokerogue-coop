@@ -10,6 +10,7 @@ import { Phase } from "#app/phase";
 import { bypassLogin } from "#constants/app-constants";
 import { createCoopTitleOption } from "#coop/lobby";
 import { tryAutoRejoin } from "#coop/rejoin";
+import { offerSaveBackup } from "#coop/save-backup-offer";
 import { CoopSaveRefusedError } from "#coop/save-block";
 import { getDailyRunStarters, startDailyEventChallenges } from "#data/daily-run";
 import { modifierTypes } from "#data/data-lists";
@@ -59,6 +60,8 @@ export class TitlePhase extends Phase {
     }
 
     const lastSlot = await this.checkLastSaveSlot();
+    // A local account (the co-op website and pack) lives only in this browser: a backup is offered when one is due
+    await offerSaveBackup();
     await this.showOptions(lastSlot);
   }
 
