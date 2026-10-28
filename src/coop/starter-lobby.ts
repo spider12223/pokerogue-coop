@@ -272,6 +272,10 @@ export class StarterLobby {
       case "collection":
         // The partner's Pokémon: `CollectionExchange` takes them
         return;
+      case "again":
+      case "againCode":
+        // The end of a run (D35): not this lobby's
+        return;
     }
     this.changed();
   }

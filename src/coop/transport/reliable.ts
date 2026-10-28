@@ -13,7 +13,10 @@ import type { MessageTransport, RawTransport, Scheduler, Unsubscribe } from "#co
 import { systemScheduler } from "#coop/transport/transport";
 
 export interface ReliableOptions {
-  /** First resend delay. Doubles with every retry up to {@linkcode maxRtoMs}. Default 200 ms. */
+  /**
+   * Shortest resend delay. The delay follows the measured round trip (with its variation), from 1 s before the first
+   * measurement, and doubles with every retry up to {@linkcode maxRtoMs}. Default 200 ms.
+   */
   rtoMs?: number;
   /** Longest resend delay. Default 2000 ms. */
   maxRtoMs?: number;
@@ -26,9 +29,17 @@ export interface ReliableOptions {
    * sends it again until it is acknowledged, so nothing is lost. Default 256.
    */
   maxHeld?: number;
+  /**
+   * How long an ack waits for a frame going the other way to ride on (one relay message instead of two). It never delays a
+   * delivery, only the sender forgetting what it sent. Default 50 ms.
+   */
+  ackDelayMs?: number;
   /** Timers and clock. Default: real ones. */
   scheduler?: Scheduler;
 }
+
+/** The resend delay before the round trip has been measured (as TCP's, RFC 6298) */
+const INITIAL_RTO_MS = 1000;
 
 /** The longest frame the relay forwards (`maxPayload` of the relay, `MAX_FRAME_CHARS` of the worker); a longer one is dropped */
 export const MAX_FRAME_CHARS = 1_048_576;
@@ -58,6 +69,8 @@ interface PendingFrame {
   frame: string;
   sentAt: number;
   tries: number;
+  /** Sent more than once: its ack says nothing about the round trip (Karn) */
+  resent: boolean;
 }
 
 function isFrameNumber(value: unknown): value is number {
@@ -69,7 +82,8 @@ function isFrameNumber(value: unknown): value is number {
  *
  * Every sent envelope gets a per-sender number `n` and is kept until the partner acknowledges it, resent with
  * exponential backoff meanwhile. The receiver delivers envelopes in `n` order, drops duplicates and holds frames that
- * arrive ahead of a gap. Acks are cumulative plus a list of the out-of-order numbers already held.
+ * arrive ahead of a gap. Acks are cumulative plus a list of the out-of-order numbers already held; an ack rides on the
+ * next frame going the other way when one goes within {@linkcode ReliableOptions.ackDelayMs}, else it goes alone.
  *
  * `n` is a transport detail: it is never a decision key (D2). Decisions are ordered by the sequencer's `seq`.
  *
@@ -105,14 +119,21 @@ export class ReliableTransport implements MessageTransport {
   private readonly early: Envelope[] = [];
 
   private ticker: unknown = null;
-  private ackScheduled = false;
+  /** Something was received that the partner has not been told of */
+  private ackOwed = false;
+  private ackTimer: unknown = null;
   private closed = false;
+  /** The smoothed round trip and its variation, in ms; `null` until measured */
+  private srtt: number | null = null;
+  private rttvar = 0;
+  private rto: number;
 
   private readonly rtoMs: number;
   private readonly maxRtoMs: number;
   private readonly tickMs: number;
   private readonly maxSackEntries: number;
   private readonly maxHeld: number;
+  private readonly ackDelayMs: number;
   private readonly scheduler: Scheduler;
 
   constructor(raw: RawTransport | null = null, options: ReliableOptions = {}) {
@@ -121,6 +142,8 @@ export class ReliableTransport implements MessageTransport {
     this.tickMs = options.tickMs ?? 25;
     this.maxSackEntries = options.maxSackEntries ?? 64;
     this.maxHeld = options.maxHeld ?? 256;
+    this.ackDelayMs = options.ackDelayMs ?? 50;
+    this.rto = Math.min(this.maxRtoMs, Math.max(this.rtoMs, INITIAL_RTO_MS));
     this.scheduler = options.scheduler ?? systemScheduler;
     if (raw) {
       this.attach(raw);
@@ -130,6 +153,11 @@ export class ReliableTransport implements MessageTransport {
   /** Envelopes sent and not yet acknowledged. */
   get pending(): number {
     return this.unacked.size;
+  }
+
+  /** The current resend delay of a frame sent once, in ms */
+  get retransmitTimeoutMs(): number {
+    return this.rto;
   }
 
   /** Whether a connection is attached and open. */
@@ -154,6 +182,7 @@ export class ReliableTransport implements MessageTransport {
     const now = this.scheduler.now();
     for (const pending of this.unacked.values()) {
       pending.sentAt = now;
+      pending.resent = true;
       this.stats.resent++;
       this.sendRaw(pending.frame);
     }
@@ -182,8 +211,8 @@ export class ReliableTransport implements MessageTransport {
   send(message: Envelope): void {
     this.assertOpen();
     const n = this.nextN++;
-    const frame = JSON.stringify({ n, b: message });
-    this.unacked.set(n, { frame, sentAt: this.scheduler.now(), tries: 0 });
+    const frame = JSON.stringify({ n, b: message, ...this.takeOwedAck() });
+    this.unacked.set(n, { frame, sentAt: this.scheduler.now(), tries: 0, resent: false });
     this.stats.sent++;
     this.sendRaw(frame);
     this.ensureTicker();
@@ -196,7 +225,7 @@ export class ReliableTransport implements MessageTransport {
   sendVolatile(message: Envelope): void {
     this.assertOpen();
     this.stats.volatileSent++;
-    this.sendRaw(JSON.stringify({ v: message }));
+    this.sendRaw(JSON.stringify({ v: message, ...this.takeOwedAck() }));
   }
 
   onMessage(listener: (message: Envelope) => void): Unsubscribe {
@@ -237,9 +266,12 @@ export class ReliableTransport implements MessageTransport {
       return;
     }
     const frame = data as Record<string, unknown>;
-    if (typeof frame["a"] === "number") {
-      this.receiveAck(frame["a"], frame["s"]);
-    } else if ("v" in frame) {
+    // An ack may ride on a data or volatile frame
+    const hasAck = typeof frame["a"] === "number";
+    if (hasAck) {
+      this.receiveAck(frame["a"] as number, frame["s"]);
+    }
+    if ("v" in frame) {
       if (isEnvelope(frame["v"]) && !this.closed) {
         this.stats.volatileDelivered++;
         this.dispatch(frame["v"]);
@@ -248,25 +280,45 @@ export class ReliableTransport implements MessageTransport {
       }
     } else if (isFrameNumber(frame["n"]) && "b" in frame) {
       this.receiveData(frame["n"], frame["b"]);
-    } else {
+    } else if (!hasAck) {
       this.stats.malformed++;
     }
   }
 
   private receiveAck(upTo: number, selective: unknown): void {
-    for (const n of this.unacked.keys()) {
+    const covered: PendingFrame[] = [];
+    for (const [n, pending] of this.unacked) {
       if (n > upTo) {
         break; // keys are in ascending order
       }
+      covered.push(pending);
       this.unacked.delete(n);
     }
-    if (Array.isArray(selective)) {
-      for (const n of selective.slice(0, this.maxSackEntries)) {
-        if (isFrameNumber(n)) {
-          this.unacked.delete(n);
-        }
+    const listed = Array.isArray(selective) ? selective.slice(0, this.maxSackEntries).filter(isFrameNumber) : [];
+    for (const n of listed) {
+      const pending = this.unacked.get(n);
+      if (pending !== undefined) {
+        covered.push(pending);
+        this.unacked.delete(n);
       }
     }
+    // The newest frame sent once that this ack covers gives the round trip (one sent again says nothing of it, Karn)
+    const sentOnce = covered.filter(pending => !pending.resent).map(pending => pending.sentAt);
+    if (sentOnce.length > 0) {
+      this.measured(this.scheduler.now() - Math.max(...sentOnce));
+    }
+  }
+
+  /** A round trip, ack delay included: the resend delay follows it (RFC 6298), so a slow link is not sent everything twice */
+  private measured(sample: number): void {
+    if (this.srtt === null) {
+      this.srtt = sample;
+      this.rttvar = sample / 2;
+    } else {
+      this.rttvar = 0.75 * this.rttvar + 0.25 * Math.abs(this.srtt - sample);
+      this.srtt = 0.875 * this.srtt + 0.125 * sample;
+    }
+    this.rto = Math.min(this.maxRtoMs, Math.max(this.rtoMs, this.srtt + 4 * this.rttvar));
   }
 
   private receiveData(n: number, body: unknown): void {
@@ -322,20 +374,31 @@ export class ReliableTransport implements MessageTransport {
     }
   }
 
-  /** One ack per burst of frames. */
+  /** One ack per burst of frames: on the next frame going the other way, or alone after {@linkcode ackDelayMs} */
   private scheduleAck(): void {
-    if (this.ackScheduled) {
+    this.ackOwed = true;
+    if (this.ackTimer !== null) {
       return;
     }
-    this.ackScheduled = true;
-    queueMicrotask(() => {
-      this.ackScheduled = false;
-      if (this.closed || !this.raw) {
-        return;
+    this.ackTimer = this.scheduler.setTimeout(() => {
+      this.ackTimer = null;
+      if (this.ackOwed && !this.closed && this.raw) {
+        this.sendRaw(JSON.stringify(this.takeOwedAck()));
       }
-      const selective = [...this.held.keys()].sort((a, b) => a - b).slice(0, this.maxSackEntries);
-      this.sendRaw(JSON.stringify({ a: this.deliveredN, s: selective }));
-    });
+    }, this.ackDelayMs);
+  }
+
+  /** The ack that is owed, for a frame to carry; nothing if none is */
+  private takeOwedAck(): { a: number; s: number[] } | Record<string, never> {
+    if (!this.ackOwed || !this.raw?.isOpen) {
+      return {};
+    }
+    this.ackOwed = false;
+    if (this.ackTimer !== null) {
+      this.scheduler.clearTimeout(this.ackTimer);
+      this.ackTimer = null;
+    }
+    return { a: this.deliveredN, s: [...this.held.keys()].sort((a, b) => a - b).slice(0, this.maxSackEntries) };
   }
 
   // #endregion
@@ -370,10 +433,11 @@ export class ReliableTransport implements MessageTransport {
     }
     const now = this.scheduler.now();
     for (const pending of this.unacked.values()) {
-      const rto = Math.min(this.maxRtoMs, this.rtoMs * 2 ** Math.min(pending.tries, 6));
+      const rto = Math.min(this.maxRtoMs, this.rto * 2 ** Math.min(pending.tries, 6));
       if (now - pending.sentAt >= rto) {
         pending.sentAt = now;
         pending.tries++;
+        pending.resent = true;
         this.stats.resent++;
         this.sendRaw(pending.frame);
       }
@@ -392,6 +456,10 @@ export class ReliableTransport implements MessageTransport {
     if (this.ticker !== null) {
       this.scheduler.clearTimeout(this.ticker);
       this.ticker = null;
+    }
+    if (this.ackTimer !== null) {
+      this.scheduler.clearTimeout(this.ackTimer);
+      this.ackTimer = null;
     }
   }
 

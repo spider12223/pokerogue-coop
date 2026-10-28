@@ -8,6 +8,7 @@ import { bypassLogin } from "#constants/app-constants";
 import { coopDecide, coopText, reportBridgeError } from "#coop/bridge";
 import { deciderOf } from "#coop/control";
 import { retryKey } from "#coop/decision-keys";
+import { beginRunEnd } from "#coop/play-again";
 import type { Seat } from "#coop/protocol";
 import { issueResync, trySafeApply } from "#coop/resync-run";
 import { isRetryPayload, type RetryPayload } from "#coop/retry";
@@ -249,10 +250,12 @@ export class GameOverPhase extends BattlePhase {
    * The end of a co-op run (DECISIONS D4a): victory and game over are shared (a game over ends the run unless the host
    * retries the wave, {@linkcode decideCoopRetry}). A victory gives each player the ribbons of their own Pokémon and counts as
    * a co-op clear of their own account, and nothing else: no classic-win unlocks or vouchers. The run goes into each player's
-   * run history with both display names. Both clients then return to the title screen with "Co-op run ended".
+   * run history with both display names. Both clients then show the end screen, where each player may play again with the
+   * partner (D35).
    */
   private handleCoopRunEnd(): void {
     globalScene.disableMenu = true;
+    beginRunEnd();
     if (this.isVictory) {
       this.awardRibbons();
       globalScene.gameData.gameStats.coopRunsWon++;

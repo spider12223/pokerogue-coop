@@ -86,7 +86,10 @@ Each client reaches its partner through three layers. None of them imports game 
 2. **`transport/reliable.ts`**, `ReliableTransport`: turns a raw transport into a `MessageTransport` with per-sender
    numbering, selective acks, resend with backoff, deduplication and in-order, exactly-once delivery. It moves to a new
    connection after a reconnect and starts its numbering again on a new pairing (D20). `sendVolatile` sends without a
-   number or a resend; the cosmetic channel uses it.
+   number or a resend; the cosmetic channel uses it. An ack rides on the next frame going the other way, data or
+   volatile, when one goes within 50 ms, else it goes alone; the resend delay follows the measured round trip (RFC
+   6298, at least 200 ms, 1 s before the first measurement), so a pair far from the relay is not sent everything twice.
+   Each relay message counts against the relay's quota (the Worker's free plan), so these keep the count down.
 3. **`epoch.ts`**, `EpochTransport`: stamps the current epoch on every envelope and keeps messages of another epoch away
    from the simulation. Older ones are dropped; newer ones wait until the `RESYNC` that brings their epoch has been
    applied; a `RESYNC` always passes (D18).

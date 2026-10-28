@@ -32,8 +32,16 @@ import type { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 
 /** How often the guest looks whether it is behind (a level-up panel has no event of its own) */
 const FOLLOW_MS = 250;
-/** How often the host says again where it is: a lost `pace` is repaired by the next one */
-const REPEAT_MS = 2000;
+/**
+ * How long the host goes without saying where it is. Every move says it at once, and so does the partner coming back, so
+ * this only repairs a `pace` the relay dropped: it is rare, and a quiet screen costs no messages.
+ */
+const REPEAT_MS = 10_000;
+/**
+ * The phases of a move start in bursts: the host says where it is at once, then at most once per this many ms, with the
+ * latest position (the guest looks whether it is behind every {@linkcode FOLLOW_MS} anyway)
+ */
+const COALESCE_MS = 150;
 
 /** The settings the guest takes from the host while the run lasts */
 const FOLLOWED_SETTINGS = [
@@ -263,9 +271,51 @@ export function startPacer(session: CoopSession, link: CoopLink): () => void {
   };
   unsubscribes.push(link.onCosmetic(message => safely(() => onMessage(active, message))));
   if (session.seat === "host") {
-    session.pace.onMove = () => safely(() => sendPace(active));
-    const timer = setInterval(() => safely(() => sendPace(active)), REPEAT_MS);
-    unsubscribes.push(() => clearInterval(timer));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    /** Say where the host is now, and again after {@linkcode REPEAT_MS} without a move */
+    const say = (): void => {
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
+      safely(() => sendPace(active));
+      timer = setTimeout(say, REPEAT_MS);
+    };
+    let cooling: ReturnType<typeof setTimeout> | null = null;
+    let movedWhileCooling = false;
+    const moved = (): void => {
+      if (cooling !== null) {
+        movedWhileCooling = true;
+        return;
+      }
+      say();
+      cooling = setTimeout(() => {
+        cooling = null;
+        if (movedWhileCooling) {
+          movedWhileCooling = false;
+          moved();
+        }
+      }, COALESCE_MS);
+    };
+    session.pace.onMove = moved;
+    // A partner who is back (a rejoin, a new socket) missed what was said meanwhile
+    let present = link.partnerPresent;
+    unsubscribes.push(
+      link.onChange(() => {
+        if (link.partnerPresent && !present) {
+          say();
+        }
+        present = link.partnerPresent;
+      }),
+      () => {
+        if (timer !== null) {
+          clearTimeout(timer);
+        }
+        if (cooling !== null) {
+          clearTimeout(cooling);
+        }
+      },
+    );
+    timer = setTimeout(say, REPEAT_MS);
   } else {
     const timer = setInterval(() => safely(() => catchUp(active)), FOLLOW_MS);
     unsubscribes.push(() => clearInterval(timer));

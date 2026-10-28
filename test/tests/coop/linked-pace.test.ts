@@ -188,4 +188,20 @@ describe("Co-op: pacing in a linked run (D27)", () => {
     await flush();
     expect(next.closed()).toBe(false);
   });
+
+  it("host: a burst of phases says where it is twice, at once and with the latest position, not once per phase", async () => {
+    const r = await battle("host");
+    await new Promise(resolve => setTimeout(resolve, 300));
+    const before = r.partner.paceSeen.filter(m => m.t === "pace").length;
+    for (let i = 0; i < 8; i++) {
+      r.session.pace.phaseStarted("MessagePhase");
+    }
+    const latest = position();
+    await vi.waitUntil(() => r.partner.paceSeen.some(m => m.t === "pace" && m.at.join() === latest.join()), {
+      timeout: 2000,
+      interval: 10,
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(r.partner.paceSeen.filter(m => m.t === "pace").length - before).toBe(2);
+  });
 });

@@ -4,13 +4,21 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { listenForAgain } from "#coop/again-answer";
 import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
 import { controllerOf, deciderOf, ownerOf, switchTargets } from "#coop/control";
 import type { CosmeticMessage } from "#coop/cosmetic";
 import { startCosmeticView, stopCosmeticView } from "#coop/cosmetic-view";
 import { EpochTransport } from "#coop/epoch";
 import { CoopLink } from "#coop/link";
-import { type CheckpointMessage, type DecisionKey, keyId, otherSeat, type Seat } from "#coop/protocol";
+import {
+  type CheckpointMessage,
+  type DecisionKey,
+  keyId,
+  type LobbyMessage,
+  otherSeat,
+  type Seat,
+} from "#coop/protocol";
 import type { ResyncMessage, ResyncPayload, ResyncReason, ResyncRequestPayload } from "#coop/resync";
 import { installResync } from "#coop/resync-run";
 import type { RetryPayload } from "#coop/retry";
@@ -49,6 +57,7 @@ import {
   type SharedRun,
 } from "#test/helpers/coop-harness";
 import type { ConfirmUiHandler } from "#ui/confirm-ui-handler";
+import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import type Phaser from "phaser";
 import { vi } from "vitest";
 
@@ -130,6 +139,8 @@ export class ScriptedPartner {
   readonly resyncs: ResyncMessage[] = [];
   readonly checkpointsSeen: CheckpointMessage[] = [];
   readonly requestsSeen: ResyncRequestPayload[] = [];
+  /** The `LOBBY` messages the real client sent (the end screen's "Play again", D35) */
+  readonly lobbySeen: LobbyMessage[] = [];
   private readonly answered = new Set<string>();
   /** As the host, the partner's simulation expects what the real client's simulation does (a proposal waits for it) */
   private readonly expected = new Set<string>();
@@ -157,6 +168,8 @@ export class ScriptedPartner {
         this.checkpointsSeen.push(message.payload as CheckpointMessage);
       } else if (message.kind === "RESYNC_REQUEST") {
         this.requestsSeen.push(message.payload as ResyncRequestPayload);
+      } else if (message.kind === "LOBBY") {
+        this.lobbySeen.push(message.payload as LobbyMessage);
       }
     });
     this.timer = setInterval(() => this.poll(), 5);
@@ -168,6 +181,16 @@ export class ScriptedPartner {
    */
   cosmetic(payload: unknown): void {
     this.channel.sendVolatile({ key: null, author: this.seat, kind: "COSMETIC", payload: payload as CosmeticMessage });
+  }
+
+  /** Send a `LOBBY` message as the partner's client would (the end screen's "Play again", D35) */
+  sendLobby(message: LobbyMessage): void {
+    this.channel.send({ key: null, author: this.seat, kind: "LOBBY", payload: message });
+  }
+
+  /** Leave the room for good, as the partner's client does when it goes back to the title (the real client hears `BYE`) */
+  bye(): void {
+    this.channel.send({ key: null, author: this.seat, kind: "BYE", payload: null });
   }
 
   /** Send a checkpoint as the partner's client would (D13): a test makes it differ from the real client's to cause a resync */
@@ -414,6 +437,8 @@ export async function openLinkedRun(phaserGame: Phaser.Game, scenario: LinkedSce
     session.afkTimers = scenario.afkTimers;
   }
   attachCheckpointExchange(session, link);
+  // The partner's answer on the end screen of the run (D35), as the lobby listens for it in the game
+  listenForAgain(link);
   // The resync of the session (D13): a checkpoint that differs, the host's `RESYNC`, and the decision gate (D20)
   const stopResync = installResync(session, link);
   const partner = new ScriptedPartner(
@@ -534,6 +559,25 @@ export async function winWave(r: LinkedRun): Promise<boolean> {
  * game over phase waiting to start.
  * @returns Whether it is a victory
  */
+/**
+ * The end screen of the run (D35): wait for its menu and its input delay, then choose
+ * @returns The menu's labels
+ */
+export async function answerEndScreen(r: LinkedRun, playAgain: boolean): Promise<string[]> {
+  const { scene } = r.ctx.game;
+  await vi.waitUntil(
+    () => scene.phaseManager.getCurrentPhase().is("PostGameOverPhase") && scene.ui.mode === UiMode.OPTION_SELECT,
+    { interval: 5, timeout: 8000 },
+  );
+  const handler = scene.ui.getHandler() as OptionSelectUiHandler;
+  const internals = handler as unknown as { blockInput: boolean; config: { options: { label: string }[] } };
+  const labels = internals.config.options.map(option => option.label);
+  await vi.waitUntil(() => !internals.blockInput, { interval: 10, timeout: 4000 });
+  handler.setCursor(playAgain ? 0 : labels.length - 1);
+  handler.processInput(Button.ACTION);
+  return labels;
+}
+
 export async function playToRunEnd(r: LinkedRun, maxTurns = 8): Promise<boolean> {
   const { ctx } = r;
   for (let turn = 0; turn < maxTurns; turn++) {

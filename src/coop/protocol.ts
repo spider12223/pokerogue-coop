@@ -22,7 +22,7 @@ import {
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 7;
+export const COOP_PROTOCOL_VERSION = 8;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -476,7 +476,14 @@ export type LobbyMessage =
   | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot; events: string[]; gen: number }
   | { t: "unready" }
   | { t: "reset"; gen: number }
-  | { t: "collection"; collection: CollectionData; ask: boolean };
+  | { t: "collection"; collection: CollectionData; ask: boolean }
+  /** At the end of a run (D35): whether this player wants to play again */
+  | { t: "again"; want: boolean }
+  /** Host, once both want to play again (D35): the code of the new game's room */
+  | { t: "againCode"; code: string };
+
+/** A room code as the relays draw them (`coop-server/src/relay-protocol.ts`), with room to spare */
+const AGAIN_CODE = /^[A-Z0-9]{4,12}$/;
 
 export function isLobbyMessage(value: unknown): value is LobbyMessage {
   if (typeof value !== "object" || value === null) {
@@ -502,6 +509,10 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
       return Number.isSafeInteger(message["gen"]);
     case "collection":
       return isCollectionData(message["collection"]) && typeof message["ask"] === "boolean";
+    case "again":
+      return typeof message["want"] === "boolean";
+    case "againCode":
+      return typeof message["code"] === "string" && AGAIN_CODE.test(message["code"]);
     default:
       return false;
   }

@@ -8,7 +8,8 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { Phase } from "#app/phase";
 import { bypassLogin } from "#constants/app-constants";
-import { createCoopTitleOption } from "#coop/lobby";
+import { type CoopTitleCallbacks, createCoopTitleOption } from "#coop/lobby";
+import { startPlayAgain } from "#coop/play-again";
 import { tryAutoRejoin } from "#coop/rejoin";
 import { offerSaveBackup } from "#coop/save-backup-offer";
 import { CoopSaveRefusedError } from "#coop/save-block";
@@ -56,6 +57,10 @@ export class TitlePhase extends Phase {
 
     // A client with a seat token takes its seat in the room it left, if that room is still there (D20)
     if (await tryAutoRejoin()) {
+      return;
+    }
+    // Both players chose "Play again" at the end of the last co-op run: the new game starts without the menus (D35)
+    if (startPlayAgain(this.coopCallbacks())) {
       return;
     }
 
@@ -204,7 +209,17 @@ export class TitlePhase extends Phase {
       },
     );
     // The co-op entry sits right after "New Game"
-    const coopOption = createCoopTitleOption({
+    const coopOption = createCoopTitleOption(this.coopCallbacks());
+    const newGameAt = options.findIndex(option => option.label === i18next.t("menu:newGame"));
+    options.splice(newGameAt + 1, 0, coopOption);
+    const config: OptionSelectModeConfig = { options, blockCancelButton: true };
+    await ui.setMode(UiMode.TITLE, config);
+  }
+
+  /** What the co-op lobby does once connected (to the starter select), or when cancelled (back to the title) */
+  private coopCallbacks(): CoopTitleCallbacks {
+    const { ui } = globalScene;
+    return {
       onConnected: () => {
         this.coop = true;
         this.gameMode = GameModes.CLASSIC;
@@ -217,11 +232,7 @@ export class TitlePhase extends Phase {
         globalScene.phaseManager.toTitleScreen();
         super.end();
       },
-    });
-    const newGameAt = options.findIndex(option => option.label === i18next.t("menu:newGame"));
-    options.splice(newGameAt + 1, 0, coopOption);
-    const config: OptionSelectModeConfig = { options, blockCancelButton: true };
-    await ui.setMode(UiMode.TITLE, config);
+    };
   }
 
   // TODO: Make callers actually wait for the save slot to load

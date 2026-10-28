@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { coopText } from "#coop/bridge";
 import { leaveCoop } from "#coop/lobby";
+import { askPlayAgain } from "#coop/play-again";
 import { removeCoopSlot } from "#coop/wave-save";
 import type { EndCardPhase } from "#phases/end-card-phase";
 
@@ -18,27 +18,22 @@ export class PostGameOverPhase extends Phase {
 
   /**
    * A co-op run is over (DECISIONS D4a): the account is saved, but never a session (a co-op run must not take a solo
-   * slot), the co-op session ends, and both clients go back to the title screen with a message.
+   * slot). Each player chooses to play again with the partner or to go back to the title (D35); then the co-op session ends
+   * and the title screen starts the new game, if both chose one.
    */
   private endCoopRun(): void {
     const { ui } = globalScene;
     globalScene.gameData
       .saveSystem()
-      // The game over faded the screen to black: the message is under that until it fades back in
+      // The game over faded the screen to black: the end screen is under that until it fades back in
       .then(() => ui.fadeIn(500))
+      .then(() => askPlayAgain())
       .then(() => {
-        ui.showText(
-          coopText("runEnded", "Co-op run ended"),
-          null,
-          () => {
-            removeCoopSlot();
-            leaveCoop();
-            globalScene.reset();
-            globalScene.phaseManager.unshiftNew("TitlePhase");
-            this.end();
-          },
-          2500,
-        );
+        removeCoopSlot();
+        leaveCoop();
+        globalScene.reset();
+        globalScene.phaseManager.unshiftNew("TitlePhase");
+        this.end();
       });
   }
 

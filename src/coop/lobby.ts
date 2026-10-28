@@ -11,6 +11,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { stopAllAfkWatchers } from "#coop/afk";
+import { listenForAgain } from "#coop/again-answer";
 import { coopText } from "#coop/bridge";
 import { getLocalBuildIdentity, overridesAreDefaults } from "#coop/build-info";
 import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
@@ -161,6 +162,20 @@ export function returnToTitle(message: string | null): void {
 }
 
 registerLeaveHandler(() => returnToTitle(null));
+
+/**
+ * The run is over (D35): what only a run needs stops (the text pacing, the reconnect and resync screens, the take-over clocks,
+ * the partner's cursors and emotes), and the link stays for the end screen's "Play again"
+ */
+export function quietRunEnd(): void {
+  stopPacer();
+  stopResync?.();
+  stopResync = null;
+  hideReconnectScreen();
+  stopAllAfkWatchers();
+  stopCosmeticView();
+  setTouchEmoteVisible(false);
+}
 // A guest whose START was lost is brought into the run by the reload: its starter select's lobby and pooled collection go
 registerBeforeReload(() => closeStarterLobby());
 
@@ -370,11 +385,14 @@ export function showFailure(error: unknown, callbacks: CoopTitleCallbacks, messa
   ui.showText(message ?? describeCoopError(error), null, () => callbacks.onCancel(), null, true);
 }
 
-/** Show the join code with a cancel button while waiting for the partner. */
-export function showJoinCode(code: string, cancel: () => void): void {
+/**
+ * Show the join code with a cancel button while waiting for the partner.
+ * @param waiting - What the message says; by default, the code and that the partner is awaited
+ */
+export function showJoinCode(code: string, cancel: () => void, waiting?: string): void {
   const { ui } = globalScene;
   joinCode = code;
-  const waiting = coopText("waitingForPartnerToJoin", "Your join code is {{code}}. Waiting for your partner…", {
+  waiting ??= coopText("waitingForPartnerToJoin", "Your join code is {{code}}. Waiting for your partner…", {
     code,
   });
   ui.showText(waiting, null, () => {
@@ -414,8 +432,8 @@ export function showJoinCode(code: string, cancel: () => void): void {
 
 /** What a player is told when the room is over under them: the partner ended it, or the connection could not be restored */
 function sessionOver(session: CoopSession, end: "peerGone" | "closed"): void {
-  if (session.hasEnded || session.stopped !== null || getStarterLobby() !== null) {
-    return; // the starter lobby has its own way of saying so
+  if (session.hasEnded || session.runOver || session.stopped !== null || getStarterLobby() !== null) {
+    return; // the starter lobby and the end of the run have their own way of saying so
   }
   const partner = session.partnerName;
   returnToTitle(
@@ -461,6 +479,8 @@ export function beginSession(
     });
   }
   attachCheckpointExchange(session, link);
+  // The partner's answer on the end screen of the run (D35) can come before this client's run has ended
+  listenForAgain(link);
   stopResync?.();
   stopResync = installResync(session, link);
   link.onEnd(end => {
@@ -525,8 +545,11 @@ async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopT
   callbacks.onConnected();
 }
 
-/** Create a room, show its code, and enter the lobby once the guest has joined and the handshake is through. */
-async function hostGame(callbacks: CoopTitleCallbacks): Promise<void> {
+/**
+ * Create a room, show its code, and enter the lobby once the guest has joined and the handshake is through.
+ * @param again - "Play again" (D35): the room the host already created, and the partner who is joining it by themselves
+ */
+async function hostGame(callbacks: CoopTitleCallbacks, again?: { room: HostRoom; partner: string }): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
     showFailure(new Error("overrides in effect"), callbacks);
@@ -545,13 +568,23 @@ async function hostGame(callbacks: CoopTitleCallbacks): Promise<void> {
   ui.showText(coopText("gettingJoinCode", "Getting a join code…"));
   startLobbyLog();
   try {
-    room = await createRoom(getRelayUrl());
+    room = again?.room ?? (await createRoom(getRelayUrl()));
     if (cancelled) {
       return;
     }
-    coopLog().setContext({ room: room.identity.code, seat: "host" });
-    coopLog().info("lobby", "room created", { code: room.identity.code });
-    showJoinCode(room.identity.code, cancel);
+    const code = room.identity.code;
+    coopLog().setContext({ room: code, seat: "host" });
+    coopLog().info("lobby", again === undefined ? "room created" : "room created to play again", { code });
+    showJoinCode(
+      code,
+      cancel,
+      again === undefined
+        ? undefined
+        : coopText("againWaiting", "Waiting for {{partner}} to join the new game (code {{code}})…", {
+            partner: again.partner,
+            code,
+          }),
+    );
     await room.partner;
     if (cancelled) {
       return;
@@ -674,6 +707,14 @@ function showJoinForm(callbacks: CoopTitleCallbacks): void {
     },
     lastFailedCode ?? "",
   );
+}
+
+/**
+ * Host, after "Play again" (D35): wait in the room created at the end of the last run for the partner, who joins it by
+ * themselves, then enter the lobby as for a new game
+ */
+export function hostAgain(callbacks: CoopTitleCallbacks, room: HostRoom, partner: string): Promise<void> {
+  return hostGame(callbacks, { room, partner });
 }
 
 /** Host: start a game without the menus (the debug API and the end-to-end test use it) */

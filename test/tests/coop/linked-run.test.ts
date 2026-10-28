@@ -24,6 +24,7 @@ import { SelectBiomePhase } from "#phases/select-biome-phase";
 import * as ribbonMethods from "#system/ribbon-methods";
 import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";
 import {
+  answerEndScreen,
   answerSideAction,
   attackCommand,
   ballThrowingPartner,
@@ -497,9 +498,15 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const clearSession = vi.spyOn(game.scene.gameData, "tryClearSession");
 
       expect(await playToRunEnd(r)).toBe(false);
-      await game.phaseInterceptor.to("TitlePhase", false);
+      const toTitle = game.phaseInterceptor.to("TitlePhase", false);
+      // the end screen (D35): back to the title
+      const labels = await answerEndScreen(r, false);
+      expect(labels[0]).toMatch(/^Play again with /);
+      expect(labels[1]).toBe("Back to title");
+      await toTitle;
 
       expect(shown).toContain("Co-op run ended");
+      expect(r.partner.lobbySeen).toContainEqual({ t: "again", want: false });
       expect(getCoopSession()).toBeNull();
       expect(system).toHaveBeenCalled();
       expect(session).not.toHaveBeenCalled();

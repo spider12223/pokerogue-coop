@@ -197,4 +197,117 @@ describe("ReliableTransport", () => {
     a.close();
     expect(() => a.send(message(1))).toThrow(/closed/);
   });
+
+  describe("fewer relay messages", () => {
+    /** Two ends whose frames take `delayMs` each way, and that count what they send */
+    class DelayedEnd implements RawTransport {
+      readonly isOpen = true;
+      readonly sent: string[] = [];
+      peer!: DelayedEnd;
+      private readonly listeners = new Set<(frame: string) => void>();
+      constructor(private readonly delayMs: number) {}
+      send(frame: string): void {
+        this.sent.push(frame);
+        setTimeout(() => {
+          for (const listener of [...this.peer.listeners]) {
+            listener(frame);
+          }
+        }, this.delayMs);
+      }
+      onFrame(listener: (frame: string) => void): () => void {
+        this.listeners.add(listener);
+        return () => this.listeners.delete(listener);
+      }
+      onClose(): () => void {
+        return () => undefined;
+      }
+      close(): void {}
+    }
+    function delayedPair(delayMs: number): [DelayedEnd, DelayedEnd] {
+      const a = new DelayedEnd(delayMs);
+      const b = new DelayedEnd(delayMs);
+      a.peer = b;
+      b.peer = a;
+      return [a, b];
+    }
+    const acksIn = (raw: DelayedEnd): number =>
+      raw.sent.filter(frame => !frame.includes('"n"') && !frame.includes('"v"')).length;
+
+    it("acks a burst once, after a short wait", async () => {
+      const [rawA, rawB] = delayedPair(0);
+      const a = new ReliableTransport(rawA);
+      const b = new ReliableTransport(rawB);
+      const received = collect(b);
+      for (let i = 0; i < 5; i++) {
+        a.send(message(i));
+      }
+      await vi.advanceTimersByTimeAsync(10);
+      expect(received).toEqual([0, 1, 2, 3, 4]);
+      expect(acksIn(rawB)).toBe(0);
+      await vi.advanceTimersByTimeAsync(60);
+      expect(acksIn(rawB)).toBe(1);
+      expect(a.pending).toBe(0);
+    });
+
+    it("an ack rides on a frame going the other way, data or volatile", async () => {
+      const [rawA, rawB] = delayedPair(0);
+      const a = new ReliableTransport(rawA);
+      const b = new ReliableTransport(rawB);
+      const atA = collect(a);
+      a.send(message(1));
+      await vi.advanceTimersByTimeAsync(5);
+      b.send(message(2));
+      await vi.advanceTimersByTimeAsync(5);
+      a.send(message(3));
+      await vi.advanceTimersByTimeAsync(5);
+      b.sendVolatile(message(4));
+      await runUntil(() => a.pending === 0 && b.pending === 0);
+      // b's data frame carried the ack of 1, its volatile frame the ack of 3: b sent no ack of its own
+      expect(acksIn(rawB)).toBe(0);
+      expect(JSON.parse(rawB.sent[0]!)).toMatchObject({ n: 1, a: 1 });
+      expect(JSON.parse(rawB.sent[1]!)).toMatchObject({ a: 2 });
+      expect(atA).toEqual([2, 4]);
+      expect(a.stats.malformed + b.stats.malformed).toBe(0);
+    });
+
+    it("learns a slow round trip: a link that loses nothing is not sent anything twice", async () => {
+      // 150 ms each way, plus the ack's wait: well over the shortest resend delay of 200 ms
+      const [rawA, rawB] = delayedPair(150);
+      const a = new ReliableTransport(rawA);
+      const b = new ReliableTransport(rawB);
+      const received = collect(b);
+      for (let i = 0; i < 100; i++) {
+        a.send(message(i));
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      await runUntil(() => a.pending === 0);
+      expect(received).toHaveLength(100);
+      expect(a.stats.resent).toBe(0);
+      expect(a.retransmitTimeoutMs).toBeGreaterThan(350);
+    });
+
+    it("a frame the relay dropped still comes again on a slow link", async () => {
+      const [rawA, rawB] = delayedPair(150);
+      const a = new ReliableTransport(rawA);
+      const b = new ReliableTransport(rawB);
+      const received = collect(b);
+      a.send(message(1));
+      await runUntil(() => a.pending === 0);
+      // the next frame never arrives the first time
+      const send = rawA.send.bind(rawA);
+      let dropped = false;
+      rawA.send = frame => {
+        if (!dropped && frame.includes('"n":2')) {
+          dropped = true;
+          rawA.sent.push(frame);
+          return;
+        }
+        send(frame);
+      };
+      a.send(message(2));
+      await runUntil(() => a.pending === 0);
+      expect(received).toEqual([1, 2]);
+      expect(a.stats.resent).toBe(1);
+    });
+  });
 });

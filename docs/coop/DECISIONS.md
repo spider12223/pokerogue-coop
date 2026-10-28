@@ -40,7 +40,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | Topic | Sections |
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
-| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both |
+| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are |
 | Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
@@ -558,7 +558,7 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 - After the handshake the host sequences a `RESYNC` at once: both load the wave-start save and continue, with the epoch
   after the slot's.
 - **Continue** first checks that this build can load the slot; if it cannot, the host is told why and may delete it.
-- `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (7) is bumped by any incompatible change to a message shape. Two
+- `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (8) is bumped by any incompatible change to a message shape. Two
   builds pair only when they are the same commit anyway (D1).
 
 ## D22. Deploy shape
@@ -710,7 +710,10 @@ step; the screens would not.
   and a take over's: learn-move, biome, catch release, switch, side action), whose lines only that player sees. Lines
   on other screens (party, rewards, trade) are not counted.
 - **Host:** sends `pace {at, game, exp, hp, iv, anim, stats}`, an unsequenced `COSMETIC` state (D16 channel: latest
-  wins, at most 8 per s, burst 4), on every change and again every 2 s, so a lost one is repaired.
+  wins, at most 8 per s, burst 4). A change sends it at once, then at most once per 150 ms with the latest position (the
+  phases of a move start in bursts, and the guest looks every 250 ms anyway). It is sent again when the partner is back,
+  and after 10 s without a change, so one the relay dropped is repaired. (It was on every change and every 2 s: three
+  in five relay messages of a battle were `pace`.)
 - **The guest follows:** a shared line closes by itself once the host is past it, and while the guest is behind, its
   lines appear at once. A panel of its own (level-up stats, IVs) closes once the host is past it too, and the IV
   Scanner question (`ScanIvsPhase`) is answered no. Nothing follows on the host.
@@ -906,6 +909,34 @@ the same ones again and again. A co-op run prefers the ones it has not met:
   A save of an earlier version has none. A new run starts with none.
 - **Hashed** (D13), like the timed events.
 - Solo play picks as upstream.
+
+## D35. Play again
+
+At the end of a run (a victory, or a wipe the host did not retry), each player chooses **Play again with {partner}** or
+**Back to title** on the end screen (`src/coop/play-again.ts`). A pair that wants another run does not share a new code.
+
+- **From the run's end on** (`GameOverPhase.handleCoopRunEnd`, on both clients at the same point): the session is
+  `runOver`, so the partner leaving is the end screen's to say, not "ended the session". What only a run needs stops
+  (pacing, the reconnect and resync screens, the take-over clocks, cursors and emotes); the link stays.
+- **The answers** are `LOBBY` messages on the run's link: `again` (`want`), heard from the run's end on, so an answer that
+  comes before this client's end screen asks is kept. Nothing is sequenced: the run is over.
+- **Both want to:** the host creates a new room and sends its code (`againCode`). The guest leaves the old room as soon as it
+  has the code; the host leaves it when the guest has (or after 10 s). At the title screen the host waits in the new room
+  (its code is shown, should the guest have to type it) and the guest joins it by itself. From there it is a new game: a new
+  handshake (D1), a new session, the starter select (D32).
+- **Otherwise:** a player who goes back to the title tells the partner, who reads "{partner} went back to the title"; a
+  partner who left the room reads "{partner} left the game". A room that cannot be created, or a code that does not come in
+  20 s, reads "Could not start a new game with {partner}". Each then goes to the title screen.
+- A session without a link (the rules harness) shows "Co-op run ended" for 2.5 s, as before.
+- `COOP_PROTOCOL_VERSION` is 8 since `again` and `againCode`.
+
+## D36. Rules kept as they are
+
+Settled by the owner on 2026-10-28, so they are not proposed again:
+
+- **Achievements** a run earns unlock on both accounts, whichever player's Pokémon earned them: the run is shared.
+- **Gifts** stay free whatever the counts (D11): a 5-and-1 split is the players' choice.
+- **Retries** after a wipe are not limited (D4a): the host chooses each time.
 
 ## See also
 

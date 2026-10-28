@@ -158,6 +158,8 @@ export class CoopSession {
   public onBridgeFailure: (() => void) | null = null;
   /** A decision's code failed in this epoch: its phase is stuck, so it can be abandoned (a safe point, D13) */
   public bridgeFailed = false;
+  /** The run is over (D4a): the end screen answers the partner leaving, not the session's own ending (D35) */
+  public runOver = false;
   /** After this many ms of waiting for a partner the player may end the session (D20); `null`: the default of a minute */
   public reconnectEndMs: number | null = null;
   /** This client's own account was saved in this run (D19), at a wave start: a fresh account has no saved ids until it is */
