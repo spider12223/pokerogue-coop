@@ -277,6 +277,12 @@ function importFromTitle(callbacks: CoopTitleCallbacks): void {
   );
 }
 
+/**
+ * Size of the co-op menu: with all its rows (eight) at full size it runs off the top of the screen. At 5/6 each pixel of the
+ * window and the font is still a whole number of canvas pixels (the game draws at 6x).
+ */
+const COOP_MENU_SCALE = 5 / 6;
+
 /** "Host / Join / Cancel" */
 export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
   const slot = continueHandler === null ? null : currentCoopSlot();
@@ -403,7 +409,7 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
       },
     },
   ];
-  const config: OptionSelectModeConfig = { options, yOffset: 48 };
+  const config: OptionSelectModeConfig = { options, yOffset: 48, scale: COOP_MENU_SCALE };
   const { ui } = globalScene;
   if (ui.mode === UiMode.OPTION_SELECT) {
     // Back from a form opened from this menu (the name, the join code): reverting the form returned to this mode, but the

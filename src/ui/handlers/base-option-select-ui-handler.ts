@@ -113,7 +113,7 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
 
     globalScene.ui.bringToTop(this.optionSelectContainer);
 
-    this.optionSelectContainer.setVisible(true);
+    this.optionSelectContainer.setScale(config.scale ?? 1).setVisible(true);
     this.scrollCursor = 0;
     this.initCursor();
 

@@ -61,6 +61,8 @@ export interface OptionMenuSettings {
   readonly xOffset?: number | undefined;
   /** Vertical offset for the window compared to the default (bottom of screen) */
   readonly yOffset?: number;
+  /** Size of the window compared to the default (1), from its bottom right corner */
+  readonly scale?: number;
   /** Whether to prevent using the cancel button as a shorcut to selecting the last option in the menu. */
   readonly blockCancelButton?: boolean;
   /** Optional delay (in ms) before the player is allowed to make a selection. */
