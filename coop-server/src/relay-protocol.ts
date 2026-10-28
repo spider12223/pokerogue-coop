@@ -48,7 +48,42 @@ export type RelayControlMessage =
   | { t: "relay:peerGone" }
   /** The room is closed and the connection is about to be closed. */
   | { t: "relay:closed"; reason: RelayClosedReason }
-  | { t: "relay:error"; reason: RelayErrorReason };
+  | { t: "relay:error"; reason: RelayErrorReason }
+  | MatchControlMessage;
+
+/**
+ * Matchmaking (D37), on its own connection: `?match=<build>` waits in the queue of that build (players of another build could
+ * not pair, D1). Two players of a build are matched in the order they came: the first creates a room as usual and sends its
+ * code ({@linkcode MatchCodeMessage}), which goes to the second, who joins it; then both connections close. The game itself
+ * goes through a room, as for players who share a code.
+ */
+export type MatchControlMessage =
+  /** In the queue */
+  | { t: "relay:queued" }
+  /** A partner was found: create a room and send its code */
+  | { t: "relay:matchHost" }
+  /** A partner was found: their room's code follows */
+  | { t: "relay:matched" }
+  /** The partner's room: join it */
+  | { t: "relay:matchGuest"; code: string }
+  /** The partner left before their room was made: back in the queue */
+  | { t: "relay:matchLost" };
+
+/** What a matched host sends on its matchmaking connection: the code of the room it created */
+export interface MatchCodeMessage {
+  t: "match:code";
+  code: string;
+}
+
+/** A keepalive on the matchmaking connection, answered by the relay without anything else (a sleeping queue stays asleep) */
+export const MATCH_PING = '{"t":"match:ping"}';
+export const MATCH_PONG = '{"t":"relay:pong"}';
+
+/** A build as the queue takes it: a short hash of the game's build identity */
+export const MATCH_BUILD = /^[A-Za-z0-9._+-]{1,64}$/;
+
+/** How many players may wait in a queue at once (all builds together) */
+export const MATCH_QUEUE_MAX = 1000;
 
 /**
  * Connection request, carried in the WebSocket URL query:

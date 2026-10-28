@@ -21,4 +21,6 @@ export enum Button {
   COOP_PING,
   /** Co-op: open the emote wheel */
   COOP_EMOTE,
+  /** Co-op (D38): open the chat box */
+  COOP_CHAT,
 }

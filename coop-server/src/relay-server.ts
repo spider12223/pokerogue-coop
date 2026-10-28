@@ -12,6 +12,7 @@ import type { Duplex } from "node:stream";
 import { type RawData, type WebSocket, WebSocketServer } from "ws";
 import { type ClientLogOptions, createClientLogHandler } from "./client-logs.ts";
 import { clientIp, DEFAULT_LIMITS, IpLimiter, ipTag, originAllowed, type RelayLimits } from "./limits.ts";
+import { MatchQueue } from "./matchmaker.ts";
 import {
   CLOSE_CODE_LEAVE,
   CLOSE_CODE_POLICY,
@@ -20,6 +21,7 @@ import {
   CLOSE_CODE_ROOM_CLOSED,
   CODE_ALPHABET,
   CODE_LENGTH,
+  MATCH_BUILD,
   RELAY_PATH,
   RELAY_PREFIX,
   type RelayControlMessage,
@@ -89,6 +91,8 @@ export interface RelayStats {
   trackedIps: number;
   /** Files being sent right now (each holds an open file) */
   downloads: number;
+  /** Players in the matchmaking queue (D37) */
+  matching: number;
 }
 
 export interface RelayServer {
@@ -157,6 +161,8 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
   const clientLog = createClientLogHandler({ ...options.clientLogs, allowedOrigins, now, log });
 
   const sockets = new Map<string, RoomSockets>();
+  /** The matchmaking queue (D37): its players have their own connections, outside the rooms */
+  const matches = new MatchQueue();
   /** Sockets that answered the last heartbeat ping. */
   const alive = new WeakSet<WebSocket>();
   /** Frames dropped in a row for a socket that does not read what it is sent. */
@@ -168,6 +174,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     sockets: wss.clients.size,
     trackedIps: limiter.trackedIps,
     downloads: files?.downloads ?? 0,
+    matching: matches.size,
   });
 
   // #region Refusals in the log
@@ -355,6 +362,26 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     const code = params.get("code");
     const seatParam = params.get("seat");
     const token = params.get("token");
+
+    // Wait in the matchmaking queue (D37)
+    const build = params.get("match");
+    if (build !== null) {
+      if (!MATCH_BUILD.test(build)) {
+        reject(socket, "badRequest", null, ip);
+        return;
+      }
+      if (!matches.join(socket, build)) {
+        reject(socket, "busy", null, ip);
+        return;
+      }
+      socket.on("message", (data: RawData, isBinary: boolean) => {
+        if (!isBinary) {
+          matches.message(socket, String(data));
+        }
+      });
+      socket.on("close", () => matches.left(socket));
+      return;
+    }
 
     // Create a room.
     if (role === "host" && code === null) {

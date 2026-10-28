@@ -11,10 +11,19 @@ compatibility_date = "2026-10-01"
 name = "ROOM"
 class_name = "Room"
 
+# The matchmaking queue (D37)
+[[durable_objects.bindings]]
+name = "MATCH"
+class_name = "Matchmaker"
+
 # The free plan has Durable Objects with SQLite storage only
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Matchmaker"]
 
 [vars]
 # The address of the game's pages, as the browser sends it in `Origin` (no path, no trailing slash).

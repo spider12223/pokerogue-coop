@@ -17,6 +17,9 @@ the background runs slowly.
 2. **One of you hosts:** **Host a game**. A six-character code appears; **Copy code** puts it in the clipboard. Send it to
    your friend.
 3. **The other joins:** **Join a game** and paste the code.
+
+   **No friend to play with?** Both choose **Find a partner** instead: the game pairs you with another player who is
+   looking, and you land on the starter select together. It may take a moment when few people are looking.
 4. The starter select opens for both, with **the Pokémon of both of you**: you can pick anything your friend has caught,
    with their shinies, forms, IVs and unlocks. Pick up to three starters each; you share **15 points**, and you see your
    friend's picks as they make them. When both press ready, the run starts. Leaving the starter select (Cancel with no
@@ -111,8 +114,13 @@ server collects logs. It contains your display names and what you chose in the r
 |---|---|---|---|
 | Ping what your cursor is on (your friend sees it) | **P** | the button of "Cycle Gender" (left trigger) | **!** button |
 | Emote wheel | **Q** | the button of "Cycle Ability" (right trigger) | emote button |
+| Chat with your partner | **H** (Enter sends, Esc closes) | | **Chat** button, top right |
 
-Both keys can be changed in **Menu > Settings > Keyboard**.
+The keys can be changed in **Menu > Settings > Keyboard**.
+
+**The chat** is there in every co-op game. Swear words and links are hidden, for both of you, and **Mute** in the chat
+hides your partner's messages. A message that arrives while the chat is closed shows under the Chat button for a few
+seconds.
 
 ## Limits
 

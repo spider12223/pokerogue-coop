@@ -167,6 +167,34 @@ const gone = await after.next(is("relay:error"), "relay:error after the room clo
 check(gone["reason"] === "notFound", `after End session: ${JSON.stringify(gone)}`);
 ok("the room's tokens stop working");
 
+// Matchmaking (D37): a build of its own, so a live queue's players are never matched with these
+const build = `smoke-${Math.random().toString(36).slice(2, 10)}`;
+const first = await connect(`match=${build}`);
+await first.next(is("relay:queued"), "relay:queued (first)");
+first.socket.send('{"t":"match:ping"}');
+await first.next(is("relay:pong"), "relay:pong");
+const second = await connect(`match=${build}`);
+await first.next(is("relay:matchHost"), "relay:matchHost");
+await second.next(is("relay:matched"), "relay:matched");
+ok("two players of a build are matched; the first hosts");
+first.socket.send(JSON.stringify({ t: "match:code", code: "ABC234" }));
+const matchGuest = await second.next(is("relay:matchGuest"), "relay:matchGuest");
+check(matchGuest["code"] === "ABC234", `matchGuest: ${JSON.stringify(matchGuest)}`);
+check((await first.closed) === 1000 && (await second.closed) === 1000, "the queue did not close both after the code");
+ok("the host's room code reaches the guest, then both leave the queue");
+
+const lonely = await connect(`match=${build}`);
+await lonely.next(is("relay:queued"), "relay:queued (lonely)");
+const leaving = await connect(`match=${build}`);
+await lonely.next(is("relay:matchHost"), "relay:matchHost (lonely)");
+leaving.socket.close(1000);
+await lonely.next(is("relay:matchLost"), "relay:matchLost");
+ok("a partner who leaves before the room puts the other back in the queue");
+const unreadable = await connect("match=not%20a%20build");
+const bad = await unreadable.next(is("relay:error"), "relay:error badRequest");
+check(bad["reason"] === "badRequest", `bad build: ${JSON.stringify(bad)}`);
+ok("a build it cannot read is refused");
+
 console.log(`all ${step} checks passed`);
 for (const socket of sockets) {
   socket.close();

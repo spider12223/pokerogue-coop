@@ -445,6 +445,9 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `coop-log.ts` | The co-op log: entries, memory and `localStorage`, batched upload | D26 | yes |
 | `coop-diagnostics.ts` | What the log records of a session, the game snapshot of a report, the stall note | D26 | no |
 | `report-button.ts` | "Report a problem" (`#coopReport` in `index.html`) and the downloadable log | D26 | no |
+| `chat.ts` | The chat box (`#coopChat`, built by the page): lines on the link, mute, limits, the chat key | D38 | no |
+| `chat-text.ts` | What a chat line may hold, and the filter every line is shown through | D38 | yes |
+| `transport/match-ws.ts` | Find a partner: the queue's connection to the relay, its keepalive and its outcome | D37 | yes |
 | `debug-api.ts` | `window.__coop`, in dev, test and `COOP_E2E` builds only | D17, D22 | no |
 | `stall-detector.ts` | Dev only: a dump of both clients after 20 s without progress | | no |
 | `source-link.ts` | `sourceUrlOf`: the title screen's Source link (the build insists on one: `plugins/vite/require-source-url.ts`) | D25 | yes |

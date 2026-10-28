@@ -74,6 +74,11 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "ui",
     note: "dev builds only: how long the phase trace has not moved; it only reads the game",
   },
+  "src/coop/chat.ts": {
+    counts: { "Date.now": 1 },
+    why: "ui",
+    note: "the chat box's sending and receiving limits (D38); the chat is not part of a run",
+  },
   "src/coop/save-backup-offer.ts": {
     counts: { "Date.now": 1 },
     why: "account",

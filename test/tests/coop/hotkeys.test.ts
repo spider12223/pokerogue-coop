@@ -52,11 +52,19 @@ describe("Co-op: the ping and emote hotkeys are buttons that can be rebound (D16
       expect(CFG_KEYBOARD_QWERTY.default["KEY_P"]).toBe(SettingKeyboard.BUTTON_COOP_PING);
       // (a development build keeps Q for its own button)
       expect(CFG_KEYBOARD_QWERTY.default["KEY_Q"]).toBe(SettingKeyboard.BUTTON_COOP_EMOTE);
+      // the chat box (D38): H
+      expect(Object.keys(settingKeyboardOptions)).toContain(SettingKeyboard.BUTTON_COOP_CHAT);
+      expect(Object.keys(settingKeyboardDefaults)).toContain(SettingKeyboard.BUTTON_COOP_CHAT);
+      expect(CFG_KEYBOARD_QWERTY.settings[SettingKeyboard.BUTTON_COOP_CHAT]).toBe(Button.COOP_CHAT);
+      expect(CFG_KEYBOARD_QWERTY.default["KEY_H"]).toBe(SettingKeyboard.BUTTON_COOP_CHAT);
+      // (upstream's tests take B for a key that is not bound)
+      expect(CFG_KEYBOARD_QWERTY.default["KEY_B"]).toBe(-1);
     });
 
     it("are named for the player, in English where the game has no translation", () => {
       expect(coopSettingLabel("buttonCoopPing")).toEqual({ defaultValue: "Co-op: ping" });
       expect(coopSettingLabel("buttonCoopEmote")).toEqual({ defaultValue: "Co-op: emote" });
+      expect(coopSettingLabel("buttonCoopChat")).toEqual({ defaultValue: "Co-op: chat" });
       expect(coopSettingLabel("buttonCycleTera")).toEqual({});
     });
 
@@ -240,6 +248,20 @@ describe("Co-op: a keyboard mapping saved before the co-op keys existed", () => 
     expect(custom["KEY_P"]).toBe(SettingKeyboard.BUTTON_COOP_PING);
     expect(custom["KEY_Q"]).toBe(SettingKeyboard.BUTTON_COOP_EMOTE);
     expect(custom["KEY_C"]).toBe("BUTTON_STATS");
+  });
+
+  it("gets H for the chat box (D38), which came later, if H is free", () => {
+    const custom = {
+      ...saved(),
+      KEY_P: SettingKeyboard.BUTTON_COOP_PING,
+      KEY_Q: SettingKeyboard.BUTTON_COOP_EMOTE,
+      KEY_H: -1,
+    };
+    expect(bindCoopHotkeys(custom, false)).toBe(true);
+    expect(custom["KEY_H"]).toBe(SettingKeyboard.BUTTON_COOP_CHAT);
+    const taken = { ...saved(), KEY_H: "BUTTON_CYCLE_SHINY" };
+    bindCoopHotkeys(taken, false);
+    expect(taken["KEY_H"]).toBe("BUTTON_CYCLE_SHINY");
   });
 
   it("leaves Q to a development build's own button", () => {

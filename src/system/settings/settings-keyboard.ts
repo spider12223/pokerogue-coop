@@ -45,6 +45,8 @@ export enum SettingKeyboard {
   /** Co-op: the ping and the emote wheel (DECISIONS D16) */
   BUTTON_COOP_PING = "BUTTON_COOP_PING",
   BUTTON_COOP_EMOTE = "BUTTON_COOP_EMOTE",
+  /** Co-op: the chat box (DECISIONS D38) */
+  BUTTON_COOP_CHAT = "BUTTON_COOP_CHAT",
 }
 
 const pressAction = i18next.t("settings:pressToBind");
@@ -88,6 +90,7 @@ export const settingKeyboardOptions = {
   ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: [`KEY ${Button.DEV_CUSTOM.toString()}`, pressAction] } : {}),
   [SettingKeyboard.BUTTON_COOP_PING]: [`KEY ${Button.COOP_PING.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_COOP_EMOTE]: [`KEY ${Button.COOP_EMOTE.toString()}`, pressAction],
+  [SettingKeyboard.BUTTON_COOP_CHAT]: [`KEY ${Button.COOP_CHAT.toString()}`, pressAction],
 };
 
 export const settingKeyboardDefaults = {
@@ -130,6 +133,7 @@ export const settingKeyboardDefaults = {
   ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: 0 } : {}),
   [SettingKeyboard.BUTTON_COOP_PING]: 0,
   [SettingKeyboard.BUTTON_COOP_EMOTE]: 0,
+  [SettingKeyboard.BUTTON_COOP_CHAT]: 0,
 };
 
 export const settingKeyboardBlackList = [
@@ -181,6 +185,7 @@ export function setSettingKeyboard(setting: SettingKeyboard, value: number): boo
     case SettingKeyboard.BUTTON_DEV_CUSTOM:
     case SettingKeyboard.BUTTON_COOP_PING:
     case SettingKeyboard.BUTTON_COOP_EMOTE:
+    case SettingKeyboard.BUTTON_COOP_CHAT:
       if (value && globalScene.ui) {
         const cancelHandler = (success = false): boolean => {
           globalScene.ui.revertMode();

@@ -19,10 +19,12 @@ import {
 } from "#coop/handshake";
 import {
   type BuildIdentity,
+  type ChatPayload,
   type CheckpointMessage,
   cleanName,
   DEFAULT_NAME,
   type Envelope,
+  isChatPayload,
   isCheckpointMessage,
   isLobbyMessage,
   isStartPayload,
@@ -121,6 +123,7 @@ export class CoopLink {
   private readonly resyncListeners = new Set<(message: ResyncMessage) => void>();
   private readonly resyncRequestListeners = new Set<(request: ResyncRequestPayload) => void>();
   private readonly reportListeners = new Set<(report: ReportPayload) => void>();
+  private readonly chatListeners = new Set<(chat: ChatPayload) => void>();
   /** A `RESYNC` that arrived while nobody listened for it: the host sends it right behind its `HELLO_OK` (D20) */
   private earlyResync: ResyncMessage | null = null;
   private readonly endListeners = new Set<(end: LinkEnd) => void>();
@@ -341,6 +344,18 @@ export class CoopLink {
     };
   }
 
+  /** A line of the chat box (D38): reliable, outside the simulation and its epochs */
+  sendChat(text: string): void {
+    this.send({ key: null, author: this.seat, kind: "CHAT", payload: { text } satisfies ChatPayload });
+  }
+
+  onChat(listener: (chat: ChatPayload) => void): Unsubscribe {
+    this.chatListeners.add(listener);
+    return () => {
+      this.chatListeners.delete(listener);
+    };
+  }
+
   /**
    * The run was reloaded under a new epoch (D18): from now on this link sends and accepts that epoch only, the sequencer
    * has a clean world and carries on from `nextSeq` (the `seq` after the `RESYNC`).
@@ -495,6 +510,13 @@ export class CoopLink {
         }
         break;
       }
+      case "CHAT":
+        if (isChatPayload(message.payload) && message.author !== this.seat) {
+          for (const listener of [...this.chatListeners]) {
+            listener(message.payload);
+          }
+        }
+        break;
       case "BYE":
         this.emitEnd("peerGone");
         break;

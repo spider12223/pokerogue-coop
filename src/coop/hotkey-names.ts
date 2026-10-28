@@ -8,7 +8,7 @@ import { globalScene } from "#app/global-scene";
 import { SettingKeyboard } from "#system/settings-keyboard";
 
 /**
- * What the two co-op hotkeys are called, for the keyboard settings and for the hint of a waiting player (a leaf: `afk.ts` and the
+ * What the co-op hotkeys are called, for the keyboard settings and for the hint of a waiting player (a leaf: `afk.ts` and the
  * settings screen read it, and neither may import `hotkeys.ts`, which reads them).
  *
  * @module
@@ -25,6 +25,8 @@ export function coopSettingLabel(i18nKey: string): { defaultValue: string } | Re
       return { defaultValue: "Co-op: ping" };
     case "buttonCoopEmote":
       return { defaultValue: "Co-op: emote" };
+    case "buttonCoopChat":
+      return { defaultValue: "Co-op: chat" };
     default:
       return {};
   }
@@ -52,7 +54,22 @@ export function bindCoopHotkeys(custom: Record<string, unknown>, isDev: boolean)
     custom["KEY_Q"] = SettingKeyboard.BUTTON_COOP_EMOTE;
     changed = true;
   }
+  // The chat box (D38) came later: H, if it is free
+  if (!values.includes(SettingKeyboard.BUTTON_COOP_CHAT) && custom["KEY_H"] === -1) {
+    custom["KEY_H"] = SettingKeyboard.BUTTON_COOP_CHAT;
+    changed = true;
+  }
   return changed;
+}
+
+/** @returns The name of the key that opens the chat box (D38), as the player set it, or `null` if it is bound to none */
+export function chatKeyName(): string | null {
+  try {
+    const key = globalScene.inputController?.getKeyboardKeyOf(SettingKeyboard.BUTTON_COOP_CHAT);
+    return key === undefined ? null : key.replace(/^KEY_/, "").replaceAll("_", " ");
+  } catch {
+    return "H";
+  }
 }
 
 /**

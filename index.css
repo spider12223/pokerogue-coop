@@ -599,3 +599,198 @@ a {
   top: auto;
   bottom: 6px;
 }
+
+/*
+  co-op: the chat box (src/coop/chat.ts, DECISIONS D38), in the game's font and window colors. It is placed on the game's
+  picture (16:9, fitted into the page and centered: Scale.FIT in src/main.ts): at its right edge, below the biome name and
+  the money of a battle.
+*/
+#coopChat {
+  --chat-window: rgba(58, 48, 72, 0.94);
+  --chat-edge: var(--color-light, #dd5748);
+  --chat-text: #f8f8f8;
+  --chat-shadow: #6b6b7b;
+  --game-w: min(100vw, 100vh * 16 / 9);
+  --game-h: calc(var(--game-w) * 9 / 16);
+  --game-top: calc((100vh - var(--game-h)) / 2);
+  --game-side: calc((100vw - var(--game-w)) / 2);
+  position: fixed;
+  top: calc(var(--game-top) + var(--game-h) * 0.125);
+  right: calc(var(--game-side) + 6px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  max-width: calc(100vw - 12px);
+  font: 18px/1.25 "emerald", sans-serif;
+  color: var(--chat-text);
+  text-shadow: 1px 1px 0 var(--chat-shadow);
+  pointer-events: none;
+}
+
+#coopChat[hidden],
+#coopChat [hidden] {
+  display: none;
+}
+
+/* a touch screen that shows its controls puts the game's picture at the top */
+@media (pointer: coarse) {
+  body:has(> #touchControls.visible) #coopChat {
+    --game-top: 0px;
+  }
+}
+
+/* the starter select has only its filter bar in that corner, and its party column below it */
+#touchControls[data-ui-mode="STARTER_SELECT"] ~ #coopChat {
+  top: calc(var(--game-top) + 6px);
+}
+
+#coopChat > * {
+  pointer-events: auto;
+}
+
+#coopChat button {
+  font: inherit;
+  color: inherit;
+  text-shadow: inherit;
+  cursor: pointer;
+}
+
+.coop-chat-toggle {
+  padding: 3px 10px 1px;
+  background: var(--chat-window);
+  border: 2px solid var(--chat-edge);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  opacity: 0.8;
+}
+
+.coop-chat-toggle:hover,
+.coop-chat-toggle:focus-visible,
+.coop-chat-toggle.coop-chat-unread {
+  opacity: 1;
+}
+
+.coop-chat-toggle.coop-chat-unread {
+  color: #f8d030;
+}
+
+.coop-chat-toasts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.coop-chat-toast {
+  max-width: min(360px, calc(100vw - 12px));
+  padding: 3px 8px 1px;
+  background: rgba(40, 32, 52, 0.85);
+  border: 1px solid var(--chat-edge);
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+  transition: opacity 0.5s;
+}
+
+.coop-chat-toast.coop-chat-gone {
+  opacity: 0;
+}
+
+.coop-chat-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 12px));
+  background: var(--chat-window);
+  border: 2px solid var(--chat-edge);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+.coop-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 2px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.coop-chat-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.coop-chat-mute,
+.coop-chat-close,
+.coop-chat-send {
+  padding: 2px 8px 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.coop-chat-mute:hover,
+.coop-chat-close:hover,
+.coop-chat-send:hover {
+  border-color: var(--chat-edge);
+}
+
+.coop-chat-log {
+  margin: 0;
+  padding: 6px 10px;
+  max-height: min(190px, 34vh);
+  min-height: 60px;
+  overflow-y: auto;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+
+.coop-chat-line + .coop-chat-line {
+  margin-top: 3px;
+}
+
+.coop-chat-me .coop-chat-name {
+  color: #f8d030;
+}
+
+.coop-chat-partner .coop-chat-name,
+.coop-chat-toast .coop-chat-name {
+  color: #78c8f8;
+}
+
+.coop-chat-note {
+  color: #c8c0d0;
+  font-size: 15px;
+}
+
+.coop-chat-form {
+  display: flex;
+  gap: 6px;
+  padding: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.coop-chat-input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px 2px;
+  font: inherit;
+  color: var(--chat-text);
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  outline: none;
+}
+
+.coop-chat-input:focus {
+  border-color: var(--chat-edge);
+}
+
+.coop-chat-input::placeholder {
+  color: #a098a8;
+}

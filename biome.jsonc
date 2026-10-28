@@ -414,7 +414,7 @@
     {
       "includes": ["coop-worker/**/*.ts"],
       "javascript": {
-        "globals": ["WebSocketPair"]
+        "globals": ["WebSocketPair", "WebSocketRequestResponsePair"]
       }
     }
   ]

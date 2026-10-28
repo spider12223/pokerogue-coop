@@ -222,6 +222,7 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     ...(isDev ? { [SettingKeyboard.BUTTON_DEV_CUSTOM]: Button.DEV_CUSTOM } : {}),
     [SettingKeyboard.BUTTON_COOP_PING]: Button.COOP_PING,
     [SettingKeyboard.BUTTON_COOP_EMOTE]: Button.COOP_EMOTE,
+    [SettingKeyboard.BUTTON_COOP_CHAT]: Button.COOP_CHAT,
   },
   default: {
     KEY_ARROW_UP: SettingKeyboard.BUTTON_UP,
@@ -244,7 +245,7 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     KEY_A: SettingKeyboard.ALT_BUTTON_LEFT,
     KEY_B: -1,
     KEY_D: SettingKeyboard.ALT_BUTTON_RIGHT,
-    KEY_H: -1,
+    KEY_H: SettingKeyboard.BUTTON_COOP_CHAT,
     KEY_I: -1,
     KEY_J: -1,
     KEY_K: -1,

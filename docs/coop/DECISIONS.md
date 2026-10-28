@@ -40,7 +40,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | Topic | Sections |
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
-| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are |
+| Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are, D37 find a partner, D38 the chat box |
 | Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
@@ -558,7 +558,7 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 - After the handshake the host sequences a `RESYNC` at once: both load the wave-start save and continue, with the epoch
   after the slot's.
 - **Continue** first checks that this build can load the slot; if it cannot, the host is told why and may delete it.
-- `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (8) is bumped by any incompatible change to a message shape. Two
+- `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (9) is bumped by any incompatible change to a message shape. Two
   builds pair only when they are the same commit anyway (D1).
 
 ## D22. Deploy shape
@@ -937,6 +937,48 @@ Settled by the owner on 2026-10-28, so they are not proposed again:
 - **Achievements** a run earns unlock on both accounts, whichever player's Pokémon earned them: the run is shared.
 - **Gifts** stay free whatever the counts (D11): a 5-and-1 split is the players' choice.
 - **Retries** after a wipe are not limited (D4a): the host chooses each time.
+
+## D37. Find a partner
+
+**Find a partner** (the co-op menu, after Join a game) pairs two players who share nothing, through the relay.
+
+- **The queue** is a connection of its own to the relay, `?match=<build>` (the protocol's `MatchControlMessage`). The build
+  is `hashCanonical` of the build identity, so only clients that can pair (D1) meet. Players of a build are matched in the
+  order they came: the one who waited longer hosts.
+- **Once matched** the host creates a room as usual and sends its code on the queue's connection (`match:code`); the relay
+  gives it to the other player (`relay:matchGuest`), who joins it, and closes both queue connections. From there it is a
+  new game with a code: the handshake (D1), a session, the starter select (D32). A host who leaves before its room exists
+  puts the other back in the queue, in their old place (`relay:matchLost`); a guest whose host never sends a code goes
+  back after 20 s.
+- **On the Worker** the queue is one Durable Object (`Matchmaker`, `idFromName("queue")`) whose sockets hibernate: what
+  each player is (their build, place, partner) lives in the socket's attachment, and the keepalive (`match:ping` every
+  30 s) is answered without waking it (`setWebSocketAutoResponse`), so a queue where people only wait costs nothing. The
+  Node relay (`coop-server/src/matchmaker.ts`) keeps the same rules in memory. Each caps the queue at 1000 players and cuts
+  off a player who sends more than five frames.
+- **Where it is offered:** with the public relay of the website (a build with `VITE_COOP_RELAY_URL`) and in development. A
+  self-hosted relay (the Windows pack, Docker) has only the players who were given its address, so the entry is not there.
+- A player with a saved co-op run is asked first, as for hosting (D19): they may end up hosting.
+- The screen counts the time waited and offers Cancel; "Found a partner!" once matched.
+
+## D38. The chat box
+
+A small chat in every linked session (the lobby, the starter select, the run and the end screen), between the two players.
+
+- **On the wire:** `CHAT {text}`, reliable and unsequenced, outside the simulation and its epochs (a line sent just before
+  a reload still arrives). A line is at most 500 characters on the wire; `COOP_PROTOCOL_VERSION` is 9 since it.
+- **The text** (`src/coop/chat-text.ts`): a line loses control and invisible characters (bidi overrides, zero-width
+  ones), its white space is collapsed and it is cut at 120 characters. **Every line is filtered where it is shown**, the
+  partner's and this player's own, so both screens show the same: common swear words and slurs become stars (their
+  endings and look-alikes too, "sh1t", "fuuuck"; whole words only, so "class" and "Cofagrigus" stay), "kill yourself"
+  too, and links become "[link]". The filter is on in every game (settled by the owner): a partner found by Find a
+  partner is a stranger, maybe a child.
+- **Mute** hides the partner's lines from then on. A player sends at most three lines at once, then one every 1.5 s
+  ("Slow down a little."); the receiver drops what floods past five at once and one a second.
+- **The box** (`src/coop/chat.ts`) is the page's, not the canvas's: a **Chat** button at the top right, with the count of
+  lines that came while it was closed; those lines also show under it for 6 s. The **Co-op: chat** key (H, remappable;
+  a saved keyboard mapping gets H if it is free) opens it with the cursor in the line; Enter sends, an empty Enter or Esc
+  closes. While the line has the keyboard the game gets no key (the box stops each key event before the game's listener
+  on the window). Text is written with `textContent` only. The box and what was said go with the session.
 
 ## See also
 

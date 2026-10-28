@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { RELAY_PATH } from "../../coop-server/src/relay-protocol.ts";
+import { MATCH_BUILD, RELAY_PATH } from "../../coop-server/src/relay-protocol.ts";
 import { normalizeIp } from "../../coop-server/src/untrusted.ts";
 import {
   ACTION_HEADER,
@@ -19,6 +19,7 @@ import {
 } from "./shared.ts";
 
 // biome-ignore lint/performance/noBarrelFile: Wrangler finds a Durable Object class among the main module's exports
+export { Matchmaker } from "./matchmaker.ts";
 export { Room } from "./room.ts";
 
 /**
@@ -122,6 +123,15 @@ export default {
     const ip = normalizeIp(request.headers.get("cf-connecting-ip") ?? "unknown");
     if (!limiter.admit(env, ip, create)) {
       return create ? rejectSocket("rateLimited") : new Response(null, { status: 429 });
+    }
+
+    // The matchmaking queue (D37): one object for everyone, whose sockets sleep while they wait
+    const build = params.get("match");
+    if (build !== null) {
+      if (!MATCH_BUILD.test(build)) {
+        return rejectSocket("badRequest");
+      }
+      return env.MATCH.get(env.MATCH.idFromName("queue")).fetch(request);
     }
 
     if (create) {

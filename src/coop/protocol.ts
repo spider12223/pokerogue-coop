@@ -22,7 +22,7 @@ import {
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 8;
+export const COOP_PROTOCOL_VERSION = 9;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -143,6 +143,7 @@ export function isDecisionKey(value: unknown): value is DecisionKey {
  *   under its epoch (D13, D18), or stop (the third desync of a wave)
  * - `REPORT`: either way, after a stop: this client's phase trace and checkpoints for the report (D13)
  * - `BYE`: orderly leave
+ * - `CHAT`: either way, a line of the chat box (D38), see {@linkcode ChatPayload}; outside the simulation and its epochs
  */
 export const MESSAGE_KINDS = [
   "HELLO",
@@ -160,6 +161,7 @@ export const MESSAGE_KINDS = [
   "RESYNC",
   "REPORT",
   "BYE",
+  "CHAT",
 ] as const;
 
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -516,6 +518,26 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
     default:
       return false;
   }
+}
+
+/**
+ * `CHAT` payload (D38): a line of the chat box as the partner typed it. The receiver cleans and filters it before it shows it
+ * (`chat-text.ts`): this is only the bound on what crosses the wire.
+ */
+export interface ChatPayload {
+  text: string;
+}
+
+/** The longest line the wire carries (the chat box itself keeps lines shorter) */
+export const CHAT_WIRE_MAX = 500;
+
+export function isChatPayload(value: unknown): value is ChatPayload {
+  return (
+    typeof value === "object"
+    && value !== null
+    && typeof (value as { text?: unknown }).text === "string"
+    && (value as { text: string }).text.length <= CHAT_WIRE_MAX
+  );
 }
 
 /** `CHECKPOINT` payload: a state-hash checkpoint the sender passed (D13). Compared with the receiver's own. */

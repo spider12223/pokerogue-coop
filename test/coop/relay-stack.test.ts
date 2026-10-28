@@ -7,6 +7,7 @@
 import { guestHandshake, hostHandshake, type SettingsOverlayPort } from "#coop/handshake";
 import { type BuildIdentity, DECISION_KINDS, type DecisionKey, hashCanonical, type Seat } from "#coop/protocol";
 import { type Decision, Sequencer } from "#coop/sequencer";
+import { findMatch, type MatchSearch } from "#coop/transport/match-ws";
 import { RelayError, type RelayEvent, RelayWsTransport } from "#coop/transport/relay-ws";
 import { ReliableTransport } from "#coop/transport/reliable";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -183,6 +184,85 @@ describe("co-op stack over the relay", () => {
     expect(guest.sequencer.desync).toBeNull();
     expect(guest.reliable.stats.duplicatesDropped + host.reliable.stats.duplicatesDropped).toBeGreaterThanOrEqual(0);
   }, 20_000);
+
+  describe("matchmaking (D37)", () => {
+    const searches: MatchSearch[] = [];
+    const search = (build: string): MatchSearch => {
+      const found = findMatch(url, build, { guestWaitMs: 2000 });
+      searches.push(found);
+      return found;
+    };
+    afterEach(() => {
+      for (const found of searches.splice(0)) {
+        found.cancel();
+      }
+    });
+    const until = async (check: () => boolean): Promise<void> => {
+      for (let i = 0; i < 200 && !check(); i++) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(check()).toBe(true);
+    };
+
+    it("matches two players of a build: the first hosts a room, the second gets its code and joins it", async () => {
+      const first = search("buildA");
+      await until(() => server.stats().matching === 1);
+      const second = search("buildA");
+      const host = await first.found;
+      expect(host.role).toBe("host");
+      // the host makes its room as usual and sends the code
+      const hostRelay = RelayWsTransport.connect(url, { mode: "create" });
+      extraTransports.push(hostRelay);
+      const { code } = await hostRelay.ready;
+      if (host.role === "host") {
+        host.sendCode(code);
+      }
+      const guest = await second.found;
+      expect(guest).toEqual({ role: "guest", code });
+      const guestRelay = RelayWsTransport.connect(url, { mode: "join", code });
+      extraTransports.push(guestRelay);
+      expect(await guestRelay.ready).toMatchObject({ code, seat: "guest" });
+      // both left the queue
+      await until(() => server.stats().matching === 0);
+    });
+
+    it("never matches players of different builds", async () => {
+      const a = search("buildA");
+      const b = search("buildB");
+      await until(() => server.stats().matching === 2);
+      const statuses: string[] = [];
+      a.onStatus(status => statuses.push(`a:${status}`));
+      b.onStatus(status => statuses.push(`b:${status}`));
+      await new Promise(resolve => setTimeout(resolve, 200));
+      expect(statuses).toEqual([]);
+      // a third player of the first build is matched with the first, who waited longer and hosts
+      const c = search("buildA");
+      expect((await a.found).role).toBe("host");
+      expect(statuses).toContain("a:matched");
+      c.cancel();
+    });
+
+    it("a host who leaves before its room is made puts the other back in the queue, in their place", async () => {
+      const first = search("buildA");
+      await until(() => server.stats().matching === 1);
+      const second = search("buildA");
+      const statuses: string[] = [];
+      second.onStatus(status => statuses.push(status));
+      await first.found;
+      await until(() => statuses.includes("matched"));
+      first.cancel();
+      await until(() => statuses.at(-1) === "waiting");
+      // the next player is matched with the one who was left: it waited longer, so it hosts now
+      const third = search("buildA");
+      expect((await second.found).role).toBe("host");
+      third.cancel();
+    });
+
+    it("refuses a build it cannot read", async () => {
+      const bad = search("not a build!");
+      await expect(bad.found).rejects.toMatchObject({ name: "RelayError", reason: "badRequest" });
+    });
+  });
 
   it("reports why the relay refused", async () => {
     const unknown = RelayWsTransport.connect(url, { mode: "join", code: "ZZZZZZ" });

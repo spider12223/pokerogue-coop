@@ -8,6 +8,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { retimeAfkWatchers } from "#coop/afk";
+import { chatInfo } from "#coop/chat";
 import type { Checkpoint } from "#coop/checkpoint-log";
 import { coopLog } from "#coop/coop-log";
 import type { CosmeticStats } from "#coop/cosmetic";
@@ -130,6 +131,8 @@ export interface CoopDebugApi {
   readonly epoch: number;
   /** Whether the partner is connected right now (D20) */
   readonly partnerPresent: boolean;
+  /** The chat box (D38): whether it is open, and its lines as shown; `null` without a session */
+  readonly chat: ReturnType<typeof chatInfo>;
   /** The partner came back and this client still has to reload (D20) */
   readonly needsResync: boolean;
   /** What the waiting screen says while the partner is away, or `null` (D20) */
@@ -335,6 +338,9 @@ function api(): CoopDebugApi {
     },
     get epoch() {
       return getCoopSession()?.link?.epoch ?? 0;
+    },
+    get chat() {
+      return chatInfo();
     },
     get partnerPresent() {
       return getCoopSession()?.link?.partnerPresent ?? false;
