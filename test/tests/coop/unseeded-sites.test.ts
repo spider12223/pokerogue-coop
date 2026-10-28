@@ -9,6 +9,7 @@ import { globalScene } from "#app/global-scene";
 import type { AccountSnapshot } from "#coop/account-snapshot";
 import { endCoopSession, startCoopSession } from "#coop/session";
 import { applyCoopRunSeed, simRandInt } from "#coop/sim-rng";
+import { modifierTypes } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { getRandomStatus, Status } from "#data/status-effect";
 import { EggSourceType } from "#enums/egg-source-types";
@@ -208,25 +209,34 @@ describe("Co-op: unseeded sites (DECISIONS D3)", () => {
       const { gameData } = game.scene;
       const brock = vouchers[TrainerType[TrainerType.BROCK]];
       game.scene.currentBattle.trainer = new Trainer(TrainerType.BROCK, TrainerVariant.DEFAULT);
-      const rewardsQueued = (): number => {
+      const rewardsQueued = (): unknown[] => {
         const unshift = vi.spyOn(game.scene.phaseManager, "unshiftNew").mockImplementation(() => undefined as never);
         const phase = new TrainerVictoryPhase();
         vi.spyOn(phase, "end").mockImplementation(() => undefined);
         phase.start();
-        const count = unshift.mock.calls.filter(([name]) => name === "ModifierRewardPhase").length;
+        const rewards = unshift.mock.calls
+          .filter(([name]) => name === "ModifierRewardPhase")
+          .map(([, reward]) => reward);
         unshift.mockRestore();
-        return count;
+        return rewards;
       };
       const counts = { ...gameData.voucherCounts };
+      const trainerRewards = game.scene.currentBattle.trainer.config.modifierRewardFuncs.length;
 
-      // the first win: unlocked now, and the voucher still comes through the phase (only once)
+      // the first win on this account: unlocked now, and the gym leader's own voucher (Plus) comes through the phase,
+      // as solo gives it with the unlock (only once)
       delete gameData.voucherUnlocks[brock.id];
       const first = rewardsQueued();
       expect(Object.hasOwn(gameData.voucherUnlocks, brock.id)).toBe(true);
       expect(gameData.voucherCounts).toEqual(counts);
-      // a later win: the same phases
-      expect(rewardsQueued()).toBe(first);
-      expect(first).toBe(game.scene.currentBattle.trainer.config.modifierRewardFuncs.length + 1);
+      expect(first).toHaveLength(trainerRewards + 1);
+      expect(first).toContain(modifierTypes.VOUCHER_PLUS);
+      expect(first).not.toContain(modifierTypes.VOUCHER);
+      // a later win: the same phases, with the lesser voucher, as in solo
+      const later = rewardsQueued();
+      expect(later).toHaveLength(first.length);
+      expect(later).toContain(modifierTypes.VOUCHER);
+      expect(later).not.toContain(modifierTypes.VOUCHER_PLUS);
     });
 
     it("EggLapsePhase ages eggs in solo play", async () => {

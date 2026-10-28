@@ -809,8 +809,9 @@ step; the screens would not.
 - **Vouchers:**
   - A voucher picked on a reward screen is applied by both clients, so both accounts get one.
   - A boss trainer's voucher (gym leaders, team bosses, Elite Four, Champion) runs the same phases on both clients,
-    whatever each account has unlocked already. Whether this account unlocks it or gets one more is decided inside the
-    phase, per client.
+    whatever each account has unlocked already: one reward phase, whose voucher is decided per client, as in solo. On
+    this account's first win it is the boss's own (Voucher Plus for a gym leader, Premium for the Elite Four and the
+    Champion) and the unlock is recorded; on a later win it is the lesser one.
   - The Winstrate Challenge's voucher goes to both accounts.
 - **The egg gacha:** open during a co-op run too, from the menu, as on the title screen. A pull takes this player's
   vouchers and adds the eggs to this account only. The eggs and their order are drawn outside the run's stream (the

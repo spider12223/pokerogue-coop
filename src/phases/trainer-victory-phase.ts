@@ -28,17 +28,22 @@ export class TrainerVictoryPhase extends BattlePhase {
     }
 
     const trainerType = globalScene.currentBattle.trainer?.config.trainerType!; // TODO: is this bang correct?
-    // Co-op (D30): both clients run the same phases whatever each account has unlocked already. The first win's unlock
-    // is recorded per account without a voucher, and the voucher of a boss always comes through the reward phase.
+    // Co-op (D30): both clients run the same phases whatever each account has unlocked already, so the voucher of a boss
+    // always comes through one reward phase. Which voucher is this account's, as in solo: the boss's own on this
+    // account's first win, the lesser one after.
     const coopBossVoucher =
       isCoop()
       && Object.hasOwn(vouchers, TrainerType[trainerType])
       && globalScene.currentBattle.trainer?.config.isBoss === true;
-    if (coopBossVoucher) {
-      globalScene.recordVoucherUnlock(vouchers[TrainerType[trainerType]]);
-    }
-    // Validate Voucher for boss trainers
-    if (
+    if (coopBossVoucher && globalScene.recordVoucherUnlock(vouchers[TrainerType[trainerType]])) {
+      globalScene.phaseManager.unshiftNew(
+        "ModifierRewardPhase",
+        [modifierTypes.VOUCHER, modifierTypes.VOUCHER_PLUS, modifierTypes.VOUCHER_PREMIUM][
+          vouchers[TrainerType[trainerType]].voucherType
+        ],
+      );
+    } else if (
+      // Validate Voucher for boss trainers
       coopBossVoucher
       || (Object.hasOwn(vouchers, TrainerType[trainerType])
         && !globalScene.validateVoucher(vouchers[TrainerType[trainerType]])
