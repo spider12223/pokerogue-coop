@@ -51,7 +51,7 @@ pnpm exec wrangler deploy
 
 It prints the Worker's address, `https://pokerogue-coop-relay.<your subdomain>.workers.dev`. Check it:
 `node scripts/smoke.ts wss://pokerogue-coop-relay.<your subdomain>.workers.dev/coop` (with
-`ORIGIN=https://<you>.github.io` in the environment) should end with "all 16 checks passed" (the last four are
+`ORIGIN=https://<you>.github.io` in the environment) should end with "all 18 checks passed" (the last six are
 **Find a partner**'s queue, a second Durable Object the Worker brings with it).
 
 **2. The website (once).** In the GitHub repository:

@@ -19,6 +19,7 @@ import {
   isAccountSnapshot,
   isCoopAccountSnapshot,
 } from "#coop/account-snapshot";
+import { filterChat } from "#coop/chat-text";
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
@@ -291,9 +292,13 @@ export function cleanName(value: unknown): string {
   return cleaned.slice(0, MAX_NAME_LENGTH).trim() || DEFAULT_NAME;
 }
 
-/** @returns How to call the partner: their name, or with " (2)" if both players chose the same one */
+/**
+ * @returns How to call the partner: their name, or with " (2)" if both players chose the same one. A partner found by
+ * matchmaking is a stranger: their name goes through the chat's filter (D38) wherever it is shown.
+ */
 export function partnerDisplayName(mine: string, theirs: string): string {
-  return theirs === mine ? `${theirs} (2)` : theirs;
+  const shown = filterChat(theirs);
+  return shown === mine ? `${shown} (2)` : shown;
 }
 
 export interface HelloMismatch {

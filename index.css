@@ -638,12 +638,15 @@ a {
 @media (pointer: coarse) {
   body:has(> #touchControls.visible) #coopChat {
     --game-top: 0px;
+    /* below the emote and ping buttons of the touch controls, which sit at the top */
+    --chat-least-top: 44px;
+    top: max(var(--chat-least-top), calc(var(--game-top) + var(--game-h) * 0.125));
   }
 }
 
 /* the starter select has only its filter bar in that corner, and its party column below it */
 #touchControls[data-ui-mode="STARTER_SELECT"] ~ #coopChat {
-  top: calc(var(--game-top) + 6px);
+  top: max(var(--chat-least-top, 0px), calc(var(--game-top) + 6px));
 }
 
 #coopChat > * {
@@ -676,11 +679,12 @@ a {
   color: #f8d030;
 }
 
-.coop-chat-toasts {
+#coopChat .coop-chat-toasts {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 3px;
+  /* a line in the corner never takes a click or a tap from the game under it */
   pointer-events: none;
 }
 

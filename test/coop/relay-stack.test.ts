@@ -214,10 +214,10 @@ describe("co-op stack over the relay", () => {
       const hostRelay = RelayWsTransport.connect(url, { mode: "create" });
       extraTransports.push(hostRelay);
       const { code } = await hostRelay.ready;
-      if (host.role === "host") {
-        host.sendCode(code);
-      }
+      // the relay says the code went: it closes the queue's connection ("matched")
+      const delivered = host.role === "host" ? host.sendCode(code) : Promise.resolve(false);
       const guest = await second.found;
+      expect(await delivered).toBe(true);
       expect(guest).toEqual({ role: "guest", code });
       const guestRelay = RelayWsTransport.connect(url, { mode: "join", code });
       extraTransports.push(guestRelay);
@@ -256,6 +256,29 @@ describe("co-op stack over the relay", () => {
       const third = search("buildA");
       expect((await second.found).role).toBe("host");
       third.cancel();
+    });
+
+    it("a host whose partner left before the code went is told: it searches again", async () => {
+      const first = search("buildA");
+      await until(() => server.stats().matching === 1);
+      const second = search("buildA");
+      const host = await first.found;
+      second.cancel();
+      // the relay closes the host's connection once it hears the partner left
+      await until(() => server.stats().matching === 0);
+      expect(host.role === "host" && (await host.sendCode("ABC234"))).toBe(false);
+    });
+
+    it("keeps a queued player through the relay's heartbeat", async () => {
+      await server.close();
+      server = await startRelayServer({ port: 0, host: "127.0.0.1", heartbeatIntervalMs: 100 });
+      url = `ws://127.0.0.1:${server.port}/coop`;
+      const waiting = search("buildA");
+      const statuses: string[] = [];
+      waiting.onStatus(status => statuses.push(status));
+      await new Promise(resolve => setTimeout(resolve, 600));
+      expect(server.stats().matching).toBe(1);
+      expect(statuses).toEqual([]);
     });
 
     it("refuses a build it cannot read", async () => {

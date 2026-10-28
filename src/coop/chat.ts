@@ -11,6 +11,7 @@ import type { CoopLink } from "#coop/link";
 import { coopText } from "#coop/text";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
+import { UiMode } from "#enums/ui-mode";
 import { getButtonWithKeycode } from "#inputs/config-handler";
 
 /**
@@ -60,9 +61,30 @@ class Bucket {
   }
 }
 
-/** The page's clock, for the chat's limits only (never read by a run) */
+/** The page's clock, for the chat's limits only (never read by a run; it does not jump with the computer's clock) */
 function clock(): number {
-  return Date.now();
+  return performance.now();
+}
+
+/** Who this tab muted (D38): a muted partner stays muted in a new game with them, and after a reload */
+const MUTED_KEY = "coopChatMuted";
+
+function mutedNames(): string[] {
+  try {
+    const names: unknown = JSON.parse(sessionStorage.getItem(MUTED_KEY) ?? "[]");
+    return Array.isArray(names) ? names.filter((name): name is string => typeof name === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberMuted(name: string, muted: boolean): void {
+  try {
+    const names = mutedNames().filter(other => other !== name);
+    sessionStorage.setItem(MUTED_KEY, JSON.stringify(muted ? [...names, name].slice(-20) : names));
+  } catch {
+    // Storage off: the mute lasts as long as the session
+  }
 }
 
 interface Parts {
@@ -107,20 +129,32 @@ function element<K extends keyof HTMLElementTagNameMap>(
 
 /** Keys pressed in the box: their release goes nowhere else either, even when the box has closed meanwhile (Esc, Enter) */
 const pressedInBox = new Set<string>();
+/** The chat key while it is held: its repeats and its release go nowhere (they would type into the line it opened) */
+let heldChatKey: string | null = null;
 
 /**
  * The game must not hear a key that goes into the box (its listener is on the window, after the box), nor the release of
  * one: the game takes a release it never saw pressed for another held key's
  */
-function keepKeysFromGame(node: HTMLElement): void {
+function keepKeysFromGame(panel: HTMLElement): void {
   for (const type of ["keydown", "keyup", "keypress"] as const) {
-    node.addEventListener(type, event => {
+    panel.addEventListener(type, event => {
       event.stopPropagation();
       if (event.type === "keydown") {
         pressedInBox.add((event as KeyboardEvent).code);
       }
     });
   }
+  window.addEventListener(
+    "keydown",
+    event => {
+      // Pressed outside the box, the key is the game's again, its release too
+      if (!(event.target instanceof Node && panel.contains(event.target))) {
+        pressedInBox.delete(event.code);
+      }
+    },
+    true,
+  );
   window.addEventListener(
     "keyup",
     event => {
@@ -130,9 +164,13 @@ function keepKeysFromGame(node: HTMLElement): void {
     },
     true,
   );
+  window.addEventListener("blur", () => {
+    pressedInBox.clear();
+    heldChatKey = null;
+  });
 }
 
-/** A button the player clicked must not keep the focus: the next Enter or Space is the game's */
+/** The toggle must not keep the focus: the next Enter or Space is the game's */
 function onClick(button: HTMLButtonElement, action: () => void): void {
   button.addEventListener("click", () => {
     button.blur();
@@ -164,16 +202,42 @@ function isChatKey(event: KeyboardEvent): boolean {
   }
 }
 
+/** The keyboard settings are waiting for a key to bind: the chat key is only a key there */
+function isBindingKeys(): boolean {
+  try {
+    return globalScene.ui?.mode === UiMode.KEYBOARD_BINDING;
+  } catch {
+    return false;
+  }
+}
+
 /** The chat key, on the page before the game: it opens or closes the box, and the game never sees it */
 function onChatKey(event: KeyboardEvent): void {
-  if (chat === null || isTyping(event.target) || !isChatKey(event)) {
+  if (heldChatKey !== null && event.code === heldChatKey && (event.type === "keyup" || event.repeat)) {
+    if (event.type === "keyup") {
+      heldChatKey = null;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  if (
+    chat === null
+    || event.type !== "keydown"
+    || event.repeat
+    || event.ctrlKey
+    || event.metaKey
+    || event.altKey
+    || isTyping(event.target)
+    || isBindingKeys()
+    || !isChatKey(event)
+  ) {
     return;
   }
   event.preventDefault();
   event.stopPropagation();
-  if (event.type === "keydown" && !event.repeat) {
-    setOpen(!chat.open);
-  }
+  heldChatKey = event.code;
+  setOpen(!chat.open);
 }
 
 function build(): Parts {
@@ -196,6 +260,8 @@ function build(): Parts {
   head.append(title, mute, close);
   const log = element("ol", "coop-chat-log");
   log.setAttribute("role", "log");
+  // A click in it (to select a line) keeps the focus in the box
+  log.tabIndex = -1;
   const form = element("form", "coop-chat-form");
   const input = element("input", "coop-chat-input");
   input.type = "text";
@@ -211,12 +277,29 @@ function build(): Parts {
   document.body.append(root);
 
   keepKeysFromGame(panel);
-  input.addEventListener("keydown", event => {
-    if (event.key === "Escape") {
+  panel.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !event.isComposing) {
       event.preventDefault();
       setOpen(false);
     }
   });
+  // A button or the panel itself does not take the focus from the line (the line keeps the keyboard)
+  panel.addEventListener("mousedown", event => {
+    if (event.target !== input && !(event.target instanceof Node && log.contains(event.target))) {
+      event.preventDefault();
+    }
+  });
+  // The keyboard left the box (a click on the game, a tab): the box closes, so it never shows "Enter sends" to keys that are
+  // the game's. A page that lost the focus altogether (another window) keeps it open.
+  panel.addEventListener("focusout", () => {
+    setTimeout(() => {
+      if (chat?.open && document.hasFocus() && !panel.contains(document.activeElement)) {
+        setOpen(false);
+      }
+    }, 0);
+  });
+  // A game key held when the line takes the keyboard would be held for good: its release goes into the box
+  input.addEventListener("focus", () => releaseGameKeys());
   form.addEventListener("submit", event => {
     event.preventDefault();
     const text = input.value;
@@ -232,8 +315,11 @@ function build(): Parts {
   window.addEventListener("keydown", onChatKey, true);
   window.addEventListener("keyup", onChatKey, true);
   onClick(toggle, () => setOpen(!(chat?.open ?? false)));
-  onClick(close, () => setOpen(false));
-  onClick(mute, () => setMuted(!(chat?.muted ?? false)));
+  close.addEventListener("click", () => setOpen(false));
+  mute.addEventListener("click", () => {
+    setMuted(!(chat?.muted ?? false));
+    input.focus();
+  });
   return { root, toggle, toasts, panel, title, mute, log, input };
 }
 
@@ -290,6 +376,15 @@ function toast(text: string): void {
   setTimeout(() => item.remove(), TOAST_MS);
 }
 
+/** Whatever the game thinks is held stays held otherwise: its release may go into the box, and the game repeats a held key */
+function releaseGameKeys(): void {
+  try {
+    globalScene.inputController?.loseFocus();
+  } catch {
+    // no game (a test page)
+  }
+}
+
 function setOpen(open: boolean): void {
   if (parts === null || chat === null) {
     return;
@@ -297,20 +392,16 @@ function setOpen(open: boolean): void {
   chat.open = open;
   parts.panel.hidden = !open;
   parts.toasts.hidden = open;
-  // Whatever the game thinks is held stays held otherwise: its release may go into the box, and the game repeats a held key
-  try {
-    globalScene.inputController?.loseFocus();
-  } catch {
-    // no game (a test page)
-  }
+  releaseGameKeys();
   if (open) {
     chat.unread = 0;
     parts.toasts.replaceChildren();
     parts.log.scrollTop = parts.log.scrollHeight;
-    // After the key that opened it is done with: it must not land in the box
-    setTimeout(() => parts?.input.focus(), 0);
-  } else {
-    parts.input.blur();
+    // At once, inside the tap or the key that opened it (a phone shows its keyboard only then); that key's press was
+    // cancelled, so it types nothing
+    parts.input.focus();
+  } else if (parts.panel.contains(document.activeElement)) {
+    (document.activeElement as HTMLElement).blur();
   }
   drawToggle();
 }
@@ -320,6 +411,7 @@ function setMuted(muted: boolean): void {
     return;
   }
   chat.muted = muted;
+  rememberMuted(chat.partner, muted);
   addLine(
     "note",
     muted
@@ -337,6 +429,14 @@ function sendLine(raw: string): boolean {
   const line = cleanChat(raw);
   if (line === null) {
     return true;
+  }
+  if (chat.link.isClosed || !chat.link.partnerPresent) {
+    // A line sent now would be lost (the partner's next connection starts afresh, D20): it stays in the box
+    addLine(
+      "note",
+      coopText("chatAway", "{{partner}} is not connected right now: they would not see it.", { partner: chat.partner }),
+    );
+    return false;
   }
   if (!chat.sending.take()) {
     addLine("note", coopText("chatSlowDown", "Slow down a little."));
@@ -381,7 +481,7 @@ export function startChat(link: CoopLink, mine: string): void {
     link,
     mine,
     partner: link.partnerName,
-    muted: false,
+    muted: mutedNames().includes(link.partnerName),
     unread: 0,
     open: false,
     sending: new Bucket(SEND_BURST, SEND_EVERY_MS),
@@ -394,6 +494,12 @@ export function startChat(link: CoopLink, mine: string): void {
       partner: chat.partner,
     }),
   );
+  if (chat.muted) {
+    addLine(
+      "note",
+      coopText("chatMuted", "You muted {{partner}}: their lines are not shown.", { partner: chat.partner }),
+    );
+  }
   drawHead();
   setOpen(false);
   parts.root.hidden = false;
@@ -403,6 +509,8 @@ export function startChat(link: CoopLink, mine: string): void {
 export function stopChat(): void {
   chat?.stop();
   chat = null;
+  pressedInBox.clear();
+  heldChatKey = null;
   if (parts !== null) {
     parts.input.blur();
     parts.root.hidden = true;

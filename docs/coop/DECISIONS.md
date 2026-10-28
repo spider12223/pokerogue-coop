@@ -946,19 +946,33 @@ Settled by the owner on 2026-10-28, so they are not proposed again:
   is `hashCanonical` of the build identity, so only clients that can pair (D1) meet. Players of a build are matched in the
   order they came: the one who waited longer hosts.
 - **Once matched** the host creates a room as usual and sends its code on the queue's connection (`match:code`); the relay
-  gives it to the other player (`relay:matchGuest`), who joins it, and closes both queue connections. From there it is a
-  new game with a code: the handshake (D1), a session, the starter select (D32). A host who leaves before its room exists
-  puts the other back in the queue, in their old place (`relay:matchLost`); a guest whose host never sends a code goes
-  back after 20 s.
+  gives it to the other player (`relay:matchGuest`), who joins it, and closes both queue connections ("matched", 1000:
+  that close is how the host knows its code went). From there it is a new game with a code: the handshake (D1), a session,
+  the starter select (D32).
+- **A pair that breaks before the code went:** the guest goes back in the queue in its old place (`relay:matchLost`); the
+  host's queue connection is closed (4004): its room has nobody to come, so the game ends that room for good and searches
+  again ("Your partner left. Looking again…"). A host that never sends its code (a frozen tab, a modified client) cannot
+  hold anyone: after 15 s the guest says so (`match:stale`), and the relay drops a host that has had 10 s and pairs the
+  guest again. A code addressed to a guest that is leaving counts as that guest leaving.
+- **After the code:** a matched host waits 30 s for its partner to come into the room, then ends the room and searches
+  again ("Your partner did not connect"); a matched guest whose join fails searches again ("Could not reach your
+  partner") instead of the failure screen, and the join form does not keep a code it never showed. Cancel on the host's
+  waiting screen ends the room for good (as for Play again's room), so a partner on the way is told at once.
 - **On the Worker** the queue is one Durable Object (`Matchmaker`, `idFromName("queue")`) whose sockets hibernate: what
   each player is (their build, place, partner) lives in the socket's attachment, and the keepalive (`match:ping` every
-  30 s) is answered without waking it (`setWebSocketAutoResponse`), so a queue where people only wait costs nothing. The
-  Node relay (`coop-server/src/matchmaker.ts`) keeps the same rules in memory. Each caps the queue at 1000 players and cuts
-  off a player who sends more than five frames.
+  30 s) is answered without waking it (`setWebSocketAutoResponse`), so a queue where people only wait costs nothing. A
+  waiting socket with no keepalive for 75 s is a dead connection: it is closed instead of being paired. One address keeps
+  at most 4 queue connections (the Worker tags each socket with it, an IPv6 one as its /64). The Node relay
+  (`coop-server/src/matchmaker.ts`) keeps the same rules in memory; its heartbeat keeps a queued socket as long as it
+  answers, as a room's. Each caps the queue at 1000 players, closes a socket that sends a binary frame, and cuts off one
+  that sends more than five frames (the Node relay counts a keepalive sent less than 5 s after the last one as a frame).
+- **The client** opens the queue again by itself, at most three times, when its connection drops while it waits (a blip,
+  a relay that restarted).
 - **Where it is offered:** with the public relay of the website (a build with `VITE_COOP_RELAY_URL`) and in development. A
   self-hosted relay (the Windows pack, Docker) has only the players who were given its address, so the entry is not there.
 - A player with a saved co-op run is asked first, as for hosting (D19): they may end up hosting.
-- The screen counts the time waited and offers Cancel; "Found a partner!" once matched.
+- The screen counts the time waited and offers Cancel; "Found a partner!" once matched. Once a role is decided, the queue's
+  news no longer writes on the screen.
 
 ## D38. The chat box
 
@@ -972,7 +986,11 @@ A small chat in every linked session (the lobby, the starter select, the run and
   endings and look-alikes too, "sh1t", "fuuuck"; whole words only, so "class" and "Cofagrigus" stay), "kill yourself"
   too, and links become "[link]". The filter is on in every game (settled by the owner): a partner found by Find a
   partner is a stranger, maybe a child.
-- **Mute** hides the partner's lines from then on. A player sends at most three lines at once, then one every 1.5 s
+- **The partner's name** goes through the same filter, everywhere it is shown (`partnerDisplayName`): a stranger's name can
+  hold a slur or a link too.
+- **Mute** hides the partner's lines from then on, and is remembered for the tab (`sessionStorage`, by name): a muted
+  partner stays muted after Play again or a reload. A line typed while the partner is not connected is not sent (it would
+  be lost: their next connection starts afresh, D20); a note says so. A player sends at most three lines at once, then one every 1.5 s
   ("Slow down a little."); the receiver drops what floods past five at once and one a second.
 - **The box** (`src/coop/chat.ts`) is the page's, not the canvas's: a **Chat** button at the top right, with the count of
   lines that came while it was closed; those lines also show under it for 6 s. The **Co-op: chat** key (H, remappable;

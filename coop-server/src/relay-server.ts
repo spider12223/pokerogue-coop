@@ -374,10 +374,15 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         reject(socket, "busy", null, ip);
         return;
       }
+      // The heartbeat below keeps it as long as it answers, as a room's socket
+      alive.add(socket);
+      socket.on("pong", () => alive.add(socket));
       socket.on("message", (data: RawData, isBinary: boolean) => {
-        if (!isBinary) {
-          matches.message(socket, String(data));
+        if (isBinary) {
+          socket.close(CLOSE_CODE_POLICY, "binary");
+          return;
         }
+        matches.message(socket, String(data));
       });
       socket.on("close", () => matches.left(socket));
       return;

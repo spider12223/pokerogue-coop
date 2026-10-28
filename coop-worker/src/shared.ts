@@ -53,6 +53,8 @@ export function envNumber(value: string | undefined, fallback: number): number {
 
 /** The header the Worker uses to tell a room what to do */
 export const ACTION_HEADER = "x-coop-action";
+/** The header the Worker uses to tell the matchmaking queue the player's address (an IPv6 one as its /64) */
+export const ADDRESS_HEADER = "x-coop-address";
 /** The header the Worker uses to tell a room its code */
 export const CODE_HEADER = "x-coop-code";
 

@@ -4,7 +4,6 @@ import { settings } from "#app/global-settings-manager";
 import type { InputsController } from "#app/inputs-controller";
 import { isDev } from "#constants/app-constants";
 import { SETTINGS_UI_MODES } from "#constants/ui-constants";
-import { toggleChat } from "#coop/chat";
 import { openEmoteWheel, pingNow } from "#coop/hotkeys";
 import { Button } from "#enums/buttons";
 import { GameSpeed } from "#enums/game-speed";
@@ -112,8 +111,9 @@ export class UiInputs {
       // Co-op (D16): they do something only in a linked run, on the screens where a cursor or a message is up
       [Button.COOP_PING]: () => void pingNow(),
       [Button.COOP_EMOTE]: () => void openEmoteWheel(),
-      // Co-op (D38): the chat box, in any linked session
-      [Button.COOP_CHAT]: () => toggleChat(),
+      // Co-op (D38): the chat box's key is caught on the page before the game (src/coop/chat.ts); one that comes here was
+      // typed in one of the game's own text fields, where it is a letter
+      [Button.COOP_CHAT]: () => {},
     };
     return actions;
   }

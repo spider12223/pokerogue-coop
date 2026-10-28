@@ -189,7 +189,28 @@ const leaving = await connect(`match=${build}`);
 await lonely.next(is("relay:matchHost"), "relay:matchHost (lonely)");
 leaving.socket.close(1000);
 await lonely.next(is("relay:matchLost"), "relay:matchLost");
-ok("a partner who leaves before the room puts the other back in the queue");
+check((await lonely.closed) === 4004, "the host whose guest left was not closed (4004)");
+ok("a host whose guest leaves before the room is told, and closed to search again");
+
+const binary = await connect(`match=${build}`);
+await binary.next(is("relay:queued"), "relay:queued (binary)");
+binary.socket.send(new Uint8Array([1, 2, 3]));
+check((await binary.closed) === 1008, "a binary frame did not close the queue connection");
+ok("a binary frame closes the queue connection");
+
+const many: Client[] = [];
+for (let i = 0; i < 4; i++) {
+  const one = await connect(`match=${build}-${i}`);
+  await one.next(is("relay:queued"), `relay:queued (${i})`);
+  many.push(one);
+}
+const fifth = await connect(`match=${build}-5`);
+const capped = await fifth.next(is("relay:error"), "relay:error rateLimited");
+check(capped["reason"] === "rateLimited", `fifth from one address: ${JSON.stringify(capped)}`);
+for (const one of many) {
+  one.socket.close(1000);
+}
+ok("one address keeps at most four queue connections");
 const unreadable = await connect("match=not%20a%20build");
 const bad = await unreadable.next(is("relay:error"), "relay:error badRequest");
 check(bad["reason"] === "badRequest", `bad build: ${JSON.stringify(bad)}`);

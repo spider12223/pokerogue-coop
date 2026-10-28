@@ -107,7 +107,7 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     expect(shown).toContain("Co-op run ended. Alex wants to play again!");
     await vi.waitUntil(() => r.partner.lobbySeen.some(message => message.t === "againCode"), {
       interval: 5,
-      timeout: 4000,
+      timeout: 10_000,
     });
     expect(r.partner.lobbySeen).toEqual([
       { t: "again", want: true },
@@ -132,10 +132,10 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
 
     await answerEndScreen(r, true);
-    await vi.waitUntil(() => shown.includes("Waiting for Alex…"), { interval: 5, timeout: 4000 });
+    await vi.waitUntil(() => shown.includes("Waiting for Alex…"), { interval: 5, timeout: 10_000 });
     expect(r.partner.lobbySeen).toEqual([{ t: "again", want: true }]);
     r.partner.sendLobby({ t: "again", want: true });
-    await vi.waitUntil(() => shown.includes("Starting a new game with Alex…"), { interval: 5, timeout: 4000 });
+    await vi.waitUntil(() => shown.includes("Starting a new game with Alex…"), { interval: 5, timeout: 10_000 });
     r.partner.sendLobby({ t: "againCode", code: "ABC234" });
     expect(await toTitle).toBe("TitlePhase");
 

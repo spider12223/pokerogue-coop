@@ -9,22 +9,26 @@ import { RelayError, type RelayErrorReason, type WebSocketFactory } from "#coop/
 /**
  * The client side of matchmaking (D37): one WebSocket to the relay's queue, `?match=<build>` (the messages of
  * `coop-server/src/relay-protocol.ts`, `MatchControlMessage`; `test/coop/relay-stack.test.ts` runs this against the real
- * server). Once matched, the host creates a room as usual and sends its code here; the guest gets that code. The game then
- * goes through the room, as for players who share a code.
+ * server). Once matched, the host creates a room as usual and sends its code here; the relay closes the connection
+ * ("matched") once the code went to the guest. The guest gets that code. The game then goes through the room, as for players
+ * who share a code.
  * @module
  */
 
-/** What a match made of this player */
-export type MatchRole = { role: "host"; sendCode(code: string): void } | { role: "guest"; code: string };
+/**
+ * What a match made of this player. A host's `sendCode` says whether the code reached the partner: `false` if the partner
+ * left first (search again: nobody will come to that room).
+ */
+export type MatchRole = { role: "host"; sendCode(code: string): Promise<boolean> } | { role: "guest"; code: string };
 
 /** Where the search is: in the queue, or matched and waiting for the host's room */
 export type MatchStatus = "waiting" | "matched";
 
 export interface MatchSearch {
-  /** Resolves when matched; rejects with a {@linkcode RelayError} if the relay refuses or the connection is lost */
+  /** Resolves when matched; rejects with a {@linkcode RelayError} if the relay refuses or cannot be reached */
   readonly found: Promise<MatchRole>;
   onStatus(listener: (status: MatchStatus) => void): void;
-  /** Leave the queue (a host also does once its room exists and the code is sent, or when it could not make one) */
+  /** Leave the queue */
   cancel(): void;
 }
 
@@ -32,18 +36,25 @@ export interface MatchOptions {
   factory?: WebSocketFactory;
   /** How often the connection says it is alive while it waits. Default 30 s. */
   keepaliveMs?: number;
-  /** How long a matched guest waits for the host's room before it goes back in the queue. Default 20 s. */
+  /** How long a matched guest waits for the host's room before it tells the relay. Default 15 s. */
   guestWaitMs?: number;
+  /** How long a host waits for the relay to take its code. Default 10 s. */
+  codeWaitMs?: number;
+  /** How often a dropped connection is opened again while it waits (a network blip, a relay that restarted). Default 3. */
+  reconnects?: number;
 }
 
 const MATCH_PING = '{"t":"match:ping"}';
 const WS_OPEN = 1;
+/** The relay closes both queue connections with this once the code went */
+const CLOSE_MATCHED = 1000;
 const defaultFactory: WebSocketFactory = url => new WebSocket(url) as unknown as ReturnType<WebSocketFactory>;
 
 /** Wait in the queue of this build at the relay `baseUrl` (the same address as for rooms) */
 export function findMatch(baseUrl: string, build: string, options: MatchOptions = {}): MatchSearch {
   const factory = options.factory ?? defaultFactory;
   const url = `${baseUrl.replace(/\/+$/, "")}/?${new URLSearchParams({ match: build }).toString()}`;
+  const guestWaitMs = options.guestWaitMs ?? 15_000;
   const listeners = new Set<(status: MatchStatus) => void>();
   let resolveFound!: (role: MatchRole) => void;
   let rejectFound!: (error: RelayError) => void;
@@ -54,23 +65,40 @@ export function findMatch(baseUrl: string, build: string, options: MatchOptions 
   found.catch(() => {});
   let settled = false;
   let cancelled = false;
+  let reconnectsLeft = options.reconnects ?? 3;
   let socket: ReturnType<WebSocketFactory> | null = null;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   let keepalive: ReturnType<typeof setInterval> | null = null;
-  let guestWait: ReturnType<typeof setTimeout> | null = null;
+  /** A host's code: whether the relay took it, once it is known */
+  let delivered: ((ok: boolean) => void) | null = null;
+  let hostOutcome: boolean | null = null;
 
-  const status = (value: MatchStatus): void => {
-    for (const listener of [...listeners]) {
-      listener(value);
+  const later = (ms: number, action: () => void): void => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      action();
+    }, ms);
+    timers.add(timer);
+  };
+  /** The waits, not the keepalive: a player back in the queue still says it is alive */
+  const clearWaits = (): void => {
+    for (const timer of timers) {
+      clearTimeout(timer);
     }
+    timers.clear();
   };
   const stopTimers = (): void => {
+    clearWaits();
     if (keepalive !== null) {
       clearInterval(keepalive);
       keepalive = null;
     }
-    if (guestWait !== null) {
-      clearTimeout(guestWait);
-      guestWait = null;
+  };
+  const status = (value: MatchStatus): void => {
+    if (!cancelled) {
+      for (const listener of [...listeners]) {
+        listener(value);
+      }
     }
   };
   const fail = (reason: RelayErrorReason | "closed"): void => {
@@ -80,10 +108,18 @@ export function findMatch(baseUrl: string, build: string, options: MatchOptions 
       rejectFound(new RelayError(reason));
     }
   };
+  /** A host's outcome: the code went, or the partner left first */
+  const hostDone = (ok: boolean): void => {
+    if (hostOutcome === null) {
+      hostOutcome = ok;
+      delivered?.(ok);
+    }
+  };
 
   const connect = (): void => {
     const current = factory(url);
     socket = current;
+    let refused = false;
     current.addEventListener("open", () => {
       keepalive = setInterval(() => {
         if (current.readyState === WS_OPEN) {
@@ -109,32 +145,45 @@ export function findMatch(baseUrl: string, build: string, options: MatchOptions 
             resolveFound({
               role: "host",
               sendCode: code => {
-                if (current.readyState === WS_OPEN) {
-                  current.send(JSON.stringify({ t: "match:code", code }));
+                if (hostOutcome !== null) {
+                  return Promise.resolve(hostOutcome);
                 }
+                if (current.readyState !== WS_OPEN) {
+                  hostDone(false);
+                  return Promise.resolve(false);
+                }
+                current.send(JSON.stringify({ t: "match:code", code }));
+                later(options.codeWaitMs ?? 10_000, () => hostDone(false));
+                return new Promise<boolean>(resolve => {
+                  delivered = resolve;
+                });
               },
             });
           }
           break;
         case "relay:matched":
           status("matched");
-          // A host that never makes its room (its page froze) must not hold this player: back in the queue
-          guestWait = setTimeout(() => {
-            if (!settled && !cancelled && socket === current) {
-              stopTimers();
-              socket = null;
-              current.close(1000, "requeue");
-              status("waiting");
-              connect();
+          // The host's code does not come: the relay drops a host that had its time, and pairs this player again; a relay
+          // that does not answer either is a dead connection, opened again
+          later(guestWaitMs, () => {
+            if (!settled && socket === current && current.readyState === WS_OPEN) {
+              current.send(JSON.stringify({ t: "match:stale" }));
+              later(guestWaitMs, () => {
+                if (!settled && socket === current) {
+                  current.close(1000, "requeue");
+                }
+              });
             }
-          }, options.guestWaitMs ?? 20_000);
+          });
           break;
         case "relay:matchLost":
-          if (guestWait !== null) {
-            clearTimeout(guestWait);
-            guestWait = null;
+          if (settled) {
+            // A host whose guest left: the relay closes this connection next
+            hostDone(false);
+          } else {
+            clearWaits();
+            status("waiting");
           }
-          status("waiting");
           break;
         case "relay:matchGuest":
           if (!settled && typeof message.code === "string") {
@@ -144,16 +193,38 @@ export function findMatch(baseUrl: string, build: string, options: MatchOptions 
           }
           break;
         case "relay:error":
+          refused = true;
           fail(typeof message.reason === "string" ? (message.reason as RelayErrorReason) : "closed");
           break;
         default:
           break; // queued, pong
       }
     });
-    current.addEventListener("close", () => {
-      if (socket === current) {
-        fail("closed");
+    current.addEventListener("close", event => {
+      if (socket !== current) {
+        return;
       }
+      if (settled) {
+        // A host: the relay closes once the code went ("matched"); any other close is a partner who left
+        hostDone(event.code === CLOSE_MATCHED);
+        return;
+      }
+      if (cancelled || refused) {
+        return;
+      }
+      if (reconnectsLeft > 0) {
+        // A blip or a relay that restarted: in the queue again, at its end
+        reconnectsLeft--;
+        stopTimers();
+        status("waiting");
+        later(1000 * (4 - reconnectsLeft), () => {
+          if (!cancelled && !settled) {
+            connect();
+          }
+        });
+        return;
+      }
+      fail("closed");
     });
     current.addEventListener("error", () => {
       // The close event follows
@@ -169,9 +240,11 @@ export function findMatch(baseUrl: string, build: string, options: MatchOptions 
     cancel() {
       cancelled = true;
       stopTimers();
+      listeners.clear();
       const current = socket;
       socket = null;
       current?.close(1000, "cancelled");
+      hostDone(false);
     },
   };
 }

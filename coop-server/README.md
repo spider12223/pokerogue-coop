@@ -77,11 +77,14 @@ control frames). Frames over 1 MiB close the connection (1009).
 On a `match=<build>` connection (`<build>` is `[A-Za-z0-9._+-]{1,64}`, a hash of the game's build) the relay answers
 `relay:queued`. Two players of a build are matched in the order they came: the first gets `relay:matchHost`, creates a
 room as above and sends `{"t":"match:code","code":"ABC234"}` on this connection; the second gets `relay:matched`, then
-`relay:matchGuest {code}`, and joins that room. The relay then closes both queue connections (1000). A host who leaves
-before sending the code puts the other back in the queue (`relay:matchLost`). `{"t":"match:ping"}` is answered with
-`{"t":"relay:pong"}` (a keepalive). At most 1000 players wait at once (`relay:error busy`); a player who sends more than
-five frames other than pings is cut off (1008). The rules are `src/matchmaker.ts`; the Worker keeps them in its
-`Matchmaker` Durable Object.
+`relay:matchGuest {code}`, and joins that room. The relay then closes both queue connections (1000). A pair that breaks
+before the code went puts the guest back in the queue in its place (`relay:matchLost`) and closes the host's connection
+(4004: search again). A guest whose host has not sent its code may send `{"t":"match:stale"}`; a host that has had 10 s
+is then closed (4004) and the guest paired again. `{"t":"match:ping"}` is answered with `{"t":"relay:pong"}` (a
+keepalive). At most 1000 players wait at once (`relay:error busy`); a binary frame closes the connection, and a player who
+sends more than five frames (keepalives less than 5 s apart count) is cut off (1008). The rules are `src/matchmaker.ts`;
+the Worker keeps them in its `Matchmaker` Durable Object, where one address keeps at most four queue connections
+(`relay:error rateLimited`) and a waiting socket silent for 75 s is closed.
 
 ## Seats, tokens, holds
 

@@ -49,6 +49,7 @@ describe("Co-op: the chat box (D38)", () => {
     stopChat();
     mine.close();
     theirs.close();
+    sessionStorage.clear();
   });
 
   it("is there for the session, closed, with the rules on top", () => {
@@ -115,5 +116,36 @@ describe("Co-op: the chat box (D38)", () => {
     expect(chatInfo()!.lines.slice(-2)).toEqual(["Sam: three", "Slow down a little."]);
     // what did not go stays in the box
     expect(input().value).toBe("four");
+  });
+
+  it("keeps a muted partner muted in a new game with them", () => {
+    toggleChat();
+    (root().querySelector(".coop-chat-mute") as HTMLButtonElement).click();
+    stopChat();
+    startChat(mine, "Sam");
+    expect(chatInfo()!.muted).toBe(true);
+    expect(root().querySelector(".coop-chat-mute")?.textContent).toBe("Unmute");
+  });
+
+  it("does not send to a partner who is not connected, and says so", () => {
+    Object.defineProperty(mine, "partnerPresent", { get: () => false, configurable: true });
+    toggleChat();
+    say("anyone there?");
+    expect(chatInfo()!.lines.at(-1)).toBe("Alex is not connected right now: they would not see it.");
+    expect(input().value).toBe("anyone there?");
+    expect(heard).toEqual([]);
+  });
+});
+
+describe("Co-op: a partner's name is shown through the chat's filter (D38)", () => {
+  it("everywhere the link says it", () => {
+    const [near] = createLoopbackPair();
+    const link = new CoopLink({
+      seat: "host",
+      reliable: new ReliableTransport(near),
+      names: { mine: "Sam", theirs: "discord.gg/abc" },
+    });
+    expect(link.partnerName).toBe("[link]");
+    link.close();
   });
 });

@@ -18,8 +18,9 @@ the background runs slowly.
    your friend.
 3. **The other joins:** **Join a game** and paste the code.
 
-   **No friend to play with?** Both choose **Find a partner** instead: the game pairs you with another player who is
-   looking, and you land on the starter select together. It may take a moment when few people are looking.
+   **No friend to play with?** Choose **Find a partner** instead (on the website): the game pairs you with the next player
+   who is looking, and you land on the starter select together. It may take a moment when few people are looking. To play
+   with a friend, use a code: Find a partner gives you whoever comes first.
 4. The starter select opens for both, with **the Pokémon of both of you**: you can pick anything your friend has caught,
    with their shinies, forms, IVs and unlocks. Pick up to three starters each; you share **15 points**, and you see your
    friend's picks as they make them. When both press ready, the run starts. Leaving the starter select (Cancel with no

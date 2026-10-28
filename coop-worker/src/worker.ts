@@ -8,6 +8,7 @@ import { MATCH_BUILD, RELAY_PATH } from "../../coop-server/src/relay-protocol.ts
 import { normalizeIp } from "../../coop-server/src/untrusted.ts";
 import {
   ACTION_HEADER,
+  ADDRESS_HEADER,
   CODE_HEADER,
   DEFAULTS,
   type Env,
@@ -121,17 +122,20 @@ export default {
     const code = params.get("code");
     const create = params.get("role") === "host" && code === null;
     const ip = normalizeIp(request.headers.get("cf-connecting-ip") ?? "unknown");
+    const build = params.get("match");
     if (!limiter.admit(env, ip, create)) {
-      return create ? rejectSocket("rateLimited") : new Response(null, { status: 429 });
+      // A game that searches is told why, as one that creates a room
+      return create || build !== null ? rejectSocket("rateLimited") : new Response(null, { status: 429 });
     }
 
     // The matchmaking queue (D37): one object for everyone, whose sockets sleep while they wait
-    const build = params.get("match");
     if (build !== null) {
       if (!MATCH_BUILD.test(build)) {
         return rejectSocket("badRequest");
       }
-      return env.MATCH.get(env.MATCH.idFromName("queue")).fetch(request);
+      const headers = new Headers(request.headers);
+      headers.set(ADDRESS_HEADER, ip);
+      return env.MATCH.get(env.MATCH.idFromName("queue")).fetch(new Request(request, { headers }));
     }
 
     if (create) {
