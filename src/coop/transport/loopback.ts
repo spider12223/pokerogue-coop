@@ -7,6 +7,8 @@
  * (AGPL-3.0-only); this version adds seeded loss, duplication and reordering.
  */
 
+import type { PlayerCount, Seat } from "#coop/protocol";
+import { ROUTE_SEPARATOR } from "#coop/transport/routed";
 import type { CloseInfo, RawTransport, Scheduler, Unsubscribe } from "#coop/transport/transport";
 import { systemScheduler } from "#coop/transport/transport";
 
@@ -140,4 +142,100 @@ export function createLoopbackPair(options: LoopbackOptions = {}): [RawTransport
   a.peer = b;
   b.peer = a;
   return [a, b];
+}
+
+/**
+ * The host's end of a loopback room of three: routes as the relay does (D40). A frame it sends names the guest it is for and
+ * goes to that guest without the name; a guest's frame reaches it with the guest's seat in front. One guest's end closing
+ * does not close it.
+ */
+class LoopbackRelayEnd implements RawTransport {
+  private open = true;
+  private readonly frameListeners = new Set<(frame: string) => void>();
+  private readonly closeListeners = new Set<(info: CloseInfo) => void>();
+
+  constructor(private readonly toGuests: ReadonlyMap<Seat, RawTransport>) {
+    for (const [seat, end] of toGuests) {
+      end.onFrame(frame => {
+        if (!this.open) {
+          return;
+        }
+        for (const listener of [...this.frameListeners]) {
+          listener(seat + ROUTE_SEPARATOR + frame);
+        }
+      });
+    }
+  }
+
+  get isOpen(): boolean {
+    return this.open;
+  }
+
+  send(frame: string): void {
+    if (!this.open) {
+      throw new Error("loopback transport is closed");
+    }
+    const at = frame.indexOf(ROUTE_SEPARATOR);
+    const end = at <= 0 ? undefined : this.toGuests.get(frame.slice(0, at) as Seat);
+    if (end?.isOpen) {
+      end.send(frame.slice(at + ROUTE_SEPARATOR.length));
+    }
+  }
+
+  onFrame(listener: (frame: string) => void): Unsubscribe {
+    this.frameListeners.add(listener);
+    return () => {
+      this.frameListeners.delete(listener);
+    };
+  }
+
+  onClose(listener: (info: CloseInfo) => void): Unsubscribe {
+    this.closeListeners.add(listener);
+    return () => {
+      this.closeListeners.delete(listener);
+    };
+  }
+
+  /** The host leaves: the room closes for every guest */
+  close(code?: number, reason?: string): void {
+    if (!this.open) {
+      return;
+    }
+    this.open = false;
+    for (const end of this.toGuests.values()) {
+      end.close(code, reason);
+    }
+    const info: CloseInfo = {};
+    if (code !== undefined) {
+      info.code = code;
+    }
+    if (reason !== undefined) {
+      info.reason = reason;
+    }
+    for (const listener of [...this.closeListeners]) {
+      listener(info);
+    }
+  }
+}
+
+/**
+ * In-process room for tests (D40): the host's end and each guest's end, routed as the relay routes a room of three. A room of
+ * two is a plain {@linkcode createLoopbackPair}, unrouted, as the relay leaves a room of two.
+ */
+export function createLoopbackRoom(
+  players: PlayerCount,
+  options: LoopbackOptions = {},
+): { host: RawTransport; guests: ReadonlyMap<Seat, RawTransport> } {
+  if (players === 2) {
+    const [host, guest] = createLoopbackPair(options);
+    return { host, guests: new Map([["guest", guest]]) };
+  }
+  const toGuests = new Map<Seat, RawTransport>();
+  const guests = new Map<Seat, RawTransport>();
+  for (const [i, seat] of (["guest", "guest2"] as const).entries()) {
+    const [relaySide, guestSide] = createLoopbackPair({ ...options, seed: (options.seed ?? 1) + i });
+    toGuests.set(seat, relaySide);
+    guests.set(seat, guestSide);
+  }
+  return { host: new LoopbackRelayEnd(toGuests), guests };
 }

@@ -226,6 +226,11 @@ export interface Envelope<P = unknown> {
   payload: P;
   takeover?: true;
   epoch?: number;
+  /**
+   * The guest the host got it from, in a game of three (D40): set by the host's fan-out from the relay's stamp, over whatever
+   * arrived in it, so it is never trusted from the wire
+   */
+  from?: Seat;
 }
 
 export function isEnvelope(value: unknown): value is Envelope {
