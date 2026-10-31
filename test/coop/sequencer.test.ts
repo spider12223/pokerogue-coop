@@ -4,8 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { DecisionKey, Envelope } from "#coop/protocol";
+import { type DecisionKey, type Envelope, type Seat, seatsFor } from "#coop/protocol";
 import { DesyncError, ProposalRejectedError, type RejectReason, Sequencer } from "#coop/sequencer";
+import { FanoutTransport } from "#coop/transport/fanout";
+import { createLoopbackRoom } from "#coop/transport/loopback";
+import { ReliableTransport } from "#coop/transport/reliable";
+import { RoutedHub } from "#coop/transport/routed";
 import { describe, expect, it } from "vitest";
 import { createManualLink } from "./manual-link";
 
@@ -33,6 +37,84 @@ function setup() {
 function sequenced(seq: number, key: DecisionKey, payload: unknown = null): Envelope {
   return { seq, key, author: "host", kind: "SEQUENCED", payload };
 }
+
+describe("Sequencer: three seats (D40)", () => {
+  /** A host and two guests over a loopback room of three, as the game wires them */
+  function setupThree() {
+    const room = createLoopbackRoom(3);
+    const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+    const fanout = new FanoutTransport(
+      new Map<Seat, ReliableTransport>([
+        ["guest", new ReliableTransport(hub.channel("guest"))],
+        ["guest2", new ReliableTransport(hub.channel("guest2"))],
+      ]),
+    );
+    const guestLink = new ReliableTransport(room.guests.get("guest")!);
+    const guest2Link = new ReliableTransport(room.guests.get("guest2")!);
+    return {
+      room,
+      guestLink,
+      guest2Link,
+      host: new Sequencer({ role: "host", transport: fanout, seats: seatsFor(3) }),
+      guest: new Sequencer({ role: "guest", transport: guestLink }),
+      guest2: new Sequencer({ role: "guest2", transport: guest2Link }),
+    };
+  }
+  const settleThree = () => new Promise(resolve => setTimeout(resolve, 30));
+
+  it("sequences both guests' proposals, and all three apply them in one order", async () => {
+    const { host, guest, guest2 } = setupThree();
+    const keys = [k(1, 1), k(1, 2)];
+    const got = [host, guest, guest2].map(seq => Promise.all(keys.map(key => seq.awaitDecision(key))));
+    guest.propose(k(1, 1), "from guest");
+    guest2.propose(k(1, 2), "from guest2");
+    const [onHost, onGuest, onGuest2] = await Promise.all(got);
+    expect(onHost!.map(d => [d.author, d.payload])).toEqual([
+      ["guest", "from guest"],
+      ["guest2", "from guest2"],
+    ]);
+    expect(onGuest).toEqual(onHost);
+    expect(onGuest2).toEqual(onHost);
+  });
+
+  it("refuses a guest that writes the other guest's seat as author, and tells only that guest", async () => {
+    const { host, guestLink, guest2Link } = setupThree();
+    const atGuest: Envelope[] = [];
+    const atGuest2: Envelope[] = [];
+    guestLink.onMessage(m => atGuest.push(m));
+    guest2Link.onMessage(m => atGuest2.push(m));
+    const refused: RejectReason[] = [];
+    host.onProposalRejected(({ reason }) => refused.push(reason));
+    void host.awaitDecision(k(2, 1));
+    guestLink.send({ key: k(2, 1), author: "guest2", kind: "PROPOSE", payload: "forged", from: "guest2" });
+    await settleThree();
+    expect(host.lastApplied).toBe(0);
+    expect(refused).toEqual(["authorMismatch"]);
+    expect(atGuest.filter(m => m.kind === "REJECT").map(m => m.payload)).toEqual([{ reason: "authorMismatch" }]);
+    expect(atGuest2.filter(m => m.kind === "REJECT")).toEqual([]);
+  });
+
+  it("in a game of two, ignores a `from` the guest wrote: the guest is the guest", async () => {
+    const { hostSeq, guest, settle } = setup();
+    const refused: RejectReason[] = [];
+    hostSeq.onProposalRejected(({ reason }) => refused.push(reason));
+    void hostSeq.awaitDecision(k(4, 1));
+    guest.send({ key: k(4, 1), author: "host", kind: "PROPOSE", payload: "forged", from: "host" });
+    settle();
+    expect(hostSeq.lastApplied).toBe(0);
+    expect(refused).toEqual(["authorMismatch"]);
+  });
+
+  it("goes on with one guest when the other's connection drops", async () => {
+    const { room, host, guest2 } = setupThree();
+    room.guests.get("guest")!.close();
+    const onHost = host.awaitDecision(k(3, 1));
+    const onGuest2 = guest2.awaitDecision(k(3, 1));
+    guest2.propose(k(3, 1), "still here");
+    expect((await onHost).payload).toBe("still here");
+    expect(await onGuest2).toEqual(await onHost);
+  });
+});
 
 describe("Sequencer: sequencing", () => {
   it("host decisions get consecutive seqs and both clients consume them in order", async () => {
