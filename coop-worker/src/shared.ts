@@ -59,7 +59,7 @@ export const ADDRESS_HEADER = "x-coop-address";
 export const CODE_HEADER = "x-coop-code";
 
 export function isSeat(value: string | null): value is Seat {
-  return value === "host" || value === "guest";
+  return value === "host" || value === "guest" || value === "guest2";
 }
 
 export function otherSeat(seat: Seat): Seat {

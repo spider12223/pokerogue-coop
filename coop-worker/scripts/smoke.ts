@@ -26,6 +26,8 @@ interface Client {
   frames: string[];
   closed: Promise<number>;
   next(predicate: (frame: Record<string, unknown>) => boolean, what: string): Promise<Record<string, unknown>>;
+  /** Wait for a frame that is exactly this text (a routed frame is not JSON) */
+  nextText(text: string, what: string): Promise<void>;
 }
 
 const TIMEOUT_MS = 10_000;
@@ -78,6 +80,23 @@ function connect(query: string): Promise<Client> {
           });
         });
       }
+    },
+    async nextText(text, what) {
+      const deadline = Date.now() + TIMEOUT_MS;
+      while (!frames.includes(text)) {
+        const left = deadline - Date.now();
+        if (left <= 0) {
+          throw new Error(`no ${what} within ${TIMEOUT_MS} ms; frames: ${JSON.stringify(frames)}`);
+        }
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(resolve, left);
+          waiters.push(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+      frames.splice(frames.indexOf(text), 1);
     },
   };
   return new Promise((resolve, reject) => {
@@ -166,6 +185,37 @@ const after = await connect(`code=${code}&seat=host&token=${hostToken}`);
 const gone = await after.next(is("relay:error"), "relay:error after the room closed");
 check(gone["reason"] === "notFound", `after End session: ${JSON.stringify(gone)}`);
 ok("the room's tokens stop working");
+
+// Rooms of three (D40): a second guest seat, frames routed by seat, End session per seat
+const host3 = await connect("role=host&seats=3");
+const code3 = String((await host3.next(is("relay:created"), "relay:created (three)"))["code"]);
+const g1 = await connect(`code=${code3}`);
+check((await g1.next(is("relay:joined"), "relay:joined (guest)"))["seat"] === "guest", "the first join is not guest");
+const g2 = await connect(`code=${code3}`);
+check(
+  (await g2.next(is("relay:joined"), "relay:joined (guest2)"))["seat"] === "guest2",
+  "the second join is not guest2",
+);
+await host3.next(is("relay:paired"), "relay:paired (three)");
+const fourth = await connect(`code=${code3}`);
+const full3 = await fourth.next(is("relay:error"), "relay:error full (three)");
+check(full3["reason"] === "full", `fourth player: ${JSON.stringify(full3)}`);
+ok("a room of three takes two guests and refuses a fourth");
+
+host3.socket.send('guest2\n{"n":31}');
+await g2.next(frame => frame["n"] === 31, "the host's frame at guest2");
+g1.socket.send('{"n":32}');
+await host3.nextText('guest\n{"n":32}', "guest's frame at the host, with its seat");
+check(!g1.frames.some(frame => frame.includes('"n":31')), "guest got a frame meant for guest2");
+ok("a room of three routes frames by seat");
+
+g1.socket.close(4003);
+const gone3 = await host3.next(is("relay:peerGone"), "relay:peerGone (guest)");
+check(gone3["seat"] === "guest", `guest's End session: ${JSON.stringify(gone3)}`);
+host3.socket.close(4003);
+const closed3 = await g2.next(is("relay:closed"), "relay:closed (three)");
+check(closed3["reason"] === "partnerLeft", `host's End session: ${JSON.stringify(closed3)}`);
+ok("a guest's End session frees its seat; the host's closes the room of three");
 
 // Matchmaking (D37): a build of its own, so a live queue's players are never matched with these
 const build = `smoke-${Math.random().toString(36).slice(2, 10)}`;
