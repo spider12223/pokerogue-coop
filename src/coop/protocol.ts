@@ -23,7 +23,7 @@ import { filterChat } from "#coop/chat-text";
 import { type CollectionData, isCollectionData } from "#coop/collection-data";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 9;
+export const COOP_PROTOCOL_VERSION = 10;
 
 /** The two players. The host is the sequencer (D2). */
 export type Seat = "host" | "guest";
@@ -256,6 +256,15 @@ export interface HelloPayload {
   name: string;
   /** `resume`: the host continues a saved run, so the guest waits for its save instead of the lobby (D21) */
   mode: "new" | "resume";
+  /** The kind of run the host chose (D39): the guest plays it */
+  runMode: CoopRunMode;
+}
+
+/** The kind of a co-op run (D39) */
+export type CoopRunMode = "classic" | "endless";
+
+export function isCoopRunMode(value: unknown): value is CoopRunMode {
+  return value === "classic" || value === "endless";
 }
 
 export interface HelloAckPayload {
@@ -337,6 +346,7 @@ export function isHelloPayload(value: unknown): value is HelloPayload {
     && !Array.isArray(settings)
     && typeof hello["name"] === "string"
     && (hello["mode"] === "new" || hello["mode"] === "resume")
+    && isCoopRunMode(hello["runMode"])
   );
 }
 

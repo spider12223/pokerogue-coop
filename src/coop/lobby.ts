@@ -20,6 +20,7 @@ import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
 import { copyText } from "#coop/clipboard";
 import { attachCoopLog, setCoopLogServer } from "#coop/coop-diagnostics";
 import { coopLog, hookPageIntoCoopLog } from "#coop/coop-log";
+import type { CoopSlot } from "#coop/coop-slot";
 import { startCosmeticView, stopCosmeticView } from "#coop/cosmetic-view";
 import { getCoopName, setCoopName } from "#coop/display-name";
 import { systemImportAvailable } from "#coop/import-account";
@@ -34,7 +35,7 @@ import {
 } from "#coop/link";
 import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
-import { COOP_STARTER_POINTS, hashCanonical, keyId, otherSeat, type Seat } from "#coop/protocol";
+import { COOP_STARTER_POINTS, type CoopRunMode, hashCanonical, keyId, otherSeat, type Seat } from "#coop/protocol";
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
 import { askAndReport, setReportButtonVisible } from "#coop/report-button";
@@ -291,7 +292,10 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
       ? []
       : [
           {
-            label: coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave }),
+            label:
+              slot.runMode === "endless"
+                ? coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave })
+                : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave }),
             handler: () => {
               continueHandler?.(callbacks);
               return true;
@@ -301,31 +305,18 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
     {
       label: coopText("host", "Host a game"),
       handler: () => {
-        if (slot === null) {
-          void hostGame(callbacks);
-          return true;
-        }
-        // A new run takes the place of the saved one at its first wave (D19): the host is asked first, as a solo New
-        // Game over a saved run asks
-        const { ui } = globalScene;
-        ui.showText(
-          coopText(
-            "hostOverwrites",
-            "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
-            { wave: slot.wave },
+        askRunMode(callbacks, runMode =>
+          confirmOverwrite(
+            callbacks,
+            slot,
+            saved =>
+              coopText(
+                "hostOverwrites",
+                "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
+                { wave: saved.wave },
+              ),
+            () => void hostGame(callbacks, runMode),
           ),
-          null,
-          () =>
-            ui.setModeWithoutClear(UiMode.CONFIRM, {
-              yesHandler: () => {
-                ui.clearText();
-                void hostGame(callbacks);
-              },
-              noHandler: () => {
-                ui.clearText();
-                showCoopTitleMenu(callbacks);
-              },
-            }),
         );
         return true;
       },
@@ -342,30 +333,19 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
           {
             label: coopText("findPartner", "Find a partner"),
             handler: () => {
-              if (slot === null) {
-                void findPartner(callbacks);
-                return true;
-              }
               // As for hosting: the player may end up hosting, and a new run takes the saved one's place (D19)
-              const { ui } = globalScene;
-              ui.showText(
-                coopText(
-                  "matchOverwrites",
-                  "A new game may replace your saved co-op run (wave {{wave}}). Find a partner anyway?",
-                  { wave: slot.wave },
+              askRunMode(callbacks, runMode =>
+                confirmOverwrite(
+                  callbacks,
+                  slot,
+                  saved =>
+                    coopText(
+                      "matchOverwrites",
+                      "A new game may replace your saved co-op run (wave {{wave}}). Find a partner anyway?",
+                      { wave: saved.wave },
+                    ),
+                  () => void findPartner(callbacks, runMode),
                 ),
-                null,
-                () =>
-                  ui.setModeWithoutClear(UiMode.CONFIRM, {
-                    yesHandler: () => {
-                      ui.clearText();
-                      void findPartner(callbacks);
-                    },
-                    noHandler: () => {
-                      ui.clearText();
-                      showCoopTitleMenu(callbacks);
-                    },
-                  }),
               );
               return true;
             },
@@ -409,16 +389,82 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
       },
     },
   ];
-  const config: OptionSelectModeConfig = { options, yOffset: 48, scale: COOP_MENU_SCALE };
+  showMenu({ options, yOffset: 48, scale: COOP_MENU_SCALE });
+}
+
+/** Show a menu of the co-op title screen, over whatever menu was there */
+function showMenu(config: OptionSelectModeConfig): void {
   const { ui } = globalScene;
   if (ui.mode === UiMode.OPTION_SELECT) {
-    // Back from a form opened from this menu (the name, the join code): reverting the form returned to this mode, but the
-    // menu cleared itself when the form opened, and asking for the mode it is already in changes nothing. Draw it again in
-    // place, with what changed (the new name)
+    // Back from a form opened from this menu (the name, the join code), or on from one of its entries: the menu cleared
+    // itself, and asking for the mode it is already in changes nothing. Draw it again in place, with what changed
     ui.getHandler().show([config]);
     return;
   }
   ui.setOverlayMode(UiMode.OPTION_SELECT, config);
+}
+
+/** Classic or Endless (D39), asked before hosting and before looking for a partner; Cancel goes back to the co-op menu */
+function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode) => void): void {
+  const { ui } = globalScene;
+  const option = (runMode: CoopRunMode): OptionSelectItem => ({
+    label: i18next.t(runMode === "endless" ? "gameMode:endless" : "gameMode:classic"),
+    handler: () => {
+      chosen(runMode);
+      return true;
+    },
+  });
+  // Out of the co-op menu first: it clears itself once the entry that led here returns, and would take this one with it
+  void ui.setMode(UiMode.MESSAGE).then(() =>
+    ui.showText(i18next.t("menu:selectGameMode"), null, () =>
+      showMenu({
+        options: [
+          option("classic"),
+          option("endless"),
+          {
+            label: i18next.t("menu:cancel"),
+            handler: () => {
+              void ui.setMode(UiMode.MESSAGE).then(() => {
+                ui.clearText();
+                showCoopTitleMenu(callbacks);
+              });
+              return true;
+            },
+          },
+        ],
+        yOffset: 48,
+      }),
+    ),
+  );
+}
+
+/**
+ * A new run takes the place of the saved one at its first wave (D19): with a saved run, the player is asked first, as a solo
+ * New Game over a saved run asks
+ */
+function confirmOverwrite(
+  callbacks: CoopTitleCallbacks,
+  slot: CoopSlot | null,
+  question: (saved: CoopSlot) => string,
+  go: () => void,
+): void {
+  if (slot === null) {
+    go();
+    return;
+  }
+  const { ui } = globalScene;
+  ui.showText(question(slot), null, () =>
+    ui.setModeWithoutClear(UiMode.CONFIRM, {
+      yesHandler: () => {
+        ui.clearText();
+        go();
+      },
+      noHandler: () => {
+        ui.clearText();
+        showCoopTitleMenu(callbacks);
+      },
+    }),
+  );
 }
 
 export function showFailure(error: unknown, callbacks: CoopTitleCallbacks, message?: string): void {
@@ -504,7 +550,7 @@ export function beginSession(
   link: CoopLink,
   seat: Seat,
   overlay: ReturnType<typeof createSettingsOverlayPort>,
-  init: { runSeed?: string; accountIds?: Record<Seat, string> } = {},
+  init: { runSeed?: string; accountIds?: Record<Seat, string>; runMode?: CoopRunMode } = {},
 ): CoopSession {
   const session = startCoopSession({
     seat,
@@ -513,6 +559,7 @@ export function beginSession(
     build: getLocalBuildIdentity(),
     overlay,
     ...(init.accountIds === undefined ? {} : { accountIds: init.accountIds }),
+    ...(init.runMode === undefined ? {} : { runMode: init.runMode }),
   });
   session.link = link;
   // The seat token, so that a reloaded or reopened tab takes the seat back by itself (D20)
@@ -600,11 +647,13 @@ async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopT
 
 /**
  * Create a room, show its code, and enter the lobby once the guest has joined and the handshake is through.
+ * @param runMode - The kind of run (D39); the guest is told in the handshake
  * @param ready - A room the host already created, whose guest joins it by themselves ("Play again", D35; a match, D37), and
  * what the screen says meanwhile
  */
 async function hostGame(
   callbacks: CoopTitleCallbacks,
+  runMode: CoopRunMode,
   ready?: {
     room: HostRoom;
     waiting: string;
@@ -671,6 +720,7 @@ async function hostGame(
         expectedEffectiveSettingsHash: effectiveHash,
         sequencer: { validatePayload: validateProposal },
         name: getCoopName(),
+        runMode,
       });
     } catch (error) {
       overlay.remove();
@@ -681,7 +731,7 @@ async function hostGame(
       established.link.close();
       return;
     }
-    const session = beginSession(established.link, "host", overlay);
+    const session = beginSession(established.link, "host", overlay, { runMode });
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
     if (!cancelled) {
@@ -729,7 +779,7 @@ export async function joinGame(
       room.cancel();
       throw error;
     }
-    const session = beginSession(established.link, "guest", overlay);
+    const session = beginSession(established.link, "guest", overlay, { runMode: established.hello.runMode });
     lastFailedCode = null;
     if (established.hello.mode === "resume") {
       // The host continues a saved run: its wave start arrives next, and `installResync` loads it (D21)
@@ -780,9 +830,9 @@ function matchmakingAvailable(): boolean {
   return isDev || (import.meta.env.VITE_COOP_RELAY_URL ?? "") !== "";
 }
 
-/** The queue this build waits in (D37): only an identical build can pair (D1) */
-export function matchBuild(): string {
-  return hashCanonical(getLocalBuildIdentity());
+/** The queue this build waits in (D37): only an identical build can pair (D1), and only players who chose the same kind of run (D39) */
+export function matchBuild(runMode: CoopRunMode): string {
+  return hashCanonical({ build: getLocalBuildIdentity(), runMode });
 }
 
 /** What a player who could not be paired is told: the relay's own reasons, or that it could not be reached */
@@ -806,9 +856,10 @@ function endRoom(room: HostRoom): void {
  * "Find a partner" (D37): wait in the relay's queue with the players of this build. Once matched, the player who waited
  * longer hosts a room as usual and the other joins it by its code, without anyone sharing it; from there it is a new game. A
  * match that does not become a game (the partner left, or never came) searches again by itself.
+ * @param runMode - The kind of run (D39): only a partner who chose the same is found
  * @param again - Why it searches again, said before the clock
  */
-async function findPartner(callbacks: CoopTitleCallbacks, again?: string): Promise<void> {
+async function findPartner(callbacks: CoopTitleCallbacks, runMode: CoopRunMode, again?: string): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
     showFailure(new Error("overrides in effect"), callbacks);
@@ -816,7 +867,7 @@ async function findPartner(callbacks: CoopTitleCallbacks, again?: string): Promi
   }
   startLobbyLog();
   coopLog().info("lobby", again === undefined ? "looking for a partner" : "looking for a partner again");
-  const search = findMatch(getRelayUrl(), matchBuild());
+  const search = findMatch(getRelayUrl(), matchBuild(runMode));
   let cancelled = false;
   /** Matched: from here the screen is the game's start, not the search's */
   let matched = false;
@@ -887,7 +938,7 @@ async function findPartner(callbacks: CoopTitleCallbacks, again?: string): Promi
   }
   coopLog().info("lobby", "found a partner", { role: role.role });
   const searchAgain = (why: string): void => {
-    void findPartner(callbacks, why);
+    void findPartner(callbacks, runMode, why);
   };
   if (role.role === "guest") {
     search.cancel();
@@ -919,7 +970,7 @@ async function findPartner(callbacks: CoopTitleCallbacks, again?: string): Promi
     searchAgain(coopText("matchPartnerLeft", "Your partner left. Looking again…"));
     return;
   }
-  await hostGame(callbacks, {
+  await hostGame(callbacks, runMode, {
     room,
     waiting: coopText("matchWaiting", "Found a partner! Waiting for them to connect…"),
     why: "for a match",
@@ -970,15 +1021,20 @@ function showJoinForm(callbacks: CoopTitleCallbacks): void {
  * Host, after "Play again" (D35): wait in the room created at the end of the last run for the partner, who joins it by
  * themselves, then enter the lobby as for a new game
  */
-export function hostAgain(callbacks: CoopTitleCallbacks, room: HostRoom, partner: string): Promise<void> {
+export function hostAgain(
+  callbacks: CoopTitleCallbacks,
+  room: HostRoom,
+  partner: string,
+  runMode: CoopRunMode = "classic",
+): Promise<void> {
   const waiting = coopText("againWaiting", "Waiting for {{partner}} to join the new game (code {{code}})…", {
     partner,
     code: room.identity.code,
   });
-  return hostGame(callbacks, { room, waiting, why: "to play again" });
+  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" });
 }
 
 /** Host: start a game without the menus (the debug API and the end-to-end test use it) */
-export function hostGameWithoutMenu(callbacks: CoopTitleCallbacks): Promise<void> {
-  return hostGame(callbacks);
+export function hostGameWithoutMenu(callbacks: CoopTitleCallbacks, runMode: CoopRunMode = "classic"): Promise<void> {
+  return hostGame(callbacks, runMode);
 }

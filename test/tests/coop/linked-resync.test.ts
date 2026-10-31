@@ -11,6 +11,7 @@ import { reportOf } from "#coop/resync-run";
 import { isCoopSaveBlock } from "#coop/save-block";
 import { currentCoopSlot } from "#coop/wave-save";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";
@@ -263,6 +264,23 @@ describe("Co-op: save and resync (D13, D18, D19)", () => {
       expect(again).toMatchObject({ index: 0, kind: "waveStart", wave: 1 });
       expect(again.hash).toBe(waveStart.hash); // the reload is faithful: the same state
       expect(r.session.waveSave).toMatchObject({ wave: 1, epoch: 1 });
+    });
+
+    it("reloads an endless run as endless (D39): the slot says so, and the hashes are the old ones", async () => {
+      const r = await start({ scenario: { endless: true } });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const waveStart = r.session.checkpoints.entries[0]!;
+      expect(currentCoopSlot()).toMatchObject({ wave: 1, runMode: "endless" });
+      expect(JSON.parse(r.session.waveSave!.json).gameMode).toBe(GameModes.ENDLESS);
+
+      await disagree(r, 0);
+      await vi.waitUntil(() => r.session.resyncs.length === 1, { interval: 5, timeout: 4000 });
+      await reload(r);
+
+      const { gameMode } = r.ctx.game.scene;
+      expect(gameMode.modeId).toBe(GameModes.ENDLESS);
+      expect(gameMode.isCoop).toBe(true);
+      expect(r.session.checkpoints.entries[0]!.hash).toBe(waveStart.hash);
     });
 
     it("drops what the partner sent in the old epoch, and goes on with the new one: the next turn is decided and hashed", async () => {

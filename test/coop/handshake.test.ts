@@ -64,12 +64,23 @@ describe("asymmetric handshake (D1)", () => {
     expect(a).toEqual({ ok: true, remote: build, name: "Player", accountId: "" });
     expect(b).toEqual({
       ok: true,
-      hello: { build, pinnedSettings: pinned, name: "Player", mode: "new" },
+      hello: { build, pinnedSettings: pinned, name: "Player", mode: "new", runMode: "classic" },
       effectiveSettingsHash: hashCanonical(pinned),
     });
     expect(overlay.effective()).toEqual({ ...overlay.saved, ...pinned });
     expect(overlay.saved).toEqual({ battleStyle: 0, enableTutorials: true, playerGender: 1, gameSpeed: 5 });
     expect(overlay.calls).toEqual(["apply"]);
+  });
+
+  it("tells the guest the kind of run the host chose (D39)", async () => {
+    const { host, guest } = reliablePair();
+    const overlay = fakeOverlay({ battleStyle: 0 });
+    const [a, b] = await Promise.all([
+      hostHandshake(host, build, pinned, { runMode: "endless" }),
+      guestHandshake(guest, { ...build }, overlay.port),
+    ]);
+    expect(a.ok).toBe(true);
+    expect(b).toMatchObject({ ok: true, hello: { mode: "new", runMode: "endless" } });
   });
 
   it("carries the display names both ways, cleaned", async () => {
@@ -182,7 +193,7 @@ describe("asymmetric handshake (D1)", () => {
       key: null,
       author: "host",
       kind: "HELLO",
-      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new" },
+      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new", runMode: "classic" },
     });
     await vi.advanceTimersByTimeAsync(100);
     expect(settled).toBe(false);
@@ -200,7 +211,7 @@ describe("asymmetric handshake (D1)", () => {
       key: null,
       author: "host",
       kind: "HELLO",
-      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new" },
+      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new", runMode: "classic" },
     });
     await vi.advanceTimersByTimeAsync(1001);
     expect(await hostResult).toEqual({ ok: false, reason: "timeout", mismatches: [] });

@@ -9,6 +9,7 @@ import { type AgainAnswer, listenForAgain } from "#coop/again-answer";
 import { coopLog } from "#coop/coop-log";
 import { createRoom, type HostRoom } from "#coop/link";
 import { type CoopTitleCallbacks, getRelayUrl, hostAgain, joinGame, quietRunEnd } from "#coop/lobby";
+import type { CoopRunMode } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { UiMode } from "#enums/ui-mode";
@@ -31,7 +32,9 @@ const CODE_WAIT_MS = 20_000;
 const LINE_MS = 2500;
 
 /** What the title screen starts after the run; module state, so it outlives `globalScene.reset()` */
-type Pending = { seat: "host"; room: HostRoom; partner: string } | { seat: "guest"; code: string };
+type Pending =
+  | { seat: "host"; room: HostRoom; partner: string; runMode: CoopRunMode }
+  | { seat: "guest"; code: string };
 let pending: Pending | null = null;
 
 let answer: AgainAnswer | null = null;
@@ -169,7 +172,8 @@ export function askPlayAgain(): Promise<void> {
               finish(couldNot);
               return;
             }
-            pending = { seat: "host", room, partner };
+            // The new game is the same kind of run (D39)
+            pending = { seat: "host", room, partner, runMode: globalScene.gameMode.isEndless ? "endless" : "classic" };
             link.sendLobby({ t: "againCode", code: room.identity.code });
             // The guest leaves the old room as soon as it has the code; until then that room carries it
             timer = setTimeout(() => finish(null), LEAVE_WAIT_MS);
@@ -259,7 +263,7 @@ export function startPlayAgain(callbacks: CoopTitleCallbacks): boolean {
     return false;
   }
   if (next.seat === "host") {
-    void playAgainNetwork.host(callbacks, next.room, next.partner);
+    void playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode);
   } else {
     void playAgainNetwork.join(next.code, callbacks);
   }

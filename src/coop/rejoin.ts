@@ -74,7 +74,11 @@ function resumeFromSlot(
   reason: "resume" | "rejoin",
 ): void {
   const { link } = established;
-  const session = beginSession(link, "host", overlay, { runSeed: seedOf(slot), accountIds: slot.accountIds });
+  const session = beginSession(link, "host", overlay, {
+    runSeed: seedOf(slot),
+    accountIds: slot.accountIds,
+    runMode: slot.runMode ?? "classic",
+  });
   session.waveSave = { wave: slot.wave, epoch: slot.epoch, json: slot.session };
   // the epoch and the seq go on from where the slot left them (D18)
   link.channel.setEpoch(slot.epoch);
@@ -182,6 +186,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
         sequencer: { validatePayload: validateProposal },
         name: getCoopName(),
         mode: "resume",
+        runMode: slot!.runMode ?? "classic",
         expectedGuestAccountId: slot!.accountIds.guest,
       });
       resumeFromSlot(established, slot!, overlay, "rejoin");
@@ -191,7 +196,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
         name: getCoopName(),
         accountId: localAccountId(),
       });
-      const session = beginSession(established.link, "guest", overlay);
+      const session = beginSession(established.link, "guest", overlay, { runMode: established.hello.runMode });
       session.timing["rejoinStartedAt"] = startedAt;
       session.timing["handshakeAt"] = Date.now();
       session.awaitingReload = true;
@@ -314,6 +319,7 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
         sequencer: { validatePayload: validateProposal },
         name: getCoopName(),
         mode: "resume",
+        runMode: slot.runMode ?? "classic",
         expectedGuestAccountId: slot.accountIds.guest,
       });
     } catch (error) {

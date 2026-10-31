@@ -149,6 +149,8 @@ export interface CoopDebugApi {
   report(note: string): Promise<string>;
   /** The labels of the option menu that is open (the lobby's "Copy code" is one), or `[]` */
   readonly menuOptions: string[];
+  /** The kind of run (D39): the session's choice, and the game mode the run was built as (`null` before it is) */
+  readonly runMode: { session: string | null; game: string | null };
   /** The name of the key that pings now ("P" until the player moves it), or `null` if none */
   readonly pingKey: string | null;
   /** The reloads of this run (D13): why, in which epoch, of which wave */
@@ -158,7 +160,13 @@ export interface CoopDebugApi {
   /** When the pieces of a rejoin and a reload happened, in ms since the epoch */
   readonly timing: Record<string, number>;
   /** The co-op slot of this browser (D19), without the save */
-  readonly slot: { wave: number; epoch: number; seq: number; names: Record<Seat, string> } | null;
+  readonly slot: {
+    wave: number;
+    epoch: number;
+    seq: number;
+    names: Record<Seat, string>;
+    runMode: string | null;
+  } | null;
   /** The phase trace: one entry per phase start with a hash of the RNG state (D13) */
   trace(): PhaseTraceEntry[];
   /**
@@ -388,7 +396,14 @@ function api(): CoopDebugApi {
     },
     get slot() {
       const slot = currentCoopSlot();
-      return slot === null ? null : { wave: slot.wave, epoch: slot.epoch, seq: slot.seq, names: slot.names };
+      return slot === null
+        ? null
+        : { wave: slot.wave, epoch: slot.epoch, seq: slot.seq, names: slot.names, runMode: slot.runMode ?? null };
+    },
+    get runMode() {
+      const mode = globalScene?.gameMode;
+      const game = mode?.isCoop ? (mode.isEndless ? "endless" : mode.isClassic ? "classic" : "other") : null;
+      return { session: getCoopSession()?.runMode ?? null, game };
     },
     trace: () => getCoopSession()?.trace.dump() ?? [],
     setOverrides: values => {

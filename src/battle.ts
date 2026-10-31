@@ -119,8 +119,10 @@ export class Battle {
     this.mysteryEncounterType = mysteryEncounterType;
     this.double = double;
 
-    // Co-op (D6): the classic finale is a double battle against its one boss, two of ours against one of it
-    const wildEnemyCount = double && !(gameMode.isCoop && this.isClassicFinalBoss) ? 2 : 1;
+    // Co-op (D6, D39): the classic finale and endless's boss waves are double battles against their one boss, two of ours
+    // against one of it
+    const oneBoss = this.isClassicFinalBoss || gameMode.isEndlessBoss(waveIndex);
+    const wildEnemyCount = double && !(gameMode.isCoop && oneBoss) ? 2 : 1;
     this.enemyLevels =
       battleType === BattleType.TRAINER
         ? trainer?.getPartyLevels(this.waveIndex)

@@ -21,6 +21,7 @@ import {
   type BuildIdentity,
   type ChatPayload,
   type CheckpointMessage,
+  type CoopRunMode,
   cleanName,
   DEFAULT_NAME,
   type Envelope,
@@ -79,6 +80,8 @@ export interface RelinkContext {
   accountId?: string;
   /** Host: the guest account that may take the seat again (D21) */
   expectedGuestAccountId?: string;
+  /** Host: the kind of run (D39), said again in each `HELLO` */
+  runMode?: CoopRunMode;
   timeoutMs?: number;
 }
 
@@ -596,6 +599,7 @@ export class CoopLink {
         result = await hostHandshake(this.reliable, context.build, context.pinned ?? {}, {
           name: this.name,
           mode: "resume",
+          ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
           ...timeoutMs,
           ...(context.expectedEffectiveSettingsHash === undefined
             ? {}
@@ -916,6 +920,8 @@ export async function establishHost(
     scheduler?: Scheduler;
     /** `resume`: this host continues a saved run (D21); default `new` */
     mode?: "new" | "resume";
+    /** The kind of run (D39); default `classic` */
+    runMode?: CoopRunMode;
     /** The guest account that may join (D21); another one is refused */
     expectedGuestAccountId?: string;
   } = {},
@@ -923,6 +929,7 @@ export async function establishHost(
   const result = await hostHandshake(room.reliable, build, pinned, {
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.mode === undefined ? {} : { mode: options.mode }),
+    ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
     ...(options.expectedGuestAccountId === undefined ? {} : { expectedGuestAccountId: options.expectedGuestAccountId }),
     ...(options.expectedEffectiveSettingsHash === undefined
       ? {}
@@ -941,6 +948,7 @@ export async function establishHost(
     context: {
       build,
       pinned,
+      ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
       ...(options.expectedEffectiveSettingsHash === undefined
         ? {}
         : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
@@ -963,7 +971,7 @@ export async function establishHost(
 export interface EstablishedGuest {
   link: CoopLink;
   /** The host's build and the pinned settings it sent; the overlay is applied */
-  hello: { build: BuildIdentity; pinnedSettings: PinnedSettings; mode: "new" | "resume" };
+  hello: { build: BuildIdentity; pinnedSettings: PinnedSettings; mode: "new" | "resume"; runMode: CoopRunMode };
 }
 
 /**

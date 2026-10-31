@@ -238,6 +238,22 @@ export async function openCoopMenu(client: Client): Promise<void> {
   await expect.poll(() => ui(client), { timeout: 20_000 }).toBe("OPTION_SELECT");
 }
 
+/** Classic or Endless (D39), which Host a game and Find a partner ask: pick one */
+export async function chooseRunMode(client: Client, mode: "Classic" | "Endless" = "Classic"): Promise<void> {
+  await expect
+    .poll(() => client.page.evaluate(() => (window as any).__coop.menuOptions as string[]), {
+      message: `${client.label}: no Classic or Endless question`,
+      timeout: 20_000,
+    })
+    .toContain(mode);
+  await client.page.waitForTimeout(300);
+  if (mode === "Endless") {
+    await press(client, "DOWN");
+    await client.page.waitForTimeout(150);
+  }
+  await press(client, "ACTION");
+}
+
 /** The starter select: add the starter under the cursor to the party, and become ready */
 export async function pickAndReady(client: Client, moveRight: number): Promise<void> {
   await expect
@@ -272,11 +288,15 @@ export async function startLinkedRun(host: Client, guest: Client, afterLinked?: 
   await untilWaveOne(host, guest);
 }
 
-/** From the title screen of both clients to the co-op starter select: the host creates a room, the guest joins it */
-export async function linkClients(host: Client, guest: Client): Promise<void> {
-  // The host: Co-op -> Host a game -> a join code
+/**
+ * From the title screen of both clients to the co-op starter select: the host creates a room, the guest joins it
+ * @param mode - The kind of run the host chooses (D39)
+ */
+export async function linkClients(host: Client, guest: Client, mode: "Classic" | "Endless" = "Classic"): Promise<void> {
+  // The host: Co-op -> Host a game -> Classic or Endless -> a join code
   await openCoopMenu(host);
   await press(host, "ACTION");
+  await chooseRunMode(host, mode);
   await expect
     .poll(() => host.page.evaluate(() => (window as any).__coop.joinCode as string | null), {
       message: "the host never got a join code",

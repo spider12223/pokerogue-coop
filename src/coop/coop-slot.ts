@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Seat } from "#coop/protocol";
+import { type CoopRunMode, isCoopRunMode, type Seat } from "#coop/protocol";
 import type { KeyValueStore } from "#coop/seat-store";
 
 /**
@@ -39,6 +39,8 @@ export interface CoopSlot {
   accountIds: Record<Seat, string>;
   /** The session save, `JSON.stringify`d */
   session: string;
+  /** The kind of run (D39), for the title menu; a slot from before has none and is classic */
+  runMode?: CoopRunMode;
 }
 
 export function isCoopSlot(value: unknown): value is CoopSlot {
@@ -67,6 +69,7 @@ export function isCoopSlot(value: unknown): value is CoopSlot {
     && pair(slot["accountIds"])
     && typeof slot["session"] === "string"
     && slot["session"].length > 0
+    && (slot["runMode"] === undefined || isCoopRunMode(slot["runMode"]))
   );
 }
 

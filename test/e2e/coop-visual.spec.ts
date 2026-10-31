@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   type Client,
+  chooseRunMode,
   describeClients,
   newClientContext,
   openClient,
@@ -74,6 +75,13 @@ test.describe("co-op: the screens of both players", () => {
       await sleep(host, 500);
       await shot("02-coop-menu", host);
       await press(host, "ACTION");
+      // Classic or Endless (D39)
+      await expect
+        .poll(() => host.page.evaluate(() => (window as any).__coop.menuOptions as string[]), { timeout: 20_000 })
+        .toContain("Endless");
+      await sleep(host, 800);
+      await shot("02b-run-mode", host);
+      await chooseRunMode(host);
       await expect
         .poll(() => host.page.evaluate(() => (window as any).__coop.joinCode as string | null), { timeout: 30_000 })
         .not.toBeNull();
@@ -230,6 +238,7 @@ test.describe("co-op: the screens of both players", () => {
       await guest.page.evaluate(() => (window as any).__coop.setName("Alex"));
       await openCoopMenu(host);
       await press(host, "ACTION");
+      await chooseRunMode(host);
       await expect
         .poll(() => host.page.evaluate(() => (window as any).__coop.joinCode as string | null), { timeout: 30_000 })
         .not.toBeNull();

@@ -941,7 +941,7 @@ export class GameData {
       if (fromSession.seed) {
         requireCoopSession().setRunSeed(fromSession.seed);
       }
-      globalScene.gameMode = createCoopGameMode();
+      globalScene.gameMode = createCoopGameMode(fromSession.gameMode);
     } else {
       globalScene.gameMode = getGameMode(fromSession.gameMode || GameModes.CLASSIC);
     }

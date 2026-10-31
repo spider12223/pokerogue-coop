@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D31, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D39, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -41,6 +41,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
 | Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are, D37 find a partner, D38 the chat box |
+| Game modes | D39 Endless |
 | Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
@@ -374,7 +375,7 @@ Pinned in co-op to the host's values and enforced on both clients (the guest rec
 ## D12. Off in co-op
 
 - Upstream's retry setting: `enableRetries` stays pinned off (D5). A wipe has its own retry, decided by the host (D4a).
-- Daily mode.
+- Daily mode, Spliced Endless and challenges. Classic and Endless are on (D39).
 
 Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 
@@ -997,6 +998,27 @@ A small chat in every linked session (the lobby, the starter select, the run and
   a saved keyboard mapping gets H if it is free) opens it with the cursor in the line; Enter sends, an empty Enter or Esc
   closes. While the line has the keyboard the game gets no key (the box stops each key event before the game's listener
   on the window). Text is written with `textContent` only. The box and what was said go with the session.
+
+## D39. Endless
+
+A co-op run is Classic or Endless. Co-op Endless is solo Endless with every co-op rule.
+
+- **Free:** Endless is offered in co-op whether or not either account has unlocked it (settled by the owner). Solo play keeps
+  its own unlock.
+- **Chosen by the host:** **Host a game** asks Classic or Endless first. **Find a partner** asks too, and pairs only
+  players who chose the same: the mode is part of the queue's key (`matchBuild`), so the relay is unchanged. **Join a
+  game** asks nothing: the guest plays the host's mode.
+- **On the wire:** the host's `HELLO` has `runMode` (`classic` or `endless`); the session keeps it, and the title screen
+  builds the run's game mode from it (`createCoopGameMode`). `COOP_PROTOCOL_VERSION` is 10 since it. The guest sees the mode
+  on the starter select's status line ("Endless: …").
+- **The game mode:** `GameModes.ENDLESS` with solo Endless's rules (short biomes, random bosses, a boss every 50 waves, a
+  bigger one every 250 and 1000, no trainers, no Mystery Encounters, the end at wave 5850) plus `isCoop`. Its boss waves
+  are doubles against one Pokémon, as the classic finale is (D6).
+- **Saved as it is:** the session save has the mode's id, so a reload, a rejoin and **Continue** build the same mode
+  (D19, D20, D21); a save from before has Classic's id and stays Classic. The co-op slot has `runMode` for the title menu:
+  **Continue (Endless, wave N)**. Run history shows the mode.
+- **The end:** as Classic's: a wipe asks the host to retry or end (D4a), then the end screen and Play again (D35). Play
+  again keeps the mode.
 
 ## See also
 

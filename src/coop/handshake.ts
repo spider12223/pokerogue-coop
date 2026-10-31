@@ -6,6 +6,7 @@
 
 import {
   type BuildIdentity,
+  type CoopRunMode,
   cleanName,
   compareBuild,
   type HelloAckPayload,
@@ -86,6 +87,8 @@ export interface HostHandshakeOptions extends HandshakeOptions {
   expectedEffectiveSettingsHash?: string;
   /** `resume`: this host continues a saved run (D21); the guest is told. Default `new`. */
   mode?: "new" | "resume";
+  /** The kind of run (D39); the guest is told. Default `classic`. */
+  runMode?: CoopRunMode;
   /** The guest account the run was saved with (D21): another one is refused, with `accountId` as the field that differs */
   expectedGuestAccountId?: string;
 }
@@ -161,7 +164,13 @@ export function hostHandshake(
       unsubscribe();
       return;
     }
-    const hello: HelloPayload = { build, pinnedSettings, name: cleanName(options.name), mode: options.mode ?? "new" };
+    const hello: HelloPayload = {
+      build,
+      pinnedSettings,
+      name: cleanName(options.name),
+      mode: options.mode ?? "new",
+      runMode: options.runMode ?? "classic",
+    };
     transport.send({ key: null, author: "host", kind: "HELLO", payload: hello });
   });
 }

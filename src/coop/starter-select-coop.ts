@@ -25,6 +25,7 @@ import type { StarterSpeciesId } from "#types/starter-species-id";
 import { getPartyValue } from "#ui/starter-select-ui-utils";
 import { addTextObject } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
+import i18next from "i18next";
 
 /**
  * Co-op on the starter select screen (DECISIONS D3, D4, D7, D32). The screen is the solo one with these changes:
@@ -379,20 +380,23 @@ export class CoopStarterSelectController {
     }
     this.view.setPartner(partner.picks, partner.ready);
     const vars = { partner: partnerName() };
+    // An endless run says so on every line (D39): the guest learns the host's choice here
+    const mode = getCoopSession()?.runMode === "endless" ? `${i18next.t("gameMode:endless")}: ` : "";
+    const status = (text: string, tone: StatusTone): void => this.view.setStatus(mode + text, tone);
     if (this.lobby.closed) {
-      this.view.setStatus(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars), "warn");
+      status(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars), "warn");
     } else if (this.lobby.away) {
-      this.view.setStatus(coopText("partnerAwayLobby", "{{partner}} lost the connection. Waiting…", vars), "warn");
+      status(coopText("partnerAwayLobby", "{{partner}} lost the connection. Waiting…", vars), "warn");
     } else if (this.lobby.localReady) {
-      this.view.setStatus(coopText("waitingForPartnerReady", "Ready! Waiting for {{partner}}", vars), "self");
+      status(coopText("waitingForPartnerReady", "Ready! Waiting for {{partner}}", vars), "self");
     } else if (this.overLimit) {
-      this.view.setStatus(coopText("notEnoughPoints", "Not enough points"), "warn");
+      status(coopText("notEnoughPoints", "Not enough points"), "warn");
     } else if (this.lobby.wasReset) {
-      this.view.setStatus(coopText("pointsReset", "Too many points together: pick again"), "warn");
+      status(coopText("pointsReset", "Too many points together: pick again"), "warn");
     } else if (partner.ready) {
-      this.view.setStatus(coopText("partnerIsReady", "{{partner}} is ready", vars), "ready");
+      status(coopText("partnerIsReady", "{{partner}} is ready", vars), "ready");
     } else {
-      this.view.setStatus(coopText("partnerIsPicking", "{{partner}} is picking", vars), "picking");
+      status(coopText("partnerIsPicking", "{{partner}} is picking", vars), "picking");
     }
     if (limitChanged) {
       this.onLimitChange();

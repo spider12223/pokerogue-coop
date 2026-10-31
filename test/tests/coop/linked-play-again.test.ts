@@ -61,9 +61,10 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
   });
 
   /** Every turn both field Pokémon faint, until no one is left; the host ends the run (no retry) */
-  async function start(seat: LinkedScenario["seat"]): Promise<LinkedRun> {
+  async function start(seat: LinkedScenario["seat"], endless = false): Promise<LinkedRun> {
     run = await openLinkedRun(phaserGame, {
       seat,
+      scenario: { endless },
       species: SIX,
       starterOwners: ["host", "guest", "host", "guest", "host", "guest"],
       configure: game => game.override.startingLevel(40),
@@ -119,10 +120,28 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     expect(await toTitle).toBe("TitlePhase");
 
     expect(startPlayAgain(callbacks)).toBe(true);
-    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex");
+    // the new game is the same kind of run as this one (D39)
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "classic");
     expect(stand.joinGame).not.toHaveBeenCalled();
     // once only
     expect(startPlayAgain(callbacks)).toBe(false);
+  });
+
+  it("host of an endless run: the new game is endless too (D39)", async () => {
+    const r = await start("host", true);
+    expect(r.ctx.game.scene.gameMode.isEndless).toBe(true);
+    expect(await playToRunEnd(r)).toBe(false);
+    r.partner.sendLobby({ t: "again", want: true });
+    const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
+    await answerEndScreen(r, true);
+    await vi.waitUntil(() => r.partner.lobbySeen.some(message => message.t === "againCode"), {
+      interval: 5,
+      timeout: 10_000,
+    });
+    r.partner.bye();
+    expect(await toTitle).toBe("TitlePhase");
+    expect(startPlayAgain(callbacks)).toBe(true);
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "endless");
   });
 
   it("guest: it waits for the host's answer, then for the code, and joins the new room", async () => {

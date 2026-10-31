@@ -13,6 +13,7 @@ import { startPlayAgain } from "#coop/play-again";
 import { tryAutoRejoin } from "#coop/rejoin";
 import { offerSaveBackup } from "#coop/save-backup-offer";
 import { CoopSaveRefusedError } from "#coop/save-block";
+import { getCoopSession } from "#coop/session";
 import { getDailyRunStarters, startDailyEventChallenges } from "#data/daily-run";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
@@ -222,7 +223,8 @@ export class TitlePhase extends Phase {
     return {
       onConnected: () => {
         this.coop = true;
-        this.gameMode = GameModes.CLASSIC;
+        // The run's kind (D39): the host chose it, the guest's `HELLO` said it
+        this.gameMode = getCoopSession()?.runMode === "endless" ? GameModes.ENDLESS : GameModes.CLASSIC;
         ui.setMode(UiMode.MESSAGE);
         ui.clearText();
         this.end();
@@ -400,7 +402,7 @@ export class TitlePhase extends Phase {
   // TODO: Refactor this
   end(): void {
     if (!this.loaded && !globalScene.gameMode.isDaily) {
-      globalScene.gameMode = this.coop ? createCoopGameMode() : getGameMode(this.gameMode);
+      globalScene.gameMode = this.coop ? createCoopGameMode(this.gameMode) : getGameMode(this.gameMode);
       if (this.gameMode === GameModes.CHALLENGE) {
         globalScene.phaseManager.pushNew("SelectChallengePhase");
       } else {

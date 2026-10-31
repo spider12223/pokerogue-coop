@@ -50,6 +50,7 @@ const hello: HelloPayload = {
   pinnedSettings: { battleStyle: 1, enableTutorials: false, playerGender: 1 },
   name: "Sam",
   mode: "new",
+  runMode: "classic",
 };
 
 describe("DecisionKey", () => {
@@ -175,6 +176,10 @@ describe("HELLO", () => {
     // the host says whether it continues a saved run (D21)
     expect(isHelloPayload({ ...hello, mode: "resume" })).toBe(true);
     expect(isHelloPayload({ ...hello, mode: "other" })).toBe(false);
+    // the kind of run (D39)
+    expect(isHelloPayload({ ...hello, runMode: "endless" })).toBe(true);
+    expect(isHelloPayload({ ...hello, runMode: "daily" })).toBe(false);
+    expect(isHelloPayload({ ...hello, runMode: undefined })).toBe(false);
     expect(isHelloPayload({ build, pinnedSettings: hello.pinnedSettings, name: "Sam" })).toBe(false);
     // the guest says which account it is (D21)
     expect(isHelloAckPayload({ build, effectiveSettingsHash: "abc", name: "Sam", accountId: "1:2" })).toBe(true);

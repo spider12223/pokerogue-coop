@@ -40,6 +40,7 @@ import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
+import { GameModes } from "#enums/game-modes";
 import { MoveCategory } from "#enums/move-category";
 import { MoveId } from "#enums/move-id";
 import { isIgnorePP, isVirtual } from "#enums/move-use-mode";
@@ -204,6 +205,8 @@ export interface Scenario {
   configure?: (game: GameManager) => void;
   /** Who owns each starter, in party order (default: three each, the host's first) */
   starterOwners?: readonly Seat[];
+  /** An endless run (D39) instead of a classic one */
+  endless?: boolean;
   /** The money the run starts with (the harness starts the run without the starter screen, which would set it) */
   startingMoney?: number;
   /** From this wave on, the first wild wave with two enemies gets a Master Ball thrown at the second one left (D10) */
@@ -1221,7 +1224,7 @@ export async function openCoopRun(
   try {
     await game.runToTitle();
     game.onNextPrompt("TitlePhase", UiMode.TITLE, () => {
-      game.scene.gameMode = createCoopGameMode();
+      game.scene.gameMode = createCoopGameMode(scenario.endless ? GameModes.ENDLESS : GameModes.CLASSIC);
       applyCoopRunSeed();
       const selectStarterPhase = new SelectStarterPhase();
       game.scene.phaseManager.pushNew("EncounterPhase", false);

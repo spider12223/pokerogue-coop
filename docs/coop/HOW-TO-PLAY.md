@@ -6,7 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-only
 
 # How to play co-op
 
-Two players, each on their own computer, play one classic run together. Every battle is a double battle: each of you brings
+Two players, each on their own computer, play one Classic or Endless run together. Every battle is a double battle: each of you brings
 three Pokémon and controls one side of the field. Both of you need the same game address (a website, or a link from a friend
 who hosts it, see [HOSTING.md](HOSTING.md)) and a recent Chrome, Edge or Firefox. Keep the game in its own window: a tab in
 the background runs slowly.
@@ -14,19 +14,24 @@ the background runs slowly.
 ## Starting a game
 
 1. **Both:** on the title screen choose **Co-op**, then **Your name** and type the name your friend will see.
-2. **One of you hosts:** **Host a game**. A six-character code appears; **Copy code** puts it in the clipboard. Send it to
-   your friend.
-3. **The other joins:** **Join a game** and paste the code.
+2. **One of you hosts:** **Host a game**, then **Classic** or **Endless**. A six-character code appears; **Copy code** puts
+   it in the clipboard. Send it to your friend.
+3. **The other joins:** **Join a game** and paste the code. You play the kind of run your friend chose; the starter select
+   says "Endless" when it is one.
 
-   **No friend to play with?** Choose **Find a partner** instead (on the website): the game pairs you with the next player
-   who is looking, and you land on the starter select together. It may take a moment when few people are looking. To play
-   with a friend, use a code: Find a partner gives you whoever comes first.
+   **No friend to play with?** Choose **Find a partner** instead (on the website), then Classic or Endless: the game pairs
+   you with the next player who is looking for the same kind of run, and you land on the starter select together. It may
+   take a moment when few people are looking. To play with a friend, use a code: Find a partner gives you whoever comes
+   first.
 4. The starter select opens for both, with **the Pokémon of both of you**: you can pick anything your friend has caught,
    with their shinies, forms, IVs and unlocks. Pick up to three starters each; you share **15 points**, and you see your
    friend's picks as they make them. When both press ready, the run starts. Leaving the starter select (Cancel with no
    starter picked) asks first, with the cursor on **No**: leaving ends the game for both of you.
 
 The host's Pokémon fight on the left, the guest's on the right.
+
+**Endless** is free in co-op: you do not have to beat Classic first. It plays as solo Endless (shorter biomes, a boss every
+50 waves, no trainers) and only ends when both of you are out of Pokémon and the host does not retry.
 
 ## Battles
 
@@ -94,8 +99,9 @@ since your last backup, the title screen offers to make one.
 ## Taking a break
 
 - **Menu > Save and Quit** (or just close the game). The host's browser keeps the run, saved at the start of the wave.
-- Next time the **host** chooses **Co-op > Continue (wave N)**, which gives a new code, and the **guest** joins it. It must be
-  the same two accounts as before. Progress inside a wave is not kept: you start that wave again.
+- Next time the **host** chooses **Co-op > Continue (wave N)** (**Continue (Endless, wave N)** for an Endless run), which
+  gives a new code, and the **guest** joins it. It must be the same two accounts as before. Progress inside a wave is not
+  kept: you start that wave again.
 
 ## When something happens
 

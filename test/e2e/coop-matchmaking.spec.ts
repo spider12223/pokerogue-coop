@@ -7,6 +7,7 @@
 import { expect, test } from "@playwright/test";
 import {
   type Client,
+  chooseRunMode,
   newClientContext,
   openClient,
   openCoopMenu,
@@ -36,6 +37,7 @@ async function findPartner(client: Client): Promise<void> {
     await client.page.waitForTimeout(150);
   }
   await press(client, "ACTION");
+  await chooseRunMode(client);
 }
 
 test.describe("co-op: find a partner, and chat", () => {

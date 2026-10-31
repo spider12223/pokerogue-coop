@@ -114,9 +114,9 @@ duplicates and reorders frames from a seed, and `test/coop/manual-link.ts` lets 
   into the settings manager) and answers `HELLO_ACK`. The host checks that (and, for a resumed run, the guest's account)
   and answers `HELLO_OK` or `REFUSE`. `build-info.ts` gives the local build identity, which
   `plugins/vite/coop-build-identity.ts` computes at build time.
-- **`lobby.ts`** is the game side: the title screen's Co-op entry, host or join, the room code, and `beginSession`, which
-  creates the `CoopSession` and wires everything to it (the checkpoint exchange, the resync, the cosmetic view, the pacer,
-  the co-op log, the seat token).
+- **`lobby.ts`** is the game side: the title screen's Co-op entry, host or join (Classic or Endless, D39), the room code,
+  and `beginSession`, which creates the `CoopSession` and wires everything to it (the checkpoint exchange, the resync, the
+  cosmetic view, the pacer, the co-op log, the seat token).
 - **The starter select** is `starter-lobby.ts` (a state machine without UI: live picks, a shared point budget, ready,
   then the host's `START` with the run seed, both parties and both account snapshots) and `starter-select-coop.ts` (its
   view in the upstream screen). `shared-collection.ts` exchanges both players' collections on entering the lobby and
@@ -351,7 +351,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `build-info.ts` | The local `BuildIdentity`: `gitSha` and `dirtyHash` from the build, the mode, the overrides hash | D1 | no |
 | `pinned-settings.ts` | The pinned values, their validation, the overlay port for the settings manager | D5 | yes |
 | `session.ts` | `CoopSession` (`null` in solo), `isCoop()`, `requireCoopSession`, `startCoopSession`, `endCoopSession`, `rewardPickerOf` | D1–D5 | yes |
-| `lobby.ts` | The title screen's Co-op entry: host or join, the code, the handshake, `beginSession`, leaving | D1, D20 | no |
+| `lobby.ts` | The title screen's Co-op entry: host or join, Classic or Endless, the code, the handshake, `beginSession`, leaving | D1, D20, D39 | no |
 | `starter-lobby.ts` | The co-op starter select as a state machine: live picks, shared points, ready, `START` | D3, D4, D7 | yes |
 | `starter-select-coop.ts` | The partner's picks, the shared limit and ready on the starter select screen | D3, D7 | no |
 | `collection-data.ts` | `CollectionData`: a player's collection on the wire, and its validation | D32 | yes |

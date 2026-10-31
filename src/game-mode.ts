@@ -470,10 +470,20 @@ export class GameMode implements GameModeConfig {
 }
 
 /**
- * The game mode of a co-op run (DECISIONS D12, D29): classic with trainers and Mystery Encounters, without daily-run rules
- * and challenges. It keeps {@linkcode GameModes.CLASSIC} as its id so saves, rankings and i18n treat it as classic.
+ * The game mode of a co-op run (DECISIONS D12, D29, D39): classic with trainers and Mystery Encounters, without daily-run
+ * rules and challenges; or endless with solo endless's rules. It keeps the id of the solo mode it plays as, so saves,
+ * rankings and i18n treat it as that mode.
+ * @param modeId - {@linkcode GameModes.ENDLESS} for an endless run; anything else is classic (a save from before D39)
  */
-export function createCoopGameMode(): GameMode {
+export function createCoopGameMode(modeId: GameModes = GameModes.CLASSIC): GameMode {
+  if (modeId === GameModes.ENDLESS) {
+    return new GameMode(GameModes.ENDLESS, {
+      isEndless: true,
+      hasShortBiomes: true,
+      hasRandomBosses: true,
+      isCoop: true,
+    });
+  }
   return new GameMode(
     GameModes.CLASSIC,
     { isClassic: true, hasTrainers: true, hasMysteryEncounters: true, isCoop: true },

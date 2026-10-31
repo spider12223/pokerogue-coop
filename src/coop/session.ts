@@ -13,7 +13,7 @@ import type { MeQuestion } from "#coop/me-choice";
 import { defaultStarterOwners, OwnerMap } from "#coop/ownership";
 import { PaceTracker } from "#coop/pace";
 import { PhaseTrace } from "#coop/phase-trace";
-import { type BuildIdentity, type DecisionKey, otherSeat, type Seat } from "#coop/protocol";
+import { type BuildIdentity, type CoopRunMode, type DecisionKey, otherSeat, type Seat } from "#coop/protocol";
 import {
   type MismatchInfo,
   type ReportPayload,
@@ -64,6 +64,8 @@ export interface CoopSessionInit {
   accountIds?: Record<Seat, string>;
   /** Who owns each starter, in party order (D7); defaults to three each, the host's first */
   starterOwners?: readonly Seat[];
+  /** The kind of run (D39): the host's choice, the guest's `HELLO`. Default `classic` */
+  runMode?: CoopRunMode;
 }
 
 /** How long this client waited for its partner's decisions, for the debug API and the latency report */
@@ -184,6 +186,8 @@ export class CoopSession {
   public sidePick: number[] | null = null;
   /** The connection to the partner; `null` in a session without a network (tests of the rules) */
   public link: CoopLink | null = null;
+  /** The kind of run (D39): what a new run is built as. A loaded save has its own (its game mode's id). */
+  public readonly runMode: CoopRunMode;
   /** The decision keys the simulation is waiting for right now (the decision window, D2); for the debug API */
   public openWindow: readonly DecisionKey[] = [];
   /** The partner's checkpoints that arrived before this client reached them, by index */
@@ -210,6 +214,7 @@ export class CoopSession {
     this.snapshot = init.accountSnapshot ?? null;
     this.explicitAccountIds = init.accountIds ?? null;
     this.owners = init.starterOwners ?? defaultStarterOwners();
+    this.runMode = init.runMode ?? "classic";
   }
 
   public get starterOwners(): readonly Seat[] {

@@ -78,6 +78,7 @@ export function saveCoopWaveStart(): boolean {
     names: { host: link.name, guest: link.theirName },
     accountIds: { ...session.accountIds },
     session: json,
+    runMode: globalScene.gameMode.isEndless ? "endless" : "classic",
   };
   if (!writeCoopSlot(store, slot)) {
     // The slot of an earlier wave must not stay: "Continue" would silently take the run back to it (D19). Without a slot
