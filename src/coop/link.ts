@@ -30,10 +30,15 @@ import {
   isLobbyMessage,
   isStartPayload,
   type LobbyMessage,
+  otherSeat,
   type PinnedSettings,
+  type PlayerCount,
   partnerDisplayName,
+  peers,
   type Seat,
+  type SeatRecord,
   type StartPayload,
+  seatsFor,
 } from "#coop/protocol";
 import {
   isReportPayload,
@@ -44,6 +49,7 @@ import {
   type ResyncRequestPayload,
 } from "#coop/resync";
 import { Sequencer, type SequencerOptions } from "#coop/sequencer";
+import { FanoutTransport } from "#coop/transport/fanout";
 import {
   RelayError,
   type RelayEvent,
@@ -52,6 +58,7 @@ import {
   type WebSocketFactory,
 } from "#coop/transport/relay-ws";
 import { type ReliableOptions, ReliableTransport } from "#coop/transport/reliable";
+import { RoutedHub } from "#coop/transport/routed";
 import { type Scheduler, systemScheduler, type Unsubscribe } from "#coop/transport/transport";
 
 /**
@@ -116,9 +123,20 @@ export class CoopLink {
   /** The epoch of this link (D18) and what it dropped or held back */
   readonly channel: EpochTransport;
 
+  /** How many players the game has (D40) */
+  readonly players: PlayerCount;
+
   private readonly cosmeticSender: CosmeticSender;
   private readonly cosmeticListeners = new Set<(message: CosmeticMessage) => void>();
-  private readonly reliable: ReliableTransport;
+  /** The one reliable channel of a game of two, and a guest's of a game of three; `null` for the host of a game of three */
+  private readonly reliable: ReliableTransport | null;
+  /** The host's channels to its two guests in a game of three (D40) */
+  private readonly fanout: FanoutTransport | null;
+  /** The display name of each seat this link knows */
+  private readonly seatNames: Partial<Record<Seat, string>>;
+  /** Whether each other seat is connected, in a game of three (D40) */
+  private readonly presence = new Map<Seat, boolean>();
+  private readonly presenceListeners = new Set<(seat: Seat, present: boolean) => void>();
   private relay: RelayWsTransport | null;
   private readonly lobbyListeners = new Set<(message: LobbyMessage) => void>();
   private readonly startListeners = new Set<(payload: StartPayload) => void>();
@@ -136,7 +154,8 @@ export class CoopLink {
   private readonly context: RelinkContext | null;
   private readonly connection: LinkConnection | null;
   private readonly scheduler: Scheduler;
-  private present = true;
+  /** Whether the partner (in a game of three: anyone else) is connected */
+  private anyonePresent = true;
   /** The relay closed this connection because another took its seat (D20) */
   private replaced = false;
   /** Why the relay closed the room under this client, if it did (D23: `idle` is a room that was silent for too long) */
@@ -148,7 +167,14 @@ export class CoopLink {
 
   constructor(options: {
     seat: Seat;
-    reliable: ReliableTransport;
+    /** The one channel to the partner (a game of two), or to the host (a guest of a game of three) */
+    reliable?: ReliableTransport;
+    /** The host's channels to its two guests, in a game of three (D40) */
+    fanout?: FanoutTransport;
+    /** How many players the game has (D40); default 2 */
+    players?: PlayerCount;
+    /** The names of the other seats the handshakes told, in a game of three (D40) */
+    peerNames?: Partial<Record<Seat, string>>;
     relay?: RelayWsTransport | null;
     code?: string;
     sequencer?: Omit<SequencerOptions, "role" | "transport">;
@@ -162,7 +188,9 @@ export class CoopLink {
     connection?: LinkConnection;
   }) {
     this.seat = options.seat;
-    this.reliable = options.reliable;
+    this.players = options.players ?? 2;
+    this.reliable = options.reliable ?? null;
+    this.fanout = options.fanout ?? null;
     this.relay = options.relay ?? null;
     this.code = options.code ?? "";
     this.scheduler = options.scheduler ?? systemScheduler;
@@ -171,13 +199,36 @@ export class CoopLink {
     this.name = cleanName(options.names?.mine ?? DEFAULT_NAME);
     this.theirName = cleanName(options.names?.theirs ?? DEFAULT_NAME);
     this.partnerName = partnerDisplayName(this.name, this.theirName);
+    this.seatNames = { [this.seat]: this.name };
+    if (this.players === 2) {
+      this.seatNames[otherSeat(this.seat)] = this.theirName;
+    } else {
+      if (this.seat !== "host") {
+        this.seatNames.host = this.theirName;
+      }
+      for (const [seat, name] of Object.entries(options.peerNames ?? {}) as [Seat, string][]) {
+        this.seatNames[seat] = cleanName(name);
+      }
+      for (const seat of peers(this.seat, this.players)) {
+        this.presence.set(seat, true);
+      }
+    }
     this.cosmeticReceiver = new CosmeticReceiver(options.scheduler);
     this.cosmeticSender = new CosmeticSender(
       message => this.sendVolatile({ key: null, author: this.seat, kind: "COSMETIC", payload: message }),
       options.scheduler,
     );
-    this.channel = new EpochTransport(this.reliable);
-    this.sequencer = new Sequencer({ role: this.seat, transport: this.channel, ...options.sequencer });
+    const inner = this.fanout ?? this.reliable;
+    if (inner === null) {
+      throw new Error("a link needs a reliable channel or, for the host of a game of three, a fan-out");
+    }
+    this.channel = new EpochTransport(inner);
+    this.sequencer = new Sequencer({
+      role: this.seat,
+      transport: this.channel,
+      seats: seatsFor(this.players),
+      ...options.sequencer,
+    });
     this.unsubscribes.push(this.channel.onMessage(message => this.route(message)));
     this.watchRelay();
   }
@@ -191,9 +242,37 @@ export class CoopLink {
     return this.channel.epoch;
   }
 
-  /** Whether the partner is connected right now */
+  /** Whether the partner is connected right now (in a game of three: anyone else) */
   get partnerPresent(): boolean {
-    return this.present;
+    return this.anyonePresent;
+  }
+
+  /** The display name of every seat this link knows (D40): a guest of a game of three may not know the other guest's */
+  get names(): SeatRecord<string> {
+    const names: SeatRecord<string> = {
+      host: this.seatNames.host ?? DEFAULT_NAME,
+      guest: this.seatNames.guest ?? DEFAULT_NAME,
+    };
+    if (this.players === 3) {
+      names.guest2 = this.seatNames.guest2 ?? DEFAULT_NAME;
+    }
+    return names;
+  }
+
+  /** Whether a seat's player is connected right now (D40) */
+  present(seat: Seat): boolean {
+    if (seat === this.seat) {
+      return !this.closed;
+    }
+    return this.players === 2 ? this.anyonePresent : (this.presence.get(seat) ?? false);
+  }
+
+  /** A seat's player left or came back (a game of three, D40) */
+  onPresence(listener: (seat: Seat, present: boolean) => void): Unsubscribe {
+    this.presenceListeners.add(listener);
+    return () => {
+      this.presenceListeners.delete(listener);
+    };
   }
 
   /**
@@ -211,7 +290,7 @@ export class CoopLink {
 
   /** Envelopes sent and not yet acknowledged (diagnostics) */
   get pending(): number {
-    return this.reliable.pending;
+    return this.fanout?.pending ?? this.reliable?.pending ?? 0;
   }
 
   /** Another tab took this seat (D20): the seat in the store is that tab's now */
@@ -424,7 +503,8 @@ export class CoopLink {
     }
     this.unwatchRelay();
     this.sequencer.close();
-    this.reliable.close();
+    this.reliable?.close();
+    this.fanout?.close();
     if (leave) {
       this.relay?.leave();
     } else {
@@ -440,7 +520,7 @@ export class CoopLink {
   }
 
   private sendVolatile(envelope: Envelope): void {
-    if (!this.closed && this.present) {
+    if (!this.closed && this.anyonePresent) {
       this.channel.sendVolatile(envelope);
     }
   }
@@ -455,7 +535,7 @@ export class CoopLink {
         }
         break;
       case "START":
-        if (this.seat === "guest" && message.author === "host" && isStartPayload(message.payload)) {
+        if (this.seat !== "host" && message.author === "host" && isStartPayload(message.payload)) {
           for (const listener of [...this.startListeners]) {
             listener(message.payload);
           }
@@ -469,7 +549,7 @@ export class CoopLink {
         }
         break;
       case "RESYNC_REQUEST":
-        if (this.seat === "host" && message.author === "guest" && isResyncRequest(message.payload)) {
+        if (this.seat === "host" && message.author !== "host" && isResyncRequest(message.payload)) {
           for (const listener of [...this.resyncRequestListeners]) {
             listener(message.payload);
           }
@@ -477,7 +557,7 @@ export class CoopLink {
         break;
       case "RESYNC":
         if (
-          this.seat === "guest"
+          this.seat !== "host"
           && message.author === "host"
           && message.seq !== undefined
           && isResyncMessage(message.payload)
@@ -548,11 +628,15 @@ export class CoopLink {
   }
 
   private relayEvent(event: RelayEvent): void {
+    if (this.players === 3) {
+      this.relayEventOfThree(event);
+      return;
+    }
     switch (event.t) {
       case "relay:peerLeft":
         // Nothing sent from now on reaches the new pairing: what was unacknowledged waits, and is dropped by the reset (D20)
-        this.present = false;
-        this.reliable.detach();
+        this.anyonePresent = false;
+        this.reliable?.detach();
         this.notifyChange();
         this.emitEnd("peerLeft");
         break;
@@ -564,7 +648,7 @@ export class CoopLink {
         if (event.t === "relay:closed") {
           this.closedReason = event.reason;
         }
-        this.present = false;
+        this.anyonePresent = false;
         this.notifyChange();
         this.emitEnd("peerGone");
         break;
@@ -573,19 +657,66 @@ export class CoopLink {
     }
   }
 
+  /**
+   * A relay notice in a game of three (D40): the presence of the seat it names. Losing the host is losing the game, as in a
+   * game of two; a guest coming and going is the host's to handle (Milestone 5: take-over, rejoin at the next wave). A link of
+   * three does not shake hands again after a drop yet.
+   */
+  private relayEventOfThree(event: RelayEvent): void {
+    switch (event.t) {
+      case "relay:peerLeft":
+      case "relay:peerBack":
+      case "relay:peerGone":
+        if (event.seat !== undefined) {
+          this.setPresence(event.seat, event.t === "relay:peerBack");
+        }
+        if (event.seat === "host" && event.t !== "relay:peerBack") {
+          this.notifyChange();
+          this.emitEnd(event.t === "relay:peerLeft" ? "peerLeft" : "peerGone");
+        }
+        break;
+      case "relay:paired":
+        for (const seat of this.presence.keys()) {
+          this.setPresence(seat, true);
+        }
+        break;
+      case "relay:closed":
+        this.closedReason = event.reason;
+        this.anyonePresent = false;
+        this.notifyChange();
+        this.emitEnd("peerGone");
+        break;
+      default:
+        break;
+    }
+  }
+
+  private setPresence(seat: Seat, present: boolean): void {
+    if (seat === this.seat || this.presence.get(seat) === present) {
+      return;
+    }
+    this.presence.set(seat, present);
+    this.anyonePresent = [...this.presence.values()].some(Boolean);
+    for (const listener of [...this.presenceListeners]) {
+      listener(seat, present);
+    }
+    this.notifyChange();
+  }
+
   /** The partner is here again (or this client got its seat back): a new pairing, a new handshake, and then a reload */
   private async relink(): Promise<void> {
     const relay = this.relay;
-    if (this.closed || relay === null) {
+    const reliable = this.reliable;
+    if (this.closed || relay === null || reliable === null) {
       return;
     }
-    this.present = true;
+    this.anyonePresent = true;
     this.relinkRefusal = null;
     // The host's RESYNC can follow its HELLO_OK in the same breath: a reload that has happened by the time this handshake
     // is through is the one this client was waiting for
     const epochBefore = this.channel.epoch;
-    this.reliable.reset();
-    this.reliable.attach(relay);
+    reliable.reset();
+    reliable.attach(relay);
     const context = this.context;
     if (context === null) {
       this.resyncNeeded = true;
@@ -596,7 +727,7 @@ export class CoopLink {
     try {
       const timeoutMs = context.timeoutMs === undefined ? {} : { timeoutMs: context.timeoutMs };
       if (this.seat === "host") {
-        result = await hostHandshake(this.reliable, context.build, context.pinned ?? {}, {
+        result = await hostHandshake(reliable, context.build, context.pinned ?? {}, {
           name: this.name,
           mode: "resume",
           ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
@@ -611,7 +742,7 @@ export class CoopLink {
       } else if (context.overlay === undefined) {
         throw new Error("a guest link needs its settings overlay to shake hands again");
       } else {
-        result = await guestHandshake(this.reliable, context.build, context.overlay, {
+        result = await guestHandshake(reliable, context.build, context.overlay, {
           name: this.name,
           ...timeoutMs,
           ...(context.accountId === undefined ? {} : { accountId: context.accountId }),
@@ -645,8 +776,8 @@ export class CoopLink {
     if (this.closed || this.relay !== relay) {
       return;
     }
-    this.present = false;
-    this.reliable.detach();
+    this.anyonePresent = false;
+    this.reliable?.detach();
     this.notifyChange();
     // Another connection took this seat with the same token (the player opened the game in a second tab, or the relay room
     // was closed under them): fighting for the seat back would make the two tabs take it from each other for ever
@@ -737,16 +868,22 @@ export interface RoomOptions {
   /** Default: the global `WebSocket` */
   webSocketFactory?: WebSocketFactory;
   reliable?: ReliableOptions;
+  /** A room of three (D40), when creating one; default two */
+  seats?: PlayerCount;
 }
 
 /** A room the host created and is waiting in. */
 export interface HostRoom {
   readonly identity: RelayIdentity;
   readonly relay: RelayWsTransport;
+  /** The channel of a room of two; a room of three gets one per guest when the host shakes hands (D40) */
   readonly reliable: ReliableTransport;
+  /** 2, or 3 (D40) */
+  readonly seats: PlayerCount;
+  readonly reliableOptions?: ReliableOptions | undefined;
   readonly url: string;
   readonly webSocketFactory?: WebSocketFactory | undefined;
-  /** Resolves when the guest joined (and again does not: the first pairing only); rejects if the room closed first */
+  /** Resolves when every guest joined (and again does not: the first time only); rejects if the room closed first */
   readonly partner: Promise<void>;
   cancel(): void;
 }
@@ -767,7 +904,8 @@ export interface GuestRoom {
  * @throws `RelayError` if the relay refuses
  */
 export async function createRoom(url: string, options: RoomOptions = {}): Promise<HostRoom> {
-  const relay = RelayWsTransport.connect(url, { mode: "create" }, options.webSocketFactory);
+  const seats = options.seats ?? 2;
+  const relay = RelayWsTransport.connect(url, { mode: "create", seats }, options.webSocketFactory);
   // Register before the code is shown: the guest can join the moment it is
   const partner = new Promise<void>((resolve, reject) => {
     relay.onRelayEvent(event => {
@@ -787,11 +925,14 @@ export async function createRoom(url: string, options: RoomOptions = {}): Promis
     relay.close();
     throw error;
   }
-  const reliable = new ReliableTransport(relay, options.reliable);
+  // A room of three has one channel per guest (D40): this one stays unattached
+  const reliable = new ReliableTransport(seats === 3 ? null : relay, options.reliable);
   return {
     identity,
     relay,
     reliable,
+    seats,
+    reliableOptions: options.reliable,
     url,
     webSocketFactory: options.webSocketFactory,
     partner,
@@ -896,6 +1037,58 @@ export class HandshakeRefusedError extends Error {
   }
 }
 
+/**
+ * The host of a room of three (D40): one channel per guest over the room's connection, a handshake on each, and a link whose
+ * transport sends to both. The two guests shake hands at the same time; a refusal of either refuses the game.
+ */
+async function establishHostOfThree(
+  room: HostRoom,
+  build: BuildIdentity,
+  pinned: PinnedSettings,
+  options: Parameters<typeof establishHost>[3] & object,
+): Promise<EstablishedHost> {
+  const hub = new RoutedHub(room.relay, ["guest", "guest2"]);
+  const channels = new Map<Seat, ReliableTransport>(
+    (["guest", "guest2"] as const).map(seat => [seat, new ReliableTransport(hub.channel(seat), room.reliableOptions)]),
+  );
+  const results = await Promise.all(
+    [...channels.values()].map(channel =>
+      hostHandshake(channel, build, pinned, {
+        players: 3,
+        ...(options.name === undefined ? {} : { name: options.name }),
+        ...(options.mode === undefined ? {} : { mode: options.mode }),
+        ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+        ...(options.expectedEffectiveSettingsHash === undefined
+          ? {}
+          : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
+        ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+      }),
+    ),
+  );
+  const [first, second] = results;
+  if (first === undefined || second === undefined || !first.ok || !second.ok) {
+    for (const channel of channels.values()) {
+      channel.close();
+    }
+    const refused = results.find(result => !result.ok);
+    throw new HandshakeRefusedError(
+      refused !== undefined && !refused.ok ? refused : { ok: false, reason: "timeout", mismatches: [] },
+    );
+  }
+  const link = new CoopLink({
+    seat: "host",
+    fanout: new FanoutTransport(channels),
+    players: 3,
+    peerNames: { guest: first.name, guest2: second.name },
+    relay: room.relay,
+    code: room.identity.code,
+    names: { mine: options.name ?? DEFAULT_NAME, theirs: `${cleanName(first.name)} & ${cleanName(second.name)}` },
+    ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
+    ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
+  });
+  return { link, remote: first.remote, partnerName: link.partnerName };
+}
+
 export interface EstablishedHost {
   link: CoopLink;
   remote: BuildIdentity;
@@ -926,6 +1119,9 @@ export async function establishHost(
     expectedGuestAccountId?: string;
   } = {},
 ): Promise<EstablishedHost> {
+  if ("seats" in room && room.seats === 3) {
+    return establishHostOfThree(room, build, pinned, options);
+  }
   const result = await hostHandshake(room.reliable, build, pinned, {
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.mode === undefined ? {} : { mode: options.mode }),
@@ -1001,8 +1197,9 @@ export async function establishGuest(
     throw new HandshakeRefusedError(result);
   }
   const link = new CoopLink({
-    seat: "guest",
+    seat: room.identity.seat,
     reliable: room.reliable,
+    players: result.hello.players,
     relay: room.relay,
     code: room.identity.code,
     names: { mine: options.name ?? DEFAULT_NAME, theirs: result.hello.name },

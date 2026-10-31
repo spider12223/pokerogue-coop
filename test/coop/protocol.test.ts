@@ -54,6 +54,7 @@ const hello: HelloPayload = {
   name: "Sam",
   mode: "new",
   runMode: "classic",
+  players: 2,
 };
 
 describe("DecisionKey", () => {
@@ -205,6 +206,10 @@ describe("HELLO", () => {
     expect(isHelloPayload({ ...hello, runMode: "endless" })).toBe(true);
     expect(isHelloPayload({ ...hello, runMode: "daily" })).toBe(false);
     expect(isHelloPayload({ ...hello, runMode: undefined })).toBe(false);
+    // the player count (D40)
+    expect(isHelloPayload({ ...hello, players: 3 })).toBe(true);
+    expect(isHelloPayload({ ...hello, players: 4 })).toBe(false);
+    expect(isHelloPayload({ ...hello, players: undefined })).toBe(false);
     expect(isHelloPayload({ build, pinnedSettings: hello.pinnedSettings, name: "Sam" })).toBe(false);
     // the guest says which account it is (D21)
     expect(isHelloAckPayload({ build, effectiveSettingsHash: "abc", name: "Sam", accountId: "1:2" })).toBe(true);

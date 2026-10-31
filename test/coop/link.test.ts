@@ -70,6 +70,17 @@ async function until(condition: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/** Wait until `done` holds (the relay is a real one, over real sockets) */
+async function waitFor(done: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!done()) {
+    if (Date.now() > deadline) {
+      throw new Error("timed out");
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
 describe("CoopLink over the relay", () => {
   let server: RelayServer;
   let url: string;
@@ -106,6 +117,57 @@ describe("CoopLink over the relay", () => {
     expect(host.seat).toBe("host");
     expect(guest.seat).toBe("guest");
     expect(host.code).toBe(code);
+  });
+
+  describe("three players (D40)", () => {
+    async function connectThree() {
+      const room = await createRoom(url, { reliable, seats: 3 });
+      const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+      const guest2Room = await joinRoom(url, room.identity.code, { reliable });
+      await room.partner;
+      const [host, guest, guest2] = await Promise.all([
+        establishHost(room, build, pinned, { name: "  Sam  " }),
+        establishGuest(guestRoom, build, guestOverlay, { name: "Alex" }),
+        establishGuest(guest2Room, build, guestOverlay, { name: "Kim\u0007" }),
+      ]);
+      links.push(host.link, guest.link, guest2.link);
+      return { host: host.link, guest: guest.link, guest2: guest2.link };
+    }
+
+    it("links three players, each in its seat, and the host knows the three names", async () => {
+      const { host, guest, guest2 } = await connectThree();
+      expect([host.seat, guest.seat, guest2.seat]).toEqual(["host", "guest", "guest2"]);
+      expect([host.players, guest.players, guest2.players]).toEqual([3, 3, 3]);
+      expect(host.names).toEqual({ host: "Sam", guest: "Alex", guest2: "Kim" });
+      expect(guest2.names).toMatchObject({ host: "Sam", guest2: "Kim" });
+    });
+
+    it("sequences a decision of the second guest to all three, in one order", async () => {
+      const { host, guest, guest2 } = await connectThree();
+      const key = { wave: 1, turn: 1, kind: "TURN_COMMANDS", ref: 3 } as const;
+      const got = [host, guest, guest2].map(link => link.sequencer.awaitDecision(key, { authors: ["guest2"] }));
+      guest2.sequencer.propose(key, { from: "guest2" });
+      const [onHost, onGuest, onGuest2] = await Promise.all(got);
+      expect(onHost).toMatchObject({ seq: 1, author: "guest2" });
+      expect(onGuest).toEqual(onHost);
+      expect(onGuest2).toEqual(onHost);
+    });
+
+    it("tells the host who left, and goes on with the guest who stays", async () => {
+      const { host, guest, guest2 } = await connectThree();
+      const changes: [string, boolean][] = [];
+      host.onPresence((seat, present) => changes.push([seat, present]));
+      guest.close();
+      await waitFor(() => !host.present("guest"));
+      expect(host.present("guest2")).toBe(true);
+      expect(changes).toContainEqual(["guest", false]);
+      const key = { wave: 1, turn: 2, kind: "TURN_COMMANDS", ref: 3 } as const;
+      const onHost = host.sequencer.awaitDecision(key, { authors: ["guest2"] });
+      const onGuest2 = guest2.sequencer.awaitDecision(key, { authors: ["guest2"] });
+      guest2.sequencer.propose(key, "still here");
+      expect((await onHost).payload).toBe("still here");
+      expect(await onGuest2).toEqual(await onHost);
+    });
   });
 
   it("refuses a join with a code that does not exist", async () => {

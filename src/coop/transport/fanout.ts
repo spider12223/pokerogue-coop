@@ -19,7 +19,7 @@ import type { Unsubscribe } from "#coop/transport/transport";
  */
 export class FanoutTransport implements EpochInner {
   private readonly listeners = new Set<(message: Envelope) => void>();
-  private pending: Envelope[] = [];
+  private early: Envelope[] = [];
 
   constructor(private readonly channels: ReadonlyMap<Seat, ReliableTransport>) {
     for (const [seat, channel] of channels) {
@@ -30,6 +30,21 @@ export class FanoutTransport implements EpochInner {
   /** The guest seats it sends to */
   get seats(): readonly Seat[] {
     return [...this.channels.keys()];
+  }
+
+  /** Envelopes sent and not yet acknowledged, over all guests */
+  get pending(): number {
+    let pending = 0;
+    for (const channel of this.channels.values()) {
+      pending += channel.pending;
+    }
+    return pending;
+  }
+
+  close(): void {
+    for (const channel of this.channels.values()) {
+      channel.close();
+    }
   }
 
   send(message: Envelope): void {
@@ -51,9 +66,9 @@ export class FanoutTransport implements EpochInner {
 
   onMessage(listener: (message: Envelope) => void): Unsubscribe {
     this.listeners.add(listener);
-    if (this.listeners.size === 1 && this.pending.length > 0) {
-      const waiting = this.pending;
-      this.pending = [];
+    if (this.listeners.size === 1 && this.early.length > 0) {
+      const waiting = this.early;
+      this.early = [];
       for (const message of waiting) {
         listener(message);
       }
@@ -65,7 +80,7 @@ export class FanoutTransport implements EpochInner {
 
   private deliver(message: Envelope): void {
     if (this.listeners.size === 0) {
-      this.pending.push(message);
+      this.early.push(message);
       return;
     }
     for (const listener of [...this.listeners]) {

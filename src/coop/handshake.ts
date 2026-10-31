@@ -16,6 +16,7 @@ import {
   isHelloAckPayload,
   isHelloPayload,
   type PinnedSettings,
+  type PlayerCount,
 } from "#coop/protocol";
 import type { MessageTransport, Scheduler, Unsubscribe } from "#coop/transport/transport";
 import { systemScheduler } from "#coop/transport/transport";
@@ -89,6 +90,8 @@ export interface HostHandshakeOptions extends HandshakeOptions {
   mode?: "new" | "resume";
   /** The kind of run (D39); the guest is told. Default `classic`. */
   runMode?: CoopRunMode;
+  /** How many players the game has (D40); the guest is told. Default 2. */
+  players?: PlayerCount;
   /** The guest account the run was saved with (D21): another one is refused, with `accountId` as the field that differs */
   expectedGuestAccountId?: string;
 }
@@ -170,6 +173,7 @@ export function hostHandshake(
       name: cleanName(options.name),
       mode: options.mode ?? "new",
       runMode: options.runMode ?? "classic",
+      players: options.players ?? 2,
     };
     transport.send({ key: null, author: "host", kind: "HELLO", payload: hello });
   });
