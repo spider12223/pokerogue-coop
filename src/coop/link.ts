@@ -669,6 +669,9 @@ export class CoopLink {
       case "relay:peerGone":
         if (event.seat !== undefined) {
           this.setPresence(event.seat, event.t === "relay:peerBack");
+          if (event.t !== "relay:peerBack") {
+            this.fanout?.stopSending(event.seat);
+          }
         }
         if (event.seat === "host" && event.t !== "relay:peerBack") {
           this.notifyChange();
@@ -676,9 +679,8 @@ export class CoopLink {
         }
         break;
       case "relay:paired":
-        for (const seat of this.presence.keys()) {
-          this.setPresence(seat, true);
-        }
+        // The room is full again; who is there is what the notices about each seat said (a seat freed and taken again is
+        // not the same player, D40)
         break;
       case "relay:closed":
         this.closedReason = event.reason;
@@ -1209,11 +1211,16 @@ export async function establishGuest(
       ...(options.accountId === undefined ? {} : { accountId: options.accountId }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     },
-    connection: {
-      url: room.url,
-      identity: room.identity,
-      ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
-    },
+    // A guest of three does not take its seat back by itself yet: its link ends when its connection drops (D40)
+    ...(result.hello.players === 3
+      ? {}
+      : {
+          connection: {
+            url: room.url,
+            identity: room.identity,
+            ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
+          },
+        }),
     ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
     ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
   });

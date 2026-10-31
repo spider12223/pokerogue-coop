@@ -268,8 +268,6 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
 
   // #region WebSocket: rooms
 
-  const peerOf = (code: string, seat: Seat): WebSocket | undefined => sockets.get(code)?.[otherSeat(seat)];
-
   /** Whether the room has three seats (D40): its frames are routed, and its notices name the seat */
   const isRoomOfThree = (code: string): boolean => registry.sizeOf(code) === 3;
 

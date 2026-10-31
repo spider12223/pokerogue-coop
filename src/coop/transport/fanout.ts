@@ -20,6 +20,8 @@ import type { Unsubscribe } from "#coop/transport/transport";
 export class FanoutTransport implements EpochInner {
   private readonly listeners = new Set<(message: Envelope) => void>();
   private early: Envelope[] = [];
+  /** Guests nothing is sent to any more: their connection dropped or they left */
+  private readonly gone = new Set<Seat>();
 
   constructor(private readonly channels: ReadonlyMap<Seat, ReliableTransport>) {
     for (const [seat, channel] of channels) {
@@ -48,20 +50,38 @@ export class FanoutTransport implements EpochInner {
   }
 
   send(message: Envelope): void {
-    for (const channel of this.channels.values()) {
-      channel.send(message);
+    for (const [seat, channel] of this.channels) {
+      if (!this.gone.has(seat)) {
+        channel.send(message);
+      }
     }
   }
 
   sendVolatile(message: Envelope): void {
-    for (const channel of this.channels.values()) {
-      channel.sendVolatile(message);
+    for (const [seat, channel] of this.channels) {
+      if (!this.gone.has(seat)) {
+        channel.sendVolatile(message);
+      }
     }
   }
 
   /** Send to one guest only (a `REJECT` goes to the guest whose proposal it refuses) */
   sendTo(seat: Seat, message: Envelope): void {
-    this.channels.get(seat)?.send(message);
+    if (!this.gone.has(seat)) {
+      this.channels.get(seat)?.send(message);
+    }
+  }
+
+  /**
+   * A guest's connection dropped, or they left: nothing more is sent to them, and what they had not acknowledged is not sent
+   * again (resending to a player who is not there would only fill the relay). A guest who comes back joins at a wave start
+   * with a reload of their own (D40), not on this channel's old numbers.
+   */
+  stopSending(seat: Seat): void {
+    if (this.channels.has(seat) && !this.gone.has(seat)) {
+      this.gone.add(seat);
+      this.channels.get(seat)?.detach();
+    }
   }
 
   onMessage(listener: (message: Envelope) => void): Unsubscribe {

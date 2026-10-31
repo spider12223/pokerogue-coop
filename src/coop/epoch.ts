@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Envelope, MessageKind } from "#coop/protocol";
+import type { Envelope, MessageKind, Seat } from "#coop/protocol";
 import type { MessageTransport, Unsubscribe } from "#coop/transport/transport";
 
 /**
@@ -64,6 +64,8 @@ export const MAX_HELD_NEWER = 2048;
  */
 export interface EpochInner extends MessageTransport {
   sendVolatile?(message: Envelope): void;
+  /** Send to one guest only (the host's fan-out in a game of three, D40) */
+  sendTo?(seat: Seat, message: Envelope): void;
 }
 
 /**
@@ -128,6 +130,16 @@ export class EpochTransport implements EpochInner {
       this.inner.send(stamped);
     } else {
       this.inner.sendVolatile(stamped);
+    }
+  }
+
+  /** Send to one guest only, where the transport below can (D40); else to whoever the transport below reaches */
+  sendTo(seat: Seat, message: Envelope): void {
+    const stamped = { ...message, epoch: this.current };
+    if (this.inner.sendTo === undefined) {
+      this.inner.send(stamped);
+    } else {
+      this.inner.sendTo(seat, stamped);
     }
   }
 

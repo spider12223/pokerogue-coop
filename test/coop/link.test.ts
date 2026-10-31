@@ -17,9 +17,11 @@ import {
 } from "#coop/protocol";
 import { CoopSession } from "#coop/session";
 import { StarterLobby } from "#coop/starter-lobby";
-import { createLoopbackPair } from "#coop/transport/loopback";
-import { RelayError } from "#coop/transport/relay-ws";
+import { FanoutTransport } from "#coop/transport/fanout";
+import { createLoopbackPair, createLoopbackRoom } from "#coop/transport/loopback";
+import { RelayError, type RelayEvent, type RelayWsTransport } from "#coop/transport/relay-ws";
 import { ReliableTransport } from "#coop/transport/reliable";
+import { RoutedHub } from "#coop/transport/routed";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type RelayServer, startRelayServer } from "../../coop-server/src/relay-server.ts";
 
@@ -81,6 +83,102 @@ async function waitFor(done: () => boolean, timeoutMs = 3000): Promise<void> {
   }
 }
 
+/** A relay connection whose notices the test sends (D40): what a link of three makes of them */
+class FakeRelay {
+  private readonly listeners = new Set<(event: RelayEvent) => void>();
+  onRelayEvent(listener: (event: RelayEvent) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+  onClose() {
+    return () => {};
+  }
+  close(): void {}
+  leave(): void {}
+  emit(event: RelayEvent): void {
+    for (const listener of [...this.listeners]) {
+      listener(event);
+    }
+  }
+}
+
+/** Three links over a loopback room of three, as the game wires them, with a relay the test speaks for at the host */
+function linksOfThree() {
+  const room = createLoopbackRoom(3);
+  const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+  const fanout = new FanoutTransport(
+    new Map([
+      ["guest", new ReliableTransport(hub.channel("guest"))],
+      ["guest2", new ReliableTransport(hub.channel("guest2"))],
+    ] as const),
+  );
+  const relay = new FakeRelay();
+  const host = new CoopLink({ seat: "host", fanout, players: 3, relay: relay as unknown as RelayWsTransport });
+  const guestReliable = new ReliableTransport(room.guests.get("guest")!);
+  const guest = new CoopLink({ seat: "guest", reliable: guestReliable, players: 3 });
+  const guest2 = new CoopLink({
+    seat: "guest2",
+    reliable: new ReliableTransport(room.guests.get("guest2")!),
+    players: 3,
+  });
+  return { room, relay, host, guest, guest2, guestReliable };
+}
+
+describe("CoopLink of three (D40)", () => {
+  const settle = () => new Promise(resolve => setTimeout(resolve, 30));
+
+  it("refuses a forged proposal to the guest who sent it only", async () => {
+    const { host, guest, guest2, guestReliable } = linksOfThree();
+    const atGuest: string[] = [];
+    const atGuest2: string[] = [];
+    guest.sequencer.onProposalRejected(({ reason }) => atGuest.push(reason));
+    guest2.sequencer.onProposalRejected(({ reason }) => atGuest2.push(reason));
+    guestReliable.send({
+      key: { wave: 1, turn: 1, kind: "TURN_COMMANDS", ref: 2 },
+      author: "guest2",
+      kind: "PROPOSE",
+      payload: 1,
+    });
+    await settle();
+    expect(atGuest).toEqual(["authorMismatch"]);
+    expect(atGuest2).toEqual([]);
+    for (const link of [host, guest, guest2]) {
+      link.close();
+    }
+  });
+
+  it("stops sending to a guest whose connection dropped, and the other guest still gets everything", async () => {
+    const { room, relay, host, guest2 } = linksOfThree();
+    const toGuest: string[] = [];
+    const send = room.host.send.bind(room.host);
+    room.host.send = (frame: string) => {
+      if (frame.startsWith("guest\n")) {
+        toGuest.push(frame);
+      }
+      send(frame);
+    };
+    relay.emit({ t: "relay:peerLeft", holdMs: null, seat: "guest" });
+    const key = { wave: 1, turn: 1, kind: "TURN_COMMANDS", ref: 0 } as const;
+    const onGuest2 = guest2.sequencer.awaitDecision(key);
+    void host.sequencer.awaitDecision(key);
+    host.sequencer.propose(key, "go on");
+    expect((await onGuest2).payload).toBe("go on");
+    await settle();
+    expect(toGuest).toEqual([]);
+    expect(host.present("guest")).toBe(false);
+    host.close();
+  });
+
+  it("takes a seat's presence from the notices about it, not from the room being full again", () => {
+    const { relay, host } = linksOfThree();
+    relay.emit({ t: "relay:peerGone", seat: "guest" });
+    relay.emit({ t: "relay:paired" });
+    expect(host.present("guest")).toBe(false);
+    expect(host.present("guest2")).toBe(true);
+    host.close();
+  });
+});
+
 describe("CoopLink over the relay", () => {
   let server: RelayServer;
   let url: string;
@@ -120,6 +218,14 @@ describe("CoopLink over the relay", () => {
   });
 
   describe("three players (D40)", () => {
+    it("ends a guest's link when its own connection drops: a link of three does not reconnect yet", async () => {
+      const { guest } = await connectThree();
+      const ends: string[] = [];
+      guest.onEnd(end => ends.push(end));
+      (guest as unknown as { relay: { close(): void } }).relay.close();
+      await waitFor(() => ends.includes("closed"));
+    });
+
     async function connectThree() {
       const room = await createRoom(url, { reliable, seats: 3 });
       const guestRoom = await joinRoom(url, room.identity.code, { reliable });
