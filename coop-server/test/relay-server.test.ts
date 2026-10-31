@@ -170,6 +170,87 @@ describe("relay server", () => {
     });
   });
 
+  describe("rooms of three (D40)", () => {
+    /** A host and two guests in a full room of three */
+    async function roomOfThree() {
+      const host = await connect("role=host&seats=3");
+      const created = await host.control("relay:created");
+      const guest = await connect(`code=${created.code}`);
+      expect((await guest.control("relay:joined")).seat).toBe("guest");
+      const guest2 = await connect(`code=${created.code}`);
+      expect((await guest2.control("relay:joined")).seat).toBe("guest2");
+      for (const client of [host, guest, guest2]) {
+        await client.control("relay:paired");
+      }
+      return { host, guest, guest2, code: created.code };
+    }
+
+    it("takes two guests, announces the room complete only then, and refuses a fourth", async () => {
+      const host = await connect("role=host&seats=3");
+      const created = await host.control("relay:created");
+      const guest = await connect(`code=${created.code}`);
+      await guest.control("relay:joined");
+      await host.expectSilence(150, text => text.includes("relay:paired"));
+      const guest2 = await connect(`code=${created.code}`);
+      await guest2.control("relay:joined");
+      await host.control("relay:paired");
+      const fourth = await connect(`code=${created.code}`);
+      expect(await fourth.control("relay:error")).toEqual({ t: "relay:error", reason: "full" });
+    });
+
+    it("routes the host's frames to one guest, and stamps each guest's frames with its seat", async () => {
+      const { host, guest, guest2 } = await roomOfThree();
+      host.send('guest2\n{"n":1}');
+      expect(await guest2.next()).toBe('{"n":1}');
+      await guest.expectSilence(150);
+      guest.send('{"n":2}');
+      expect(await host.next()).toBe('guest\n{"n":2}');
+      guest2.send('{"n":3}');
+      expect(await host.next()).toBe('guest2\n{"n":3}');
+      await guest.expectSilence(150);
+    });
+
+    it("drops a host frame without a route to a guest seat", async () => {
+      const { host, guest, guest2 } = await roomOfThree();
+      host.send('{"n":1}');
+      host.send('host\n{"n":2}');
+      host.send('guest3\n{"n":3}');
+      await guest.expectSilence(150);
+      await guest2.expectSilence(10);
+    });
+
+    it("keeps the room for the other two when a guest drops or ends its session", async () => {
+      const { host, guest, guest2 } = await roomOfThree();
+      guest.close();
+      expect(await host.control("relay:peerLeft")).toEqual({ t: "relay:peerLeft", holdMs: null, seat: "guest" });
+      expect(await guest2.control("relay:peerLeft")).toEqual({ t: "relay:peerLeft", holdMs: null, seat: "guest" });
+      host.send('guest2\n{"n":1}');
+      expect(await guest2.next()).toBe('{"n":1}');
+
+      guest2.socket.close(4003);
+      expect(await host.control("relay:peerGone")).toEqual({ t: "relay:peerGone", seat: "guest2" });
+      host.send('guest2\n{"n":2}');
+      await host.expectSilence(150, text => text.includes("relay:closed"));
+    });
+
+    it("closes the room for both guests when the host ends the session", async () => {
+      const { host, guest, guest2 } = await roomOfThree();
+      host.socket.close(4003);
+      for (const client of [guest, guest2]) {
+        expect(await client.control("relay:closed")).toEqual({ t: "relay:closed", reason: "partnerLeft" });
+      }
+    });
+
+    it("leaves a room of two exactly as it was: frames unprefixed, no seat in its notices", async () => {
+      const { host, guest } = await pairedRoom();
+      host.send('{"n":1}');
+      expect(await guest.next()).toBe('{"n":1}');
+      guest.close();
+      const left = await host.next(text => text.includes("relay:peerLeft"));
+      expect(left).toBe('{"t":"relay:peerLeft","holdMs":null}');
+    });
+  });
+
   describe("relaying", () => {
     it("forwards text frames verbatim in both directions", async () => {
       const { host, guest } = await pairedRoom();
