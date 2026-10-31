@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Seat } from "#coop/protocol";
+import type { SeatRecord } from "#coop/protocol";
 
 /**
  * The account data the simulation reads (DECISIONS D4), frozen at run start. During co-op the
@@ -35,7 +35,7 @@ export interface AccountSnapshot {
 }
 
 /** Both players' accounts. Which of the two a read uses is the host-or-owner rule of D4. */
-export type CoopAccountSnapshot = Record<Seat, AccountSnapshot>;
+export type CoopAccountSnapshot = SeatRecord<AccountSnapshot>;
 
 function isRecordOf(value: unknown, check: (entry: unknown) => boolean): boolean {
   return (

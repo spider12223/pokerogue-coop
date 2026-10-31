@@ -25,13 +25,55 @@ import { type CollectionData, isCollectionData } from "#coop/collection-data";
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
 export const COOP_PROTOCOL_VERSION = 10;
 
-/** The two players. The host is the sequencer (D2). */
-export type Seat = "host" | "guest";
+/** The players. The host is the sequencer (D2); a game of three has a second guest (D40). */
+export type Seat = "host" | "guest" | "guest2";
 
-/** Both seats, host first */
+/** How many players a game has (D40) */
+export type PlayerCount = 2 | 3;
+
+/** One value per seat; the second guest's only in a game of three (D40) */
+export type SeatRecord<T> = { host: T; guest: T; guest2?: T };
+
+/** The seats of a game of two, host first */
 export const SEATS: readonly Seat[] = ["host", "guest"];
 
+/** The seats of a game of three, host first (D40) */
+const SEATS_OF_THREE: readonly Seat[] = ["host", "guest", "guest2"];
+
+/** The seats of a game of this many players, host first (D40) */
+export function seatsFor(players: PlayerCount): readonly Seat[] {
+  return players === 3 ? SEATS_OF_THREE : SEATS;
+}
+
+/** A seat's peers in a game of this many players, in seat order (D40) */
+export function peers(seat: Seat, players: PlayerCount): readonly Seat[] {
+  return seatsFor(players).filter(other => other !== seat);
+}
+
+/**
+ * The value a seat must have: the second guest's exists only in a game of three (D40)
+ * @throws {@linkcode RangeError} If the seat has none
+ */
+export function ofSeat<T>(record: SeatRecord<T>, seat: Seat): T {
+  const value = record[seat];
+  if (value === undefined) {
+    throw new RangeError(`no ${seat} in this game`);
+  }
+  return value;
+}
+
+export function isSeat(value: unknown): value is Seat {
+  return (SEATS_OF_THREE as readonly unknown[]).includes(value);
+}
+
+/**
+ * The other seat of a game of two
+ * @throws {@linkcode RangeError} For the second guest, who has two peers ({@linkcode peers})
+ */
 export function otherSeat(seat: Seat): Seat {
+  if (seat === "guest2") {
+    throw new RangeError("the second guest has two peers");
+  }
   return seat === "host" ? "guest" : "host";
 }
 
@@ -191,7 +233,7 @@ export function isEnvelope(value: unknown): value is Envelope {
     return false;
   }
   const env = value as Record<string, unknown>;
-  if (env["author"] !== "host" && env["author"] !== "guest") {
+  if (!isSeat(env["author"])) {
     return false;
   }
   if (typeof env["kind"] !== "string" || !(MESSAGE_KINDS as readonly string[]).includes(env["kind"])) {
@@ -438,7 +480,7 @@ export const COOP_STARTER_POINTS = 15;
  */
 export interface StartPayload {
   runSeed: string;
-  starters: Record<Seat, CoopStarter[]>;
+  starters: SeatRecord<CoopStarter[]>;
   snapshots: CoopAccountSnapshot;
   timedEvents: string[];
 }

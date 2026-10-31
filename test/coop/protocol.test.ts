@@ -31,7 +31,10 @@ import {
   MAX_NAME_LENGTH,
   MAX_REF_LENGTH,
   NO_REF,
+  otherSeat,
+  peers,
   type StartPayload,
+  seatsFor,
 } from "#coop/protocol";
 import { describe, expect, it } from "vitest";
 
@@ -121,6 +124,26 @@ describe("display names (D1)", () => {
   });
 });
 
+describe("seats (D40)", () => {
+  it("lists the seats of a game of two or three, host first", () => {
+    expect(seatsFor(2)).toEqual(["host", "guest"]);
+    expect(seatsFor(3)).toEqual(["host", "guest", "guest2"]);
+  });
+
+  it("names a seat's peers in seat order", () => {
+    expect(peers("host", 2)).toEqual(["guest"]);
+    expect(peers("guest", 2)).toEqual(["host"]);
+    expect(peers("guest", 3)).toEqual(["host", "guest2"]);
+    expect(peers("guest2", 3)).toEqual(["host", "guest"]);
+  });
+
+  it("keeps the other seat for two players only", () => {
+    expect(otherSeat("host")).toBe("guest");
+    expect(otherSeat("guest")).toBe("host");
+    expect(() => otherSeat("guest2")).toThrow(RangeError);
+  });
+});
+
 describe("isEnvelope", () => {
   const sequenced: Envelope = { seq: 1, key, author: "host", kind: "SEQUENCED", payload: { move: 3 } };
 
@@ -128,11 +151,13 @@ describe("isEnvelope", () => {
     expect(isEnvelope(sequenced)).toBe(true);
     expect(isEnvelope({ key: null, author: "guest", kind: "HELLO", payload: hello })).toBe(true);
     expect(isEnvelope({ key, author: "guest", kind: "PROPOSE", payload: null })).toBe(true);
+    expect(isEnvelope({ key, author: "guest2", kind: "PROPOSE", payload: null })).toBe(true);
   });
 
   it("rejects what the sequencer could not handle", () => {
     expect(isEnvelope(null)).toBe(false);
     expect(isEnvelope({ ...sequenced, author: "spectator" })).toBe(false);
+    expect(isEnvelope({ ...sequenced, author: "guest3" })).toBe(false);
     expect(isEnvelope({ ...sequenced, kind: "WHATEVER" })).toBe(false);
     expect(isEnvelope({ ...sequenced, seq: 0 })).toBe(false);
     expect(isEnvelope({ ...sequenced, seq: undefined })).toBe(false);

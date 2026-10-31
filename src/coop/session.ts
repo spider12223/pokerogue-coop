@@ -13,7 +13,14 @@ import type { MeQuestion } from "#coop/me-choice";
 import { defaultStarterOwners, OwnerMap } from "#coop/ownership";
 import { PaceTracker } from "#coop/pace";
 import { PhaseTrace } from "#coop/phase-trace";
-import { type BuildIdentity, type CoopRunMode, type DecisionKey, otherSeat, type Seat } from "#coop/protocol";
+import {
+  type BuildIdentity,
+  type CoopRunMode,
+  type DecisionKey,
+  otherSeat,
+  type Seat,
+  type SeatRecord,
+} from "#coop/protocol";
 import {
   type MismatchInfo,
   type ReportPayload,
@@ -61,7 +68,7 @@ export interface CoopSessionInit {
   /** Both accounts, frozen at run start (D4); can also be set later with {@linkcode CoopSession.setAccountSnapshot} */
   accountSnapshot?: CoopAccountSnapshot | null;
   /** Who the two players are; defaults to the TID/SID pair of each account in the snapshot */
-  accountIds?: Record<Seat, string>;
+  accountIds?: SeatRecord<string>;
   /** Who owns each starter, in party order (D7); defaults to three each, the host's first */
   starterOwners?: readonly Seat[];
   /** The kind of run (D39): the host's choice, the guest's `HELLO`. Default `classic` */
@@ -88,7 +95,7 @@ export class CoopSession {
   public readonly build: BuildIdentity;
   private overlay: SettingsOverlayPort | null;
   private snapshot: CoopAccountSnapshot | null;
-  private readonly explicitAccountIds: Record<Seat, string> | null;
+  private readonly explicitAccountIds: SeatRecord<string> | null;
   /** Who owns which Pokémon (D7); a Pokémon that is not in it belongs to nobody (enemies) */
   public readonly ownership = new OwnerMap();
   /** Who owns each starter, in party order: the run is set up with it */
@@ -291,7 +298,7 @@ export class CoopSession {
     this.trainers = [];
   }
 
-  public get accountIds(): Record<Seat, string> {
+  public get accountIds(): SeatRecord<string> {
     if (this.explicitAccountIds !== null) {
       return this.explicitAccountIds;
     }
@@ -397,7 +404,7 @@ export class CoopSession {
   }
 
   /** @returns Who the two players are, or `null` while this session does not know yet (no ids and no snapshot) */
-  public knownAccountIds(): Record<Seat, string> | null {
+  public knownAccountIds(): SeatRecord<string> | null {
     return this.explicitAccountIds ?? (this.snapshot === null ? null : this.accountIds);
   }
 
@@ -410,7 +417,7 @@ export class CoopSession {
   }
 
   /** The display names of the two players, by seat (D1); the seat's own for a session without a network */
-  public get names(): Record<Seat, string> {
+  public get names(): SeatRecord<string> {
     const mine = this.link?.name ?? "Host";
     const theirs = this.link?.theirName ?? "Guest";
     return this.seat === "host" ? { host: mine, guest: theirs } : { host: theirs, guest: mine };

@@ -21,7 +21,7 @@ import { controllerOf, deciderOf, requireOwnerOf, switchTargets } from "#coop/co
 import { catchReleaseKey } from "#coop/decision-keys";
 import { describePhaseTraceDiff, diffPhaseTraces, type PhaseTraceEntry } from "#coop/phase-trace";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
-import { type DecisionKey, keysEqual, NO_REF, otherSeat, type Seat } from "#coop/protocol";
+import { type DecisionKey, keysEqual, NO_REF, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
 import type { ResyncPayload } from "#coop/resync";
 import { endCoopSession, requireCoopSession, startCoopSession } from "#coop/session";
 // biome-ignore lint/performance/noNamespaceImport: necessary in order to spy on `simAccount`
@@ -281,7 +281,7 @@ export interface WaveInfo {
   partyOrder: number[];
   /** The party members that are out on the field, and how many legal Pokémon each seat has */
   onField: number[];
-  legalBySeat: Record<Seat, number>;
+  legalBySeat: SeatRecord<number>;
   /** Enemy Pokémon in the party and on the field when the wave starts */
   enemyParty: number;
   /** The species of the enemy side, in party order */

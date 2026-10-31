@@ -5,7 +5,7 @@
  */
 
 import type { OwnerMap } from "#coop/ownership";
-import { type DecisionKey, otherSeat, type Seat } from "#coop/protocol";
+import { type DecisionKey, ofSeat, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
 import type { WindowEntry } from "#coop/sequencer";
 
 /**
@@ -69,7 +69,7 @@ export function checkTradeProposal(author: Seat, proposal: TradeProposePayload, 
   }
   // A gift (amended) is free, whatever the counts, as long as the giver keeps one of their own: a player with
   // none would have nothing to play
-  return owners.countBySeat()[author] >= 2 ? null : "lastOne";
+  return ofSeat(owners.countBySeat(), author) >= 2 ? null : "lastOne";
 }
 
 /**
@@ -105,7 +105,7 @@ export class TradeState {
   /** How many decisions of the phase were sequenced so far; part of every key's `ref` */
   public step = 0;
   public pending: PendingTrade | null = null;
-  public readonly done: Record<Seat, boolean> = { host: false, guest: false };
+  public readonly done: SeatRecord<boolean> = { host: false, guest: false };
   /** The trades that were accepted, in order */
   public readonly accepted: PendingTrade[] = [];
 

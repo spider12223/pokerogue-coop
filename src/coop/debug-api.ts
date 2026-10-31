@@ -19,7 +19,7 @@ import { openEmoteWheel, pingNow } from "#coop/hotkeys";
 import { getJoinCode } from "#coop/lobby";
 import { type PaceInfo, paceInfo } from "#coop/pace-run";
 import type { PhaseTraceEntry } from "#coop/phase-trace";
-import { keyId, type Seat } from "#coop/protocol";
+import { keyId, type Seat, type SeatRecord } from "#coop/protocol";
 import { reconnectScreenText } from "#coop/reconnect-ui";
 import { reportProblem } from "#coop/report-button";
 import { endSession } from "#coop/resync-run";
@@ -164,7 +164,7 @@ export interface CoopDebugApi {
     wave: number;
     epoch: number;
     seq: number;
-    names: Record<Seat, string>;
+    names: SeatRecord<string>;
     runMode: string | null;
   } | null;
   /** The phase trace: one entry per phase start with a hash of the RNG state (D13) */

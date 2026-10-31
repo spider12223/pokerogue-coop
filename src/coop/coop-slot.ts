@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type CoopRunMode, isCoopRunMode, type Seat } from "#coop/protocol";
+import { type CoopRunMode, isCoopRunMode, type SeatRecord } from "#coop/protocol";
 import type { KeyValueStore } from "#coop/seat-store";
 
 /**
@@ -34,9 +34,9 @@ export interface CoopSlot {
   epoch: number;
   /** The last `seq` the host had assigned (D18) */
   seq: number;
-  names: Record<Seat, string>;
+  names: SeatRecord<string>;
   /** `"trainerId:secretId"` of each account: the same two players only (D4, D21) */
-  accountIds: Record<Seat, string>;
+  accountIds: SeatRecord<string>;
   /** The session save, `JSON.stringify`d */
   session: string;
   /** The kind of run (D39), for the title menu; a slot from before has none and is classic */

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { otherSeat, type Seat } from "#coop/protocol";
+import { otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
 
 /**
  * Who owns which Pokémon (DECISIONS D7): `pokemon.id -> seat`. Ownership changes only through a trade or a catch.
@@ -96,8 +96,8 @@ export class OwnerMap {
   }
 
   /** How many Pokémon each seat owns (D11: a gift must make these more equal) */
-  public countBySeat(): Record<Seat, number> {
-    const counts: Record<Seat, number> = { host: 0, guest: 0 };
+  public countBySeat(): SeatRecord<number> {
+    const counts: SeatRecord<number> = { host: 0, guest: 0 };
     for (const seat of this.owners.values()) {
       counts[seat]++;
     }

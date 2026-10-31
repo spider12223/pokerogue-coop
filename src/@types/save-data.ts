@@ -151,7 +151,7 @@ export interface RunEntry {
   /** Automatically set to false at the moment - implementation TBD */
   isFavorite: boolean;
   /** A co-op run (DECISIONS D4a): who played it, and which of the two this account was */
-  coop?: { names: { host: string; guest: string }; seat: "host" | "guest" } | undefined;
+  coop?: { names: { host: string; guest: string }; seat: "host" | "guest" | "guest2" } | undefined;
 }
 
 export interface StarterDataEntry {

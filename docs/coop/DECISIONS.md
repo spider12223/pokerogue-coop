@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D39, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D40, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -41,7 +41,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
 | Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are, D37 find a partner, D38 the chat box |
-| Game modes | D39 Endless |
+| Game modes | D39 Endless, D40 three players |
 | Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
@@ -80,6 +80,8 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## D1. Pin and handshake
 
+A game of three has a second guest; each guest shakes hands with the host on its own channel (D40).
+
 - **Base.** The fork was built on upstream PokeRogue `main` at `a6995c571a092e762ea036589bb6f3a8fa4f5dbd` (version
   1.12.1.3) and has since merged upstream `main` at `7fd2ba7058e5f6a62eca96987f16072cece383da` (version 1.12.2.2), with
   the `assets` and `locales` submodules of that commit.
@@ -110,6 +112,8 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
   them from build arguments (D22).
 
 ## D2. Sequencing
+
+In a game of three the host sequences for both guests, who apply the same decisions in the same `seq` order (D40).
 
 - **The host is the sequencer.** Every state-changing decision gets a host-assigned, strictly increasing `seq`. The
   table below lists every kind.
@@ -258,6 +262,8 @@ Pinned in co-op to the host's values and enforced on both clients (the guest rec
 
 ## D6. Battle shape
 
+A game of three plays 3 of ours against 2 (D40).
+
 - Every battle is a double. The co-op rule is in `BattleScene.checkIsDouble`, before the "never double" edge cases.
 - The enemy count stays natural: a wild double means 2 enemies, so on a wave that ends in 0 a wild boss becomes two
   bosses. Accepted.
@@ -269,6 +275,8 @@ Pinned in co-op to the host's values and enforced on both clients (the guest rec
 - Battles of Mystery Encounters: D29.
 
 ## D7. Party and control
+
+In a game of three each player owns 2 of the 6 (D40).
 
 - One shared party array (max 6), plus an owner map `pokemon.id → host | guest`. Each player starts with 3.
 - **Control follows the owner of the Pokémon on the field, not the slot.**
@@ -1019,6 +1027,32 @@ A co-op run is Classic or Endless. Co-op Endless is solo Endless with every co-o
   **Continue (Endless, wave N)**. Run history shows the mode.
 - **The end:** as Classic's: a wipe asks the host to retry or end (D4a), then the end screen and Play again (D35). Play
   again keeps the mode.
+
+## D40. Three players
+
+A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; the host chooses 3 when hosting.
+
+- **Seats:** `host`, `guest`, `guest2` (`Seat`, `seatsFor`, `peers` in `src/coop/protocol.ts`). A game of two has the first
+  two only, so every 2-player path keeps its seat names; `otherSeat` is for a game of two.
+- **Network:** the host is the only sequencer and a hub: one reliable channel per guest. The relay room has three seats;
+  the relay stamps each guest frame with the sender's seat and routes the host's frames to one guest. Guests never talk to
+  each other directly. A 2-seat room is unchanged.
+- **Battle:** 3 player Pokémon against 2 enemies (a single boss stays one). The third player battler is numbered after the
+  enemies (`BattlerIndex.PLAYER_3 = 4`), so the enemies' numbers and everything sent over the wire stay. The field zooms
+  out (about 0.8). Any Pokémon can target any enemy. Enemies in a game of three get HP x1.5 and Attack and Sp. Atk x1.15,
+  bosses too.
+- **Party:** 2 Pokémon per player, 20 starter points shared, a catch cap of 2 per player.
+- **Turns:** each player commands the Pokémon in their slot; an empty slot is filled from a teammate's bench and commanded
+  by that teammate. Ball and Run are the host's decision.
+- **Between waves:** the reward picker rotates host, guest, guest2; a trade names its counterpart.
+- **Absent players:** after the AFK timer either waiting player may take over. A disconnected player's Pokémon are
+  commanded by take-over until they rejoin, its prompts are answered by the host, and nothing is written to its account.
+  A player who rejoins comes in at the next wave start; the other two are not reloaded. The host dropping pauses everyone.
+- **Saves:** the host chooses 2 or 3 players at **Continue** of a 3-player run. With 2 it plays as a game of two (2v2, no
+  buff), the absent player's two Pokémon commanded one by each present player; with 3 everything goes back. A run started
+  with 2 stays a game of two.
+- **End:** retry after a wipe is the host's (D4a); Play again starts a new game with whoever wants to play again.
+- **Find a partner** pairs two players only.
 
 ## See also
 
