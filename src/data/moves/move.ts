@@ -8469,7 +8469,8 @@ export class SketchAttr extends MoveEffectAttr {
 
       const targetMove = target.getLastNonVirtualMove();
       return (
-        targetMove != null
+        !user.isTransformed()
+        && targetMove != null
         && !invalidSketchMoves.has(targetMove.move)
         && user.getMoveset().every(m => m.moveId !== targetMove.move)
       );
