@@ -100,17 +100,35 @@ function accessor<T>(get: () => T, set: (value: T) => void): PropertyDescriptor 
   return { get, set, enumerable: true, configurable: true };
 }
 
+/** A partner's starter entry with nothing unlocked */
+const NOTHING_UNLOCKED: CollectionStarterEntry = { abilities: 0, passive: 0, reduction: 0, eggMoves: 0, wins: 0 };
+
+/**
+ * @returns Whether the player's own dex has the species: only then may their save hold starter data for it (upstream's
+ * check of a system save, `GameData.validateSystemData`, refuses the save otherwise and resets the game)
+ */
+function ownCaught(dex: DexEntry | undefined): boolean {
+  return dex === undefined || dex.caughtCount > 0 || dex.hatchedCount > 0 || dex.caughtAttr !== 0n;
+}
+
 /**
  * A starter entry of both players: the abilities, egg moves and passive either unlocked, the bigger cost reduction and win
  * count. Candies, friendship, the egg pity and the custom moveset are the player's own, and so is what the screen buys.
+ * On a Pokémon only the partner caught, the custom moveset, a cost reduction and a passive the screen changes are kept for
+ * the screen and never reach the player's own entry: their save may not have starter data for a species their dex lacks.
+ * @param caught - Whether the player's own dex has the species
  * @returns The player's own entry when the partner adds nothing to it
  */
 export function mergeStarterEntry(
   own: StarterDataEntry,
   partner: CollectionStarterEntry | undefined,
+  caught = true,
 ): StarterDataEntry {
   if (partner === undefined) {
-    return own;
+    if (caught) {
+      return own;
+    }
+    partner = NOTHING_UNLOCKED;
   }
   // The partner's values are clamped to the game's ranges, whatever came over the wire (`COLLECTION_LIMITS`)
   const partnerReduction = Math.max(0, Math.min(COLLECTION_LIMITS.reduction, partner.reduction));
@@ -119,7 +137,8 @@ export function mergeStarterEntry(
   const classicWinCount = Math.max(own.classicWinCount, Math.min(COLLECTION_LIMITS.wins, partner.wins));
   const partnerPassive = (partner.passive & Passive.UNLOCKED) !== 0;
   if (
-    abilityAttr === own.abilityAttr
+    caught
+    && abilityAttr === own.abilityAttr
     && eggMoves === own.eggMoves
     && classicWinCount === own.classicWinCount
     && partnerReduction <= own.valueReduction
@@ -129,7 +148,11 @@ export function mergeStarterEntry(
   }
   /** Whether a passive only the partner unlocked is on: the partner's choice until this player changes it */
   let partnerPassiveEnabled = partner.passive & Passive.ENABLED;
-  const ownsPassive = (): boolean => (own.passiveAttr & Passive.UNLOCKED) !== 0 || !partnerPassive;
+  const ownsPassive = (): boolean => caught && ((own.passiveAttr & Passive.UNLOCKED) !== 0 || !partnerPassive);
+  // What the screen changes on a Pokémon the player has not caught: shown, not saved
+  let screenMoveset = own.moveset;
+  let screenReduction = own.valueReduction;
+  let screenPassive = own.passiveAttr;
   const merged = { abilityAttr, eggMoves, classicWinCount } as StarterDataEntry;
   Object.defineProperties(merged, {
     candyCount: accessor(
@@ -151,25 +174,40 @@ export function mergeStarterEntry(
       },
     ),
     moveset: accessor(
-      () => own.moveset,
+      () => (caught ? own.moveset : screenMoveset),
       value => {
-        own.moveset = value;
+        if (caught) {
+          own.moveset = value;
+        } else {
+          screenMoveset = value;
+        }
       },
     ),
     // A reduction bought here (the next one after the bigger of the two) is this player's
     valueReduction: accessor(
-      () => Math.max(own.valueReduction, partnerReduction),
+      () => Math.max(caught ? own.valueReduction : screenReduction, partnerReduction),
       value => {
-        own.valueReduction = value;
+        if (caught) {
+          own.valueReduction = value;
+        } else {
+          screenReduction = value;
+        }
       },
     ),
     passiveAttr: accessor(
-      () => (ownsPassive() ? own.passiveAttr : Passive.UNLOCKED | partnerPassiveEnabled),
+      () => {
+        if (ownsPassive()) {
+          return own.passiveAttr;
+        }
+        return partnerPassive ? Passive.UNLOCKED | partnerPassiveEnabled : screenPassive;
+      },
       value => {
         if (ownsPassive()) {
           own.passiveAttr = value;
-        } else {
+        } else if (partnerPassive) {
           partnerPassiveEnabled = value & Passive.ENABLED;
+        } else {
+          screenPassive = value;
         }
       },
     ),
@@ -198,8 +236,9 @@ export function poolCollection(account: CollectionHolder, partners: CollectionDa
   }
   const starterData: StarterData = {};
   for (const [species, entry] of Object.entries(own.starterData)) {
+    const caught = ownCaught(own.dexData[Number(species)]);
     starterData[Number(species)] = all.reduce(
-      (merged, partner) => mergeStarterEntry(merged, partner.starters[Number(species)]),
+      (merged, partner) => mergeStarterEntry(merged, partner.starters[Number(species)], caught),
       entry,
     );
   }

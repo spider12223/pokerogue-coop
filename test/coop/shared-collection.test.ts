@@ -203,6 +203,55 @@ describe("the merge in place of the account", () => {
   });
 });
 
+describe("the save of a player who changed a Pokémon only the partner caught", () => {
+  afterEach(() => unpoolCollection());
+
+  /**
+   * Upstream's check of a system save (`GameData.validateSystemData`): a starter with starter data must have dex data. A
+   * save that fails it is not written; the game downloads the account again and resets.
+   */
+  function savesCleanly(account: CollectionHolder): boolean {
+    return Object.entries(account.starterData).every(([species, entry]) => {
+      const dex = account.dexData[Number(species)];
+      const hasStarterData =
+        entry.abilityAttr > 0
+        || entry.eggMoves > 0
+        || entry.moveset != null
+        || entry.passiveAttr > 0
+        || entry.valueReduction > 0;
+      const noDexData = dex.caughtCount === 0 && dex.hatchedCount === 0 && dex.caughtAttr === 0n;
+      return !(hasStarterData && noDexData);
+    });
+  }
+
+  it("keeps a moveset changed on the partner's Pokémon for the screen, out of the player's own save", () => {
+    const { own, partner } = accounts();
+    poolCollection(own, captureCollection(partner));
+    // Manage Moves on Mew, which only the partner caught: what the starter select writes
+    own.starterData[151].moveset = [94, 85, 58, 63];
+    expect(own.starterData[151].moveset).toEqual([94, 85, 58, 63]);
+    expect(savesCleanly(ownAccountData(own))).toBe(true);
+    expect(ownAccountData(own).starterData[151].moveset).toBeNull();
+  });
+
+  it("keeps a cost reduction bought for the partner's Pokémon out of the player's own save too", () => {
+    const { own, partner } = accounts();
+    poolCollection(own, captureCollection(partner));
+    own.starterData[151].valueReduction = 2;
+    expect(own.starterData[151].valueReduction).toBe(2);
+    expect(savesCleanly(ownAccountData(own))).toBe(true);
+  });
+
+  it("still saves a moveset changed on the player's own Pokémon", () => {
+    const { own, partner } = accounts();
+    const { starterData } = own;
+    poolCollection(own, captureCollection(partner));
+    own.starterData[1].moveset = [33, 45, 22, 73];
+    expect(starterData[1].moveset).toEqual([33, 45, 22, 73]);
+    expect(savesCleanly(ownAccountData(own))).toBe(true);
+  });
+});
+
 describe("the exchange on a link", () => {
   const links: CoopLink[] = [];
   const exchanges: CollectionExchange[] = [];
