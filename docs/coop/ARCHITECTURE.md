@@ -325,6 +325,24 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
   a game that is already running, such as a container built with `COOP_E2E=1`. Screenshots go to
   `test-results/screenshots/`.
 
+## Games of three (D40)
+
+A game of three is gated on the session's player count (`session.players`, the link's); a game of two keeps every key,
+frame and text.
+
+- **Network:** the relay room has three seats and stamps each guest frame with its seat; the host's `RoutedHub` gives one
+  `ReliableTransport` per guest and `FanoutTransport` sends to both (or one, `sendTo`) and marks what arrives with `from`.
+  The sequencer takes three seats (`seats`), trusts `from` only in a room of three, and keeps a take-over streak per
+  player. The host passes chat lines and cosmetic marks of one guest on to the other. A returning guest shakes hands
+  again on `hub.reopen(seat)` (`CoopLink.relinkGuest`) and comes in with the reload at the next wave start.
+- **Battle:** `BattlerIndex.PLAYER_3 = 4`, after the enemies; `Battle.playerSlots` and `getPlayerBattlerCount()` (the
+  enemy side keeps `getBattlerCount()`); `getField()` is five long. Commands are keyed by battler. `Pokemon.getAllies()` and
+  `isAllyOf()` are `[getAlly()]` outside a battle of three, both allies in one. `coop/enemy-buff.ts` makes enemies tougher in
+  `calculateStats`; `coop/three-field.ts` draws the teammates' bars and places the enemy boxes.
+- **Seats in the run:** `interleaveStarters` and `arrangeOrder` go round the seats; `session.actingSeatOf` is who commands a
+  Pokémon (its owner, or a present player for an absent one's in a run of three continued with two);
+  `swapGuestSeats` exchanges the guests in a save when they come back the other way round.
+
 ## Module map
 
 "Pure" means the module imports no game code (no `globalScene`, no Phaser), so both clients can run in one Node process

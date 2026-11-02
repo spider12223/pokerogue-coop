@@ -229,7 +229,8 @@ function sendAt(active: Pacer): void {
 
 function onMessage(active: Pacer, message: CosmeticMessage): void {
   const { session } = active;
-  if (message.t === "pace" && session.seat === "guest") {
+  // (both guests of a game of three follow the host, which follows whichever guest is furthest ahead: D27, D40)
+  if (message.t === "pace" && session.seat !== "host") {
     session.pace.setLeader(message.at);
     followSettings(active, message);
     catchUp(active);

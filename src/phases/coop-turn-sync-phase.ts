@@ -194,7 +194,8 @@ export class CoopTurnSyncPhase extends Phase {
       if (part.controller === me && decisions[index].author !== me) {
         // The command this player may have picked meanwhile is not the one that runs: say whose it is
         this.notice = coopText("tookOverTurn", "{{partner}} chose for {{pokemonName}} while you were away.", {
-          partner: session.partnerName,
+          // (whoever took over, in a game of three: D40)
+          partner: session.nameOf(decisions[index].author),
           pokemonName: getPokemonNameWithAffix(part.pokemon),
         });
       }
@@ -236,8 +237,11 @@ export class CoopTurnSyncPhase extends Phase {
     for (const { part } of users.slice(keptBefore ? 0 : 1)) {
       battle.preTurnCommands[part.battler] = { command: Command.FIGHT, targets: [part.battler], skip: true };
       if (part.controller === mySeat()) {
+        const session = requireCoopSession();
+        // (the one who did, in a game of three: D40)
+        const first = keptBefore || users.length === 0 ? null : users[0].part.controller;
         this.notice = coopText("partnerTeraFirst", "{{partner}} Terastallized first: no Tera for you this turn.", {
-          partner: requireCoopSession().partnerName,
+          partner: first === null || first === mySeat() ? session.partnerName : session.nameOf(first),
         });
       }
     }
@@ -267,7 +271,7 @@ export class CoopTurnSyncPhase extends Phase {
       if (payload === null) {
         if (!arrivedNow()) {
           // Back from the take-over menus: the line says again what this player waits for
-          showWaitingForPartner();
+          showWaitingForPartner([part.controller]);
           watcher.keepWaiting();
         }
         return;
@@ -296,7 +300,7 @@ export class CoopTurnSyncPhase extends Phase {
     const instant = allArrived();
     let watcher: AfkWatcher | null = null;
     if (!instant && partnerMissing()) {
-      showWaitingForPartner();
+      showWaitingForPartner(who.waitingFor());
       const afk: AfkWatcher = new AfkWatcher({ ...who, onTakeOver: () => onTakeOver(afk) });
       afk.start();
       watcher = afk;
@@ -378,8 +382,10 @@ export class CoopTurnSyncPhase extends Phase {
 
     // Declined: the proposer chooses again, nobody else is asked
     if (proposer.controller === mySeat()) {
+      const session = requireCoopSession();
       this.notice = coopText("sideActionDeclined", "{{partner}} said no. Choose again.", {
-        partner: requireCoopSession().partnerName,
+        // (the host, who decides in a game of three: D40)
+        partner: session.players === 3 ? session.nameOf("host") : session.partnerName,
       });
     }
     battle.turnCommands[proposer.battler] = null;

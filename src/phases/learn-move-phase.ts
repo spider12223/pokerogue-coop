@@ -92,7 +92,8 @@ export class LearnMovePhase extends PlayerPartyMemberPokemonPhase {
       wait: () => {
         globalScene.ui.showText(
           coopText("partnerDecidesLearn", "{{partner}} is deciding if {{pokemonName}} learns {{moveName}}…", {
-            partner: requireCoopSession().partnerName,
+            // (who decides, in a game of three: D40)
+            partner: requireCoopSession().nameOf(owner),
             pokemonName: getPokemonNameWithAffix(pokemon),
             moveName: move.name,
           }),

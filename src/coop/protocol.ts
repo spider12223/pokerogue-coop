@@ -672,6 +672,8 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
  */
 export interface ChatPayload {
   text: string;
+  /** Who said it, when the host of three passes a guest's line on to the other guest (D40) */
+  seat?: Seat;
 }
 
 /** The longest line the wire carries (the chat box itself keeps lines shorter) */
@@ -683,6 +685,7 @@ export function isChatPayload(value: unknown): value is ChatPayload {
     && value !== null
     && typeof (value as { text?: unknown }).text === "string"
     && (value as { text: string }).text.length <= CHAT_WIRE_MAX
+    && ((value as { seat?: unknown }).seat === undefined || isSeat((value as { seat?: unknown }).seat))
   );
 }
 

@@ -48,9 +48,12 @@ export function isPartnersPokemon(pokemon: Pokemon): boolean {
 
 /** @returns The text for picking the partner's Pokémon where only one's own may be picked, e.g. "Squirtle is Sam's." */
 export function notYourPokemonText(pokemon: Pokemon): string {
+  const session = getCoopSession();
+  const owner = session?.ownership.get(pokemon.id);
   return coopText("notYourPokemon", "{{pokemonName}} is {{partner}}'s.", {
     pokemonName: getPokemonNameWithAffix(pokemon, false),
-    partner: getCoopSession()?.partnerName ?? "Your partner",
+    // (its owner's name, in a game of three: D40)
+    partner: session === null ? "Your partner" : owner === undefined ? session.partnerName : session.nameOf(owner),
   });
 }
 

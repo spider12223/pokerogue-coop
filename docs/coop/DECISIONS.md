@@ -1097,7 +1097,13 @@ count from the host's `HELLO`.
   alternate); the absent player's Pokémon keep their owner but are commanded by the present players, the first (by id) by
   the host and the next by the guest, and nothing is written to the absent account. With 3 everything goes back. A run
   started with 2 stays a game of two. A host whose page reloads takes both guests back on channels of their own.
-- **End:** retry after a wipe is the host's (D4a); Play again starts a new game with whoever wants to play again.
+- **End:** retry after a wipe is the host's (D4a). Play again: the host hears each guest; with both, a new game of three;
+  with one, a new game of two with them; with none, "Nobody else wants to play again."
+- **Chat, marks and text:** one chat for the room: the host passes each guest's lines on to the other guest, and each line
+  shows its speaker's name in their colour (Mute stops both others' lines). The marks of what a teammate is choosing,
+  pings and emotes come from either teammate the same way (the host passes them on; the text pace does not travel between
+  guests: both guests follow the host, which follows whichever guest is ahead, D27). The texts that name the partner name
+  the player who acts: "Waiting for Alex and Kim…", "Kim is choosing…", "Alex took over for you", "Kim's".
 - **Find a partner** pairs two players only.
 
 ## D41. Challenges

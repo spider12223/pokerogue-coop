@@ -234,7 +234,9 @@ export class CoopTradePhase extends Phase {
         break;
     }
     if (decision.takeover === true && decision.author !== mySeat()) {
-      this.notice = coopText("tradeTookOver", "{{partner}} took over for you.", { partner: session.partnerName });
+      this.notice = coopText("tradeTookOver", "{{partner}} took over for you.", {
+        partner: session.nameOf(decision.author),
+      });
     }
   }
 

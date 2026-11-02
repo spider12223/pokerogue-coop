@@ -483,7 +483,8 @@ export class AttemptCapturePhase extends PokemonPhase {
                   wait: () =>
                     showWaitingLine(
                       coopText("partnerDecidesCatch", "{{partner}} is deciding about the catch…", {
-                        partner: getCoopSession()?.partnerName ?? "",
+                        // (the thrower, in a game of three: D40)
+                        partner: getCoopSession()?.nameOf(thrower) ?? "",
                       }),
                     ),
                   isPayload: isCatchReleasePayload,

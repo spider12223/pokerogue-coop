@@ -486,7 +486,8 @@ export class PartyUiHandler extends MessageUiHandler {
       if (coop !== null && coop.ownership.get(pokemon.id) !== releaser) {
         ui.playError();
         this.showText(
-          coopText("notYours", "That one is your partner's."),
+          // (whose it is, in a game of three: D40)
+          coop.players === 3 ? notYourPokemonText(pokemon) : coopText("notYours", "That one is your partner's."),
           undefined,
           () => this.showPartyText(),
           undefined,

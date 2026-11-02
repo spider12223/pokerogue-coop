@@ -143,7 +143,8 @@ export class SelectBiomePhase extends BattlePhase {
       wait: () =>
         showWaitingLine(
           coopText("partnerChoosesBiome", "{{partner}} is choosing the next biome…", {
-            partner: requireCoopSession().partnerName,
+            // (the last reward picker, who chooses it: D40)
+            partner: requireCoopSession().nameOf(requireCoopSession().lastRewardPicker),
           }),
         ),
       isPayload: isBiomePayload,

@@ -167,6 +167,27 @@ describe("CoopLink of three (D40)", () => {
     expect(host.needsResync).toBe(false);
   });
 
+  it("one chat for all three: a guest's line reaches the host and the other guest, with who said it", async () => {
+    const { host, guest, guest2 } = linksOfThree();
+    const atHost: [string, string][] = [];
+    const atGuest2: [string, string][] = [];
+    const atGuest: [string, string][] = [];
+    host.onChat((chat, from) => atHost.push([chat.text, from]));
+    guest.onChat((chat, from) => atGuest.push([chat.text, from]));
+    guest2.onChat((chat, from) => atGuest2.push([chat.text, from]));
+    guest.sendChat("hi all");
+    host.sendChat("hello");
+    await settle();
+    expect(atHost).toEqual([["hi all", "guest"]]);
+    // (in the order they reach it)
+    expect([...atGuest2].sort()).toEqual([
+      ["hello", "host"],
+      ["hi all", "guest"],
+    ]);
+    // nobody hears their own line back
+    expect(atGuest).toEqual([["hello", "host"]]);
+  });
+
   it("refuses a forged proposal to the guest who sent it only", async () => {
     const { host, guest, guest2, guestReliable } = linksOfThree();
     const atGuest: string[] = [];

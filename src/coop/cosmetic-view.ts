@@ -88,17 +88,21 @@ export class CosmeticView {
   /** The bubble of each seat: a new one replaces the old */
   private readonly bubbles = new Map<Seat, Phaser.GameObjects.GameObject>();
 
+  /** Who sent the message being handled: the partner, or in a game of three either of the others (D40) */
+  private partner: Seat;
+
   constructor(
     public readonly link: CoopLink,
-    /** The partner's seat */
-    private readonly partner: Seat,
+    /** The partner's seat (in a game of three, the one of the two others that is handled now) */
+    partner: Seat,
   ) {
-    this.unsubscribe = link.onCosmetic(message => this.handle(message));
+    this.partner = partner;
+    this.unsubscribe = link.onCosmetic((message, from) => this.handle(message, from));
   }
 
-  /** The partner's name, for the bubbles */
+  /** The name of who sent it, for the bubbles: the partner's, or in a game of three that player's (D40) */
   private get partnerName(): string {
-    return this.link.partnerName;
+    return this.link.players === 3 ? (this.link.names[this.partner] ?? this.link.partnerName) : this.link.partnerName;
   }
 
   /** @returns What is on screen, for the debug API */
@@ -134,7 +138,14 @@ export class CosmeticView {
   }
 
   /** What arrived on the cosmetic channel; it was validated and limited already ({@linkcode CoopLink.onCosmetic}) */
-  public handle(message: CosmeticMessage): void {
+  public handle(message: CosmeticMessage, from: Seat = this.partner): void {
+    // In a game of three it may come from either of the others (D40)
+    if (this.link.players === 3) {
+      if (from === this.link.seat) {
+        return;
+      }
+      this.partner = from;
+    }
     try {
       switch (message.t) {
         case "intent":
@@ -187,7 +198,12 @@ export class CosmeticView {
   /** The partner's command for this Pokémon was sequenced: it is ready, whatever the cosmetic channel got of it */
   public markReady(pokemonId: number): void {
     const session = getCoopSession();
-    if (session === null || session.ownership.get(pokemonId) !== this.partner) {
+    // (in a game of three, any of the others', D40)
+    const theirs =
+      session?.players === 3
+        ? session.ownership.get(pokemonId) !== session.seat
+        : session?.ownership.get(pokemonId) === this.partner;
+    if (session === null || !theirs) {
       return;
     }
     const known = this.intents.get(pokemonId);

@@ -9,6 +9,7 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { takeoverCancelLabel } from "#coop/afk";
 import { coopText } from "#coop/bridge";
 import { showOverlayMenu } from "#coop/overlay";
+import { getCoopSession } from "#coop/session";
 import { commandTargetPick } from "#coop/sim-rng";
 import type { TurnCommandsPayload } from "#coop/turn-commands";
 import { allMoves } from "#data/data-lists";
@@ -76,7 +77,10 @@ export function takeoverTargetLabel(user: Pokemon, target: Pokemon | undefined):
   if (target === user) {
     place = coopText("takeOverSelf", "self");
   } else if (target.isPlayer()) {
-    place = coopText("takeOverAlly", "ally");
+    // In a game of three two allies are told apart by whose they are (D40)
+    const session = getCoopSession();
+    const owner = session?.players === 3 ? session.ownership.get(target.id) : undefined;
+    place = owner === undefined ? coopText("takeOverAlly", "ally") : session!.nameOf(owner);
   } else if (target.fieldPosition === FieldPosition.LEFT) {
     place = coopText("takeOverLeft", "Left");
   } else if (target.fieldPosition === FieldPosition.RIGHT) {

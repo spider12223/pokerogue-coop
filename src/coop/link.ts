@@ -128,7 +128,7 @@ export class CoopLink {
   readonly players: PlayerCount;
 
   private readonly cosmeticSender: CosmeticSender;
-  private readonly cosmeticListeners = new Set<(message: CosmeticMessage) => void>();
+  private readonly cosmeticListeners = new Set<(message: CosmeticMessage, from: Seat) => void>();
   /** The one reliable channel of a game of two, and a guest's of a game of three; `null` for the host of a game of three */
   private readonly reliable: ReliableTransport | null;
   /** The host's channels to its two guests in a game of three (D40) */
@@ -154,7 +154,7 @@ export class CoopLink {
   private readonly resyncListeners = new Set<(message: ResyncMessage) => void>();
   private readonly resyncRequestListeners = new Set<(request: ResyncRequestPayload) => void>();
   private readonly reportListeners = new Set<(report: ReportPayload) => void>();
-  private readonly chatListeners = new Set<(chat: ChatPayload) => void>();
+  private readonly chatListeners = new Set<(chat: ChatPayload, from: Seat) => void>();
   /** A `RESYNC` that arrived while nobody listened for it: the host sends it right behind its `HELLO_OK` (D20) */
   private earlyResync: ResyncMessage | null = null;
   private readonly endListeners = new Set<(end: LinkEnd) => void>();
@@ -410,7 +410,8 @@ export class CoopLink {
   }
 
   /** The partner's cosmetic messages that are well-formed and within the limits (D16) */
-  onCosmetic(listener: (message: CosmeticMessage) => void): Unsubscribe {
+  /** @param listener - Called with each message and who sent it (D40: in a game of three, either of the others) */
+  onCosmetic(listener: (message: CosmeticMessage, from: Seat) => void): Unsubscribe {
     this.cosmeticListeners.add(listener);
     return () => {
       this.cosmeticListeners.delete(listener);
@@ -499,7 +500,8 @@ export class CoopLink {
     this.send({ key: null, author: this.seat, kind: "CHAT", payload: { text } satisfies ChatPayload });
   }
 
-  onChat(listener: (chat: ChatPayload) => void): Unsubscribe {
+  /** @param listener - Called with each line and who said it (D40: in a game of three, any of the others) */
+  onChat(listener: (chat: ChatPayload, from: Seat) => void): Unsubscribe {
     this.chatListeners.add(listener);
     return () => {
       this.chatListeners.delete(listener);
@@ -676,10 +678,20 @@ export class CoopLink {
         break;
       case "COSMETIC": {
         const accepted = message.author === this.seat ? null : this.cosmeticReceiver.accept(message.payload);
+        // Who sent it: the host knows each guest by its channel; a guest of three hears the other guest through the host,
+        // which passes it on under that guest's seat (D40)
+        const from = this.players === 3 && this.seat === "host" ? (message.from ?? message.author) : message.author;
+        if (accepted !== null && this.players === 3 && this.seat === "host" && PASSED_ON.has(accepted.t)) {
+          for (const other of ["guest", "guest2"] as const) {
+            if (other !== from) {
+              this.channel.sendTo(other, { key: null, author: from, kind: "COSMETIC", payload: accepted });
+            }
+          }
+        }
         if (accepted !== null) {
           for (const listener of [...this.cosmeticListeners]) {
             try {
-              listener(accepted);
+              listener(accepted, from);
             } catch (error) {
               console.error("co-op: a cosmetic listener failed:", error);
             }
@@ -689,8 +701,29 @@ export class CoopLink {
       }
       case "CHAT":
         if (isChatPayload(message.payload) && message.author !== this.seat) {
+          // Who said it: a guest of three hears the other guest through the host, which names them; the host knows each
+          // guest by its channel (D40)
+          const from =
+            this.players === 3
+              ? this.seat === "host"
+                ? (message.from ?? message.author)
+                : (message.payload.seat ?? "host")
+              : message.author;
+          if (this.players === 3 && this.seat === "host" && from !== "host") {
+            // the room's chat is one for all three: the other guest hears it too
+            for (const other of ["guest", "guest2"] as const) {
+              if (other !== from) {
+                this.channel.sendTo(other, {
+                  key: null,
+                  author: "host",
+                  kind: "CHAT",
+                  payload: { text: message.payload.text, seat: from } satisfies ChatPayload,
+                });
+              }
+            }
+          }
           for (const listener of [...this.chatListeners]) {
-            listener(message.payload);
+            listener(message.payload, from);
           }
         }
         break;
@@ -1017,6 +1050,9 @@ export class CoopLink {
     }
   }
 }
+
+/** The cosmetic messages a host of three passes on from one guest to the other (D40): not the pace, which is the host's */
+const PASSED_ON: ReadonlySet<string> = new Set(["intent", "cursor", "meCursor", "ping", "emote"]);
 
 // #region Rooms
 

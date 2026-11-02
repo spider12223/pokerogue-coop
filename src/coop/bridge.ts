@@ -57,8 +57,20 @@ export async function coopGate(): Promise<void> {
   await getCoopSession()?.beforeDecision?.();
 }
 
-/** "Waiting for your partner…" in the message box, for the side that does not decide; it goes when the wait is over. */
-export function showWaitingForPartner(): void {
+/**
+ * "Waiting for your partner…" in the message box, for the side that does not decide; it goes when the wait is over.
+ * @param seats - Who is waited for, named in a game of three (D40): "Waiting for Alex and Kim…"
+ */
+export function showWaitingForPartner(seats: readonly Seat[] = []): void {
+  const session = getCoopSession();
+  if (session !== null && session.players === 3 && seats.length > 0) {
+    showWaitingLine(
+      coopText("waitingFor", "Waiting for {{names}}…", {
+        names: seats.map(seat => session.nameOf(seat)).join(coopText("andJoin", " and ")),
+      }),
+    );
+    return;
+  }
   showWaitingLine(coopText("waitingForPartner", "Waiting for your partner…"));
 }
 
@@ -186,7 +198,7 @@ export async function coopDecide<P>(request: BridgeRequest<P>): Promise<Decision
         })
         .catch(error => reportBridgeError(error));
     } else {
-      (request.wait ?? showWaitingForPartner)();
+      (request.wait ?? (() => showWaitingForPartner([decider])))();
       watcher = watchForTakeover(link, request, ask, () => {
         takeoverScreen = true;
       });

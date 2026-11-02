@@ -605,7 +605,7 @@ export class SelectModifierPhase extends BattlePhase {
     this.takingOver = true;
     session.rewardTakeover = this.screen;
     this.rewardHandler()?.setCoopLabel(
-      coopText("takingOver", "You are choosing for {{partner}}.", { partner: session.partnerName }),
+      coopText("takingOver", "You are choosing for {{partner}}.", { partner: session.nameOf(this.picker) }),
     );
     this.rewardHandler()?.setCoopReadOnly(false);
   }

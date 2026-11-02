@@ -8,6 +8,8 @@ import { globalScene } from "#app/global-scene";
 import { CHAT_MAX, cleanChat, filterChat } from "#coop/chat-text";
 import { chatKeyName } from "#coop/hotkey-names";
 import type { CoopLink } from "#coop/link";
+import { playerColorHex } from "#coop/player-colors";
+import type { Seat } from "#coop/protocol";
 import { coopText } from "#coop/text";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
@@ -345,13 +347,18 @@ function drawHead(): void {
 
 type Who = "me" | "partner" | "note";
 
-function addLine(who: Who, text: string): void {
+function addLine(who: Who, text: string, from?: Seat): void {
   if (parts === null || chat === null) {
     return;
   }
   const item = element("li", `coop-chat-line coop-chat-${who}`);
   if (who !== "note") {
-    item.append(element("span", "coop-chat-name", `${who === "me" ? chat.mine : chat.partner}: `));
+    const said = who === "me" ? { name: chat.mine, color: null } : speaker(from);
+    const name = element("span", "coop-chat-name", `${said.name}: `);
+    if (said.color !== null) {
+      name.style.color = said.color;
+    }
+    item.append(name);
   }
   item.append(document.createTextNode(text));
   parts.log.append(item);
@@ -362,12 +369,17 @@ function addLine(who: Who, text: string): void {
 }
 
 /** While the box is closed, a line of the partner shows in the corner for a few seconds */
-function toast(text: string): void {
+function toast(text: string, from?: Seat): void {
   if (parts === null || chat === null) {
     return;
   }
   const item = element("div", "coop-chat-toast");
-  item.append(element("span", "coop-chat-name", `${chat.partner}: `), document.createTextNode(text));
+  const said = speaker(from);
+  const name = element("span", "coop-chat-name", `${said.name}: `);
+  if (said.color !== null) {
+    name.style.color = said.color;
+  }
+  item.append(name, document.createTextNode(text));
   parts.toasts.append(item);
   while (parts.toasts.childElementCount > TOASTS_MAX) {
     parts.toasts.firstElementChild?.remove();
@@ -447,7 +459,7 @@ function sendLine(raw: string): boolean {
   return true;
 }
 
-function received(text: string): void {
+function received(text: string, from: Seat): void {
   if (chat === null || chat.muted || !chat.receiving.take()) {
     return;
   }
@@ -456,12 +468,20 @@ function received(text: string): void {
     return;
   }
   const shown = filterChat(line);
-  addLine("partner", shown);
+  addLine("partner", shown, from);
   if (!chat.open) {
     chat.unread++;
-    toast(shown);
+    toast(shown, from);
     drawToggle();
   }
+}
+
+/** Who said a line: the partner, or in a game of three the one who said it, with their colour (D40) */
+function speaker(from: Seat | undefined): { name: string; color: string | null } {
+  if (chat === null || from === undefined || chat.link.players !== 3) {
+    return { name: chat?.partner ?? "", color: null };
+  }
+  return { name: chat.link.names[from] ?? chat.partner, color: playerColorHex(from) };
 }
 
 /**
@@ -486,7 +506,7 @@ export function startChat(link: CoopLink, mine: string): void {
     open: false,
     sending: new Bucket(SEND_BURST, SEND_EVERY_MS),
     receiving: new Bucket(RECEIVE_BURST, RECEIVE_EVERY_MS),
-    stop: link.onChat(payload => received(payload.text)),
+    stop: link.onChat((payload, from) => received(payload.text, from)),
   };
   addLine(
     "note",

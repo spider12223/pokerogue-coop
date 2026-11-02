@@ -73,6 +73,14 @@ Three friends can play one run together. It is a Beta: turn it on with **Setting
 - **Fainted Pokémon:** the owner sends in their other one. With none left, the next player in order (host, guest, second
   guest, then the host again) sends one of theirs and commands it.
 - **Catching:** each player holds up to two Pokémon; with two already, you release one or let the catch go.
+- **Rewards** go round: the host picks first, then the first guest, then the second. **Trading:** pick one of yours and
+  one of either friend's (their names are in their colour); for a gift, choose **Give to …**. The third player watches
+  while two trade; the screen ends when all three press Done.
+- **Someone leaves:** the other two play on; the host is asked to take over the missing player's choices. A friend who
+  comes back (or reloads the page) joins again at the start of the next wave. If the host leaves, the run waits for them.
+- **Saving:** **Continue (3 players, wave N)** asks 2 or 3 players. With 2, it plays as a normal game of two and the
+  missing friend's Pokémon are commanded by the two of you, one each, until they are back.
+- **Chat** is one box for all three, each name in its colour. **Play again** starts a new game with whoever wants it.
 
 ## Mystery Encounters
 
