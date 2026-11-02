@@ -14,7 +14,7 @@ import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
-import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";
+import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
 import { type LinkedRun, type LinkedScenario, openLinkedRun, pickerSkips, winWave } from "#test/helpers/coop-linked";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -117,6 +117,52 @@ describe("Co-op: save and resync (D13, D18, D19)", () => {
       expect(JSON.parse(r.session.waveSave!.json).waveIndex).toBe(1);
       expect(currentCoopSlot()).toBeNull();
       expect(localStorage.getItem(COOP_SLOT_KEY)).toBeUndefined();
+    });
+  });
+
+  describe("the reward-screen save (D19)", () => {
+    /** The partner reports the checkpoint of this index with a hash that is not the real client's: the host reloads */
+    function disagree(r: LinkedRun, index: number): void {
+      const local = r.session.checkpoints.entries[index]!;
+      r.partner.sendCheckpoint({ ...local, hash: "badbadbadbadba" });
+    }
+
+    it("is taken when the reward screen opens, in the host's slot too", async () => {
+      const r = await start();
+      expect(await winWave(r)).toBe(true);
+      expect(JSON.parse(r.session.waveSave!.json).coop.resumeAt).toMatchObject({ at: "rewards" });
+      expect(JSON.parse(currentCoopSlot()!.session).coop.resumeAt).toMatchObject({ at: "rewards" });
+      expect(r.session.waveSave!.wave).toBe(1);
+    });
+
+    it("brings a reload back to the same reward screen, not to the battle; the run then goes on", async () => {
+      const r = await start();
+      expect(await winWave(r)).toBe(true);
+      const rewards = r.session.checkpoints.entries.find(entry => entry.kind === "rewards")!;
+      const picks = r.session.rewardPickCount;
+
+      disagree(r, rewards.index);
+      await vi.waitUntil(() => r.partner.resyncs.length === 1, { interval: 5, timeout: 4000 });
+      const message = r.partner.resyncs[0] as ResyncPayload;
+      r.partner.beginEpoch(message.epoch, message.seq + 1);
+      expect(await advanceTo(r.ctx, ["SelectModifierPhase", "CommandPhase"])).toBe("SelectModifierPhase");
+      await openUi(r.ctx, "SelectModifierPhase");
+
+      // the same screen: the same options and the same picker
+      await vi.waitUntil(() => r.session.checkpoints.entries.some(entry => entry.kind === "rewards"), {
+        interval: 5,
+        timeout: 4000,
+      });
+      const again = r.session.checkpoints.entries.find(entry => entry.kind === "rewards")!;
+      expect(again.hash).toBe(rewards.hash);
+      expect(r.session.rewardPickCount).toBe(picks);
+      expect(r.session.desyncMessage).toBeNull();
+
+      // and after it, the next wave
+      pickerSkips(r);
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      expect(r.ctx.game.scene.currentBattle.waveIndex).toBe(2);
+      expect(r.session.desyncMessage).toBeNull();
     });
   });
 

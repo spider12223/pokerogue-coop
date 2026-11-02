@@ -520,6 +520,12 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 
 - A linked run saves at the start of each wave, in `EncounterPhase` after the enemies exist and before `doEncounter`
   (where a solo run calls `saveAll`). A linked run never calls `saveAll` and never writes a solo slot.
+- **The reward screen** saves too, when it opens (`SelectModifierPhase`, before its seed and its picker): a reload (a
+  refreshed tab, a rejoin, a desync, Continue) brings both players back to that screen, not to the start of the battle
+  they already won. The save's `coop` block says so (`resumeAt`: the screen's settings, the battle's turn, and the phases
+  after it, `SelectBiomePhase` and `NewBattlePhase`); the reload queues the screen and those instead of the encounter. A
+  reward screen it cannot rebuild (a Mystery Encounter's, one with tiers of its own, or one followed by other phases)
+  takes no save: a reload goes back to the wave start, as before.
 - **Host:** the save goes to a dedicated co-op slot, the `localStorage` key `coopSlot` (not `sessionData*`). It holds
   the session save (with the `coop` block, D4, D7), both display names, the last epoch and the last `seq`. It is removed
   when the run ends (victory, game over) and kept when the players only leave.
@@ -543,7 +549,8 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   one rejoins by itself, so a reloaded or reopened tab is back in the room. A refused token (`notFound`, `badToken`) is
   forgotten.
 - A rejoin is a new pairing: both clients start their reliable channel again (numbers from 1), repeat the handshake
-  (D1), and the host sequences a `RESYNC` (D13): both reload the current wave start under a new epoch. A client whose
+  (D1), and the host sequences a `RESYNC` (D13): both reload the latest save (the wave start, or the reward screen,
+  D19) under a new epoch. A client whose
   own connection dropped does the same when it is back. Messages sent before the pairing never reach the new one: the
   remaining client stops sending when the partner leaves.
 - A host that was reloaded reads its co-op slot (D19); a guest that was reloaded receives the save from the host.
@@ -564,8 +571,8 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 - The guest joins with the code through "Join a game". It must be the same guest account as in the save (the
   `accountId` of `HELLO_ACK`, D1); another account is refused. The host's own account is checked against the save when
   the slot is loaded.
-- After the handshake the host sequences a `RESYNC` at once: both load the wave-start save and continue, with the epoch
-  after the slot's.
+- After the handshake the host sequences a `RESYNC` at once: both load the slot's save (a wave start or a reward screen,
+  D19) and continue, with the epoch after the slot's.
 - **Continue** first checks that this build can load the slot; if it cannot, the host is told why and may delete it.
 - `COOP_PROTOCOL_VERSION` in `src/coop/protocol.ts` (9) is bumped by any incompatible change to a message shape. Two
   builds pair only when they are the same commit anyway (D1).

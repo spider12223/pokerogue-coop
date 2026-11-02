@@ -49,7 +49,7 @@ const before = (a: readonly number[], b: readonly number[]): boolean =>
 const atRewards = (state: PlayState): boolean =>
   state.phase?.name === "SelectModifierPhase" && state.ui === "MODIFIER_SELECT";
 
-test.describe("co-op: the host's screen is the clock of the text (D27)", () => {
+test.describe("co-op: the faster player leads the text (D27)", () => {
   useRelay();
 
   test("the guest keeps up without pressing on a line, the lines match, and its press moves the host", async ({
@@ -103,6 +103,9 @@ test.describe("co-op: the host's screen is the clock of the text (D27)", () => {
         playUntil(guest, "a line both wait on", sameLine, 300_000, false, "own"),
       ]);
       const line = (await paceOf(host))!.open!;
+      // The guest's press closes the host's line once: as a press, or as the guest's position past it, whichever comes first
+      const moved = (pace: Pace): number => pace.stats.presses + pace.stats.followed;
+      const hostMoves = moved((await paceOf(host))!);
       await press(guest, "ACTION");
       await expect
         .poll(async () => before(line, (await paceOf(host))!.position), {
@@ -110,7 +113,7 @@ test.describe("co-op: the host's screen is the clock of the text (D27)", () => {
           timeout: 10_000,
         })
         .toBe(true);
-      expect((await paceOf(host))!.stats.presses).toBe(1);
+      expect(moved((await paceOf(host))!)).toBe(hostMoves + 1);
 
       expect(host.errors, "host console errors").toEqual([]);
       expect(guest.errors, "guest console errors").toEqual([]);

@@ -99,6 +99,17 @@ export class PhaseTree {
     this.add(phase, 0);
   }
 
+  /** Co-op (D19): the names of the queued phases, in the order they will run */
+  public queuedNames(): string[] {
+    const names: string[] = [];
+    for (let level = this.levels.length - 1; level >= 0; level--) {
+      for (const phase of this.levels[level]) {
+        names.push(phase.phaseName);
+      }
+    }
+    return names;
+  }
+
   /**
    * Remove and return the first {@linkcode Phase} from the topmost level of the tree.
    * @returns The next {@linkcode Phase}, or `undefined` if the Tree is empty

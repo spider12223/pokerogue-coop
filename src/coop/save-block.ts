@@ -37,6 +37,36 @@ export interface CoopSaveBlock {
   events?: string[];
   /** The trainer types the run has met (D34); a save of an earlier version has none */
   trainers?: number[];
+  /** A save taken when a reward screen opened (D19): a reload goes back to that screen, not to the wave start */
+  resumeAt?: RewardResume;
+}
+
+/** Where a reward-screen save resumes (D19): the screen, with the wave's fixed settings or none, and the phases after it */
+export interface RewardResume {
+  at: "rewards";
+  fixedSettings: boolean;
+  after: string[];
+  /** The battle's turn counter at the screen: a save does not keep it, and the state hash counts it (D13) */
+  turn: number;
+}
+
+/** The phases a reward-screen save may queue after the screen */
+const RESUME_PHASES: readonly string[] = ["SelectBiomePhase", "NewBattlePhase"];
+
+/** @returns Whether `value` is a reward-screen save's plan (D19) */
+export function isRewardResume(value: unknown): value is RewardResume {
+  const resume = value as Record<string, unknown> | null;
+  return (
+    typeof resume === "object"
+    && resume !== null
+    && resume["at"] === "rewards"
+    && typeof resume["fixedSettings"] === "boolean"
+    && Array.isArray(resume["after"])
+    && resume["after"].length <= RESUME_PHASES.length
+    && resume["after"].every(name => RESUME_PHASES.includes(name as string))
+    && Number.isInteger(resume["turn"])
+    && (resume["turn"] as number) >= 0
+  );
 }
 
 /** At most this many trainer types are saved (D34): more than the game has */
@@ -82,6 +112,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
     && isCoopAccountSnapshot(block["accounts"])
     && (block["events"] === undefined || isTimedEventNames(block["events"]))
     && (block["trainers"] === undefined || isTrainerTypeList(block["trainers"]))
+    && (block["resumeAt"] === undefined || isRewardResume(block["resumeAt"]))
   );
 }
 

@@ -8,6 +8,7 @@ import { globalScene } from "#app/global-scene";
 import { challengesOn } from "#coop/challenge-pick";
 import { coopLog } from "#coop/coop-log";
 import { COOP_SLOT_VERSION, type CoopSlot, clearCoopSlot, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
+import type { RewardResume } from "#coop/save-block";
 import type { KeyValueStore } from "#coop/seat-store";
 import { getCoopSession } from "#coop/session";
 
@@ -44,7 +45,7 @@ export function removeCoopSlot(): void {
 /**
  * Take the wave-start save of the wave that is about to be played (D19). A no-op in solo play.
  */
-export function saveCoopWaveStart(): boolean {
+export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
   const session = getCoopSession();
   if (session == null) {
     return true;
@@ -59,6 +60,10 @@ export function saveCoopWaveStart(): boolean {
     .saveSystem()
     .catch((error: unknown) => console.warn("co-op: saving the account failed:", error));
   const data = globalScene.gameData.getSessionSaveData();
+  if (resumeAt !== undefined && data.coop !== undefined) {
+    // A reward-screen save (D19): a reload goes back to the screen
+    data.coop.resumeAt = resumeAt;
+  }
   const json = JSON.stringify(data);
   session.waveSave = { wave: data.waveIndex, epoch: link?.epoch ?? 0, json };
   // Only the host's run with a network has a slot; the guest, and a session without a network (the rules harness), keep the

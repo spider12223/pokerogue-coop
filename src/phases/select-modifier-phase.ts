@@ -18,9 +18,11 @@ import {
   rewardKey,
   rewardWindow,
 } from "#coop/reward-actions";
+import { rewardResumePlan } from "#coop/reward-resume";
 import { ProposalRejectedError, type RejectReason } from "#coop/sequencer";
 import { isCoop, requireCoopSession, rewardPickerOf } from "#coop/session";
 import { tradeRequestKey } from "#coop/trade";
+import { saveCoopWaveStart } from "#coop/wave-save";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { PartyUiMode } from "#enums/party-ui-mode";
@@ -131,6 +133,14 @@ export class SelectModifierPhase extends BattlePhase {
     }
 
     if (!this.rerollCount && !this.isCopy) {
+      if (isLinked()) {
+        // A reload (a refresh, a rejoin) comes back to this screen, not to the battle that was won (D19). Saved before the
+        // screen's seed and picker, which the reload's screen takes again
+        const resume = rewardResumePlan(this.modifierTiers, this.customModifierSettings);
+        if (resume !== null) {
+          saveCoopWaveStart(resume);
+        }
+      }
       this.updateSeed();
       if (isCoop()) {
         // A new reward screen (a reroll is the same one): the picker alternates with the count (D9)

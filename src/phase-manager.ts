@@ -421,6 +421,11 @@ export class PhaseManager {
    * @param condition - An optional {@linkcode PhaseConditionFunc} to add conditions to the search
    * @returns Whether a matching phase exists
    */
+  /** Co-op (D19): the names of the phases queued behind the current one, in the order they will run */
+  public queuedPhaseNames(): string[] {
+    return this.phaseQueue.queuedNames();
+  }
+
   public hasPhaseOfType<T extends PhaseString>(name: T, condition?: PhaseConditionFunc<T>): boolean {
     return this.dynamicQueueManager.exists(name, condition) || this.phaseQueue.exists(name, condition);
   }

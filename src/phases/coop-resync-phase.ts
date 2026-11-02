@@ -9,6 +9,7 @@ import { Phase } from "#app/phase";
 import { reportBridgeError } from "#coop/bridge";
 import type { ResyncPayload } from "#coop/resync";
 import { beforeReload, showReloadFailed } from "#coop/resync-run";
+import { queueRewardResume } from "#coop/reward-resume";
 import { getCoopSession, requireCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { BattleType } from "#enums/battle-type";
@@ -45,9 +46,37 @@ export class CoopResyncPhase extends Phase {
     });
   }
 
+  /** Whether the save is a reward screen's (D19): the reload goes back to the rewards, not to the wave start */
+  private atRewards(): boolean {
+    try {
+      return (JSON.parse(this.message.save) as { coop?: { resumeAt?: unknown } }).coop?.resumeAt !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
   private noticeText(): string {
     const session = requireCoopSession();
     const wave = this.message.wave;
+    if (this.atRewards()) {
+      switch (this.message.reason) {
+        case "rejoin":
+          return coopText("resyncRejoinRewards", "{{partner}} is back. Back to the rewards of wave {{wave}}.", {
+            partner: session.partnerName,
+            wave,
+          });
+        case "resume":
+          return coopText("resyncResumeRewards", "Back to the rewards of wave {{wave}}.", { wave });
+        case "retry":
+          break;
+        default:
+          return coopText(
+            "resyncMismatchRewards",
+            "Your game and {{partner}}'s stopped matching. Reloading the rewards of wave {{wave}}.",
+            { partner: session.partnerName, wave },
+          );
+      }
+    }
     switch (this.message.reason) {
       case "rejoin":
         return coopText("resyncRejoin", "{{partner}} is back. Resuming wave {{wave}} from its start.", {
@@ -82,6 +111,14 @@ export class CoopResyncPhase extends Phase {
     session.waveSave = { wave: this.message.wave, epoch: this.message.epoch, json: this.message.save };
 
     const { phaseManager } = globalScene;
+    const resume = session.resumeAt;
+    session.resumeAt = null;
+    if (resume !== null) {
+      // A reward-screen save: back to that screen and what follows it (D19)
+      queueRewardResume(resume);
+      await this.finish(session);
+      return;
+    }
     phaseManager.pushNew("EncounterPhase", true);
     const available = globalScene.getPokemonAllowedInBattle().length;
     const { currentBattle } = globalScene;
@@ -99,9 +136,14 @@ export class CoopResyncPhase extends Phase {
       }
     }
 
+    await this.finish(session);
+  }
+
+  /** The wave is loaded: the notice stays a moment, and the run goes on */
+  private async finish(session: ReturnType<typeof requireCoopSession>): Promise<void> {
     session.timing["reloadedAt"] = Date.now();
     await new Promise<void>(resolve => globalScene.time.delayedCall(fixedInt(NOTICE_MS), resolve));
-    ui.clearText();
+    globalScene.ui.clearText();
     session.reloading = false;
     this.end();
   }

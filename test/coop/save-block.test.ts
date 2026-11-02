@@ -61,8 +61,22 @@ describe("coop save block (D4, D7, D9)", () => {
     ["timed events that are no names", { events: [7] }],
     ["met trainers that are no trainer types", { trainers: ["YOUNGSTER"] }],
     ["a negative met trainer", { trainers: [-1] }],
+    [
+      "a resume point that is not the rewards",
+      { resumeAt: { at: "battle", fixedSettings: false, after: [], turn: 1 } },
+    ],
+    [
+      "a resume point followed by a phase it cannot queue",
+      { resumeAt: { at: "rewards", fixedSettings: false, after: ["GameOverPhase"], turn: 1 } },
+    ],
+    ["a resume point without its turn", { resumeAt: { at: "rewards", fixedSettings: false, after: [] } }],
   ])("rejects a block with %s", (_name, change) => {
     expect(isCoopSaveBlock({ ...block(), ...change })).toBe(false);
+  });
+
+  it("takes a reward-screen resume point (D19)", () => {
+    const resumeAt = { at: "rewards", fixedSettings: true, after: ["SelectBiomePhase", "NewBattlePhase"], turn: 3 };
+    expect(isCoopSaveBlock({ ...block(), resumeAt })).toBe(true);
   });
 });
 

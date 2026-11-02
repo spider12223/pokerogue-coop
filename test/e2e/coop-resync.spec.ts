@@ -95,6 +95,24 @@ const afterReload =
   async (state: State): Promise<boolean> =>
     (await coop<number>(client, "epoch")) >= 1 && atCommand(wave)(state);
 
+/** The reward screen of `wave`, in the world that was loaded by a reload (D19) */
+const rewardsAfterReload =
+  (client: Client, wave: number) =>
+  async (state: State): Promise<boolean> =>
+    (await coop<number>(client, "epoch")) >= 1
+    && state.wave === wave
+    && state.phase?.name === "SelectModifierPhase"
+    && state.ui === "MODIFIER_SELECT";
+
+/** The reload went back to the reward screen, not to the battle: the new epoch starts at the screen (D19) */
+async function expectBackAtRewards(host: Client, guest: Client): Promise<void> {
+  for (const client of [host, guest]) {
+    const [first] = await currentEpochCheckpoints(client);
+    expect(first?.kind, `${client.label}: the first checkpoint after the reload`).toBe("rewards");
+  }
+  await expectEqualHashes(host, guest);
+}
+
 /** The checkpoints of the epoch this client is in now (an epoch starts its log again from the loaded wave, D18) */
 async function currentEpochCheckpoints(client: Client): Promise<Checkpoint[]> {
   return checkpointsOf(client);
@@ -255,7 +273,7 @@ test.describe("co-op: save, reconnect, resync", () => {
   );
 
   scenario(
-    "the host closes its tab on the reward screen: the guest waits, the host rejoins, both resume",
+    "the host closes its tab on the reward screen: the guest waits, the host rejoins, both are back on that screen",
     async (browser, testInfo) => {
       const { hostContext, guestContext, host, guest } = await startRun(browser);
       let hostAgain: Client = host;
@@ -282,8 +300,11 @@ test.describe("co-op: save, reconnect, resync", () => {
         // the host opens the game again in the same browser: it takes its seat back and loads its slot
         hostAgain = await openClient(hostContext, "host");
         await waitForCoopApi(hostAgain);
-        const { ms, timing } = await timeToPlayable(hostAgain, 1);
-        await playUntil(guest, "wave 1 commands again", afterReload(guest, 1));
+        await playUntil(hostAgain, "the reward screen again", rewardsAfterReload(hostAgain, 1));
+        const now = Date.now();
+        const timing = await coop<Timing>(hostAgain, "timing");
+        const ms = now - (timing.rejoinStartedAt ?? now);
+        await playUntil(guest, "the reward screen again", rewardsAfterReload(guest, 1));
         console.log(
           `co-op e2e host reopen: playable ${Math.round(ms)} ms after the rejoin began; ${JSON.stringify(timing)}`,
         );
@@ -294,8 +315,9 @@ test.describe("co-op: save, reconnect, resync", () => {
 
         expect(await coop<number>(hostAgain, "epoch")).toBe(1);
         expect(await coop<number>(guest, "epoch")).toBe(1);
-        // the wave is played again, to the same reward screen, and the hashes of the two clients are the same
-        await Promise.all([playToRewardScreen(hostAgain, 0), playToRewardScreen(guest, 0)]);
+        // the same reward screen, not the battle again (D19), with the same hashes; then the run goes on
+        await expectBackAtRewards(hostAgain, guest);
+        await toWave2(hostAgain, guest);
         await expectEqualHashes(hostAgain, guest);
       } catch (error) {
         const state = JSON.stringify(
@@ -306,6 +328,34 @@ test.describe("co-op: save, reconnect, resync", () => {
         await testInfo.attach("clients.json", { body: state, contentType: "application/json" });
         console.log(`co-op e2e (host reopen) failed; clients: ${state}`);
         failed(error, hostAgain, guest);
+      } finally {
+        await hostContext.close();
+        await guestContext.close();
+      }
+    },
+  );
+
+  scenario(
+    "the guest refreshes on the reward screen: both are back on that screen, not in the battle (D19)",
+    async (browser, testInfo) => {
+      const { hostContext, guestContext, host, guest } = await startRun(browser);
+      try {
+        await Promise.all([playToRewardScreen(host, 0), playToRewardScreen(guest, 0)]);
+        await guest.page.reload();
+        await waitForCoopApi(guest);
+
+        await playUntil(guest, "the reward screen again", rewardsAfterReload(guest, 1));
+        await playUntil(host, "the reward screen again", rewardsAfterReload(host, 1));
+        await shot(guest, "refresh-on-rewards-guest.png", 300);
+        await shot(host, "refresh-on-rewards-host.png", 300);
+        await expectBackAtRewards(host, guest);
+
+        await toWave2(host, guest);
+        await expectEqualHashes(host, guest);
+      } catch (error) {
+        const state = JSON.stringify(await describeClients(host, guest), null, 2);
+        await testInfo.attach("clients.json", { body: state, contentType: "application/json" });
+        failed(error, host, guest);
       } finally {
         await hostContext.close();
         await guestContext.close();

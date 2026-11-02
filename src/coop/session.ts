@@ -30,7 +30,7 @@ import {
   type ResyncReason,
   type ResyncStopPayload,
 } from "#coop/resync";
-import { COOP_SAVE_VERSION, type CoopSaveBlock, checkSaveBlock } from "#coop/save-block";
+import { COOP_SAVE_VERSION, type CoopSaveBlock, checkSaveBlock, type RewardResume } from "#coop/save-block";
 import { type AfkTimers, DEFAULT_AFK_TIMERS } from "#coop/takeover";
 
 /**
@@ -105,6 +105,8 @@ export class CoopSession {
   private owners: readonly Seat[];
   /** Reward screens started so far (D9); lives in the save block */
   public rewardPickCount = 0;
+  /** The loaded save was taken at a reward screen (D19): the reload goes back to it. Taken by the reload */
+  public resumeAt: RewardResume | null = null;
   /** The step of the open reward screen: how many of its decisions were sequenced so far (D9); not saved */
   public rewardStep = 0;
   /** The reward screen that is open, as the legality check sees it (D24); `null` while none is */
@@ -370,6 +372,7 @@ export class CoopSession {
     this.trades = saved.trades;
     this.events = saved.events ?? [];
     this.trainers = saved.trainers ?? [];
+    this.resumeAt = saved.resumeAt ?? null;
   }
 
   /**
