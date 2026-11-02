@@ -707,19 +707,22 @@ async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopT
   // The starter select shows the Pokémon of both players (D32): it opens once the partner's are here
   const exchange = new CollectionExchange(link, captureCollection(globalScene.gameData));
   collectionExchange = exchange;
-  const partner = await exchange.partnerCollection(COLLECTION_TIMEOUT_MS);
+  // Both partners' in a game of three (D40)
+  const partners = await exchange.partnerCollections(COLLECTION_TIMEOUT_MS);
   if (starterLobby !== lobby) {
     // Left while waiting
     return;
   }
-  if (partner === null) {
+  if (partners.length === 0) {
     coopLog().warn("lobby", "no collection from the partner: only this player's Pokémon on the starter select");
   } else {
-    poolCollection(globalScene.gameData, partner);
-    coopLog().info("lobby", "partner's collection", {
-      species: Object.keys(partner.dex).length,
-      starters: Object.keys(partner.starters).length,
-    });
+    poolCollection(globalScene.gameData, partners);
+    for (const partner of partners) {
+      coopLog().info("lobby", "partner's collection", {
+        species: Object.keys(partner.dex).length,
+        starters: Object.keys(partner.starters).length,
+      });
+    }
   }
   globalScene.ui.setMode(UiMode.MESSAGE);
   // The battle message box, whatever the screen is, and its typing too: else "Connecting…" shows again when the run starts

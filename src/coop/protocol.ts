@@ -589,7 +589,7 @@ export type LobbyMessage =
     }
   | { t: "unready"; seat?: Seat }
   | { t: "reset"; gen: number; seat?: Seat }
-  | { t: "collection"; collection: CollectionData; ask: boolean }
+  | { t: "collection"; collection: CollectionData; ask: boolean; seat?: Seat }
   /** At the end of a run (D35): whether this player wants to play again */
   | { t: "again"; want: boolean }
   /** Host, once both want to play again (D35): the code of the new game's room */

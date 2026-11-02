@@ -265,7 +265,7 @@ describe("the exchange on a link", () => {
 
   it("answers only the first ask: a partner that asks over and over does not get the collection over and over", () => {
     const sent: LobbyMessage[] = [];
-    let listener: ((message: LobbyMessage) => void) | null = null;
+    let listener: Parameters<CollectionLink["onLobby"]>[0] | null = null;
     const link: CollectionLink = {
       sendLobby: message => sent.push(message),
       onLobby: l => {
@@ -277,7 +277,7 @@ describe("the exchange on a link", () => {
     const made = new CollectionExchange(link, hostCollection);
     exchanges.push(made);
     for (let i = 0; i < 50; i++) {
-      listener!({ t: "collection", collection: guestCollection, ask: true });
+      listener!({ t: "collection", collection: guestCollection, ask: true }, "guest");
     }
     // its own ask, and one answer
     expect(sent.map(message => (message.t === "collection" ? message.ask : null))).toEqual([true, false]);
@@ -336,3 +336,65 @@ describe("a partner's collection that is out of the game's ranges", () => {
     expect(dex.ivs[0]).toBe(31);
   });
 });
+
+describe("the Pokémon of three players (D40)", () => {
+  afterEach(() => unpoolCollection());
+
+  it("merges both partners' collections into the player's", () => {
+    const { own, partner } = accounts();
+    // A third player who caught another form of Bulbasaur, and nothing else
+    const third: CollectionHolder = {
+      dexData: { 1: dexEntry(0b10001n), 151: dexEntry(0n) },
+      starterData: { 1: starterEntry(), 151: starterEntry() },
+    };
+    poolCollection(own, [captureCollection(partner), captureCollection(third)]);
+    expect(own.dexData[1].caughtAttr).toBe(0b11101n);
+    expect(own.dexData[151].caughtAttr).toBe(0b1111n);
+  });
+
+  it("gets the host's and the other guest's, whoever comes into the lobby last", async () => {
+    type Seat3 = "host" | "guest" | "guest2";
+    const listeners = new Map<Seat3, (message: LobbyMessage, from: Seat3) => void>();
+    const queue: { to: Seat3; message: LobbyMessage; from: Seat3 }[] = [];
+    const linkOf = (seat: Seat3): CollectionLink => ({
+      seat,
+      players: 3,
+      sendLobby: message => {
+        for (const to of seat === "host" ? (["guest", "guest2"] as const) : (["host"] as const)) {
+          queue.push({ to, message, from: seat });
+        }
+      },
+      onLobby: listener => {
+        listeners.set(seat, listener);
+        return () => undefined;
+      },
+      onEnd: () => () => undefined,
+    });
+    // A message to a lobby that does not listen yet is lost
+    const flush = (): void => {
+      while (queue.length > 0) {
+        const { to, message, from } = queue.shift()!;
+        listeners.get(to)?.(message, from);
+      }
+    };
+    const { own, partner } = accounts();
+    const collections = {
+      host: captureCollection(partner),
+      guest: captureCollection(own),
+      guest2: hostCollectionOf(1),
+    };
+    const atHost = new CollectionExchange(linkOf("host"), collections.host);
+    const atGuest = new CollectionExchange(linkOf("guest"), collections.guest);
+    flush();
+    const atGuest2 = new CollectionExchange(linkOf("guest2"), collections.guest2);
+    flush();
+    expect(await atGuest2.partnerCollections(10)).toEqual([collections.host, collections.guest]);
+    expect(await atGuest.partnerCollections(10)).toEqual([collections.host, collections.guest2]);
+    expect(await atHost.partnerCollections(10)).toEqual([collections.guest, collections.guest2]);
+  });
+});
+
+/** A small collection of its own: one species caught */
+function hostCollectionOf(species: number): CollectionData {
+  return captureCollection({ dexData: { [species]: dexEntry(0b11n) }, starterData: { [species]: starterEntry() } });
+}

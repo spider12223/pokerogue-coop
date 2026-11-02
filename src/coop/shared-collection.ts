@@ -10,7 +10,7 @@ import {
   type CollectionDexEntry,
   type CollectionStarterEntry,
 } from "#coop/collection-data";
-import type { LobbyMessage } from "#coop/protocol";
+import { type LobbyMessage, otherSeat, type PlayerCount, peers, type Seat } from "#coop/protocol";
 import { Passive } from "#enums/passive";
 import type { DexData, DexEntry } from "#types/dex-data";
 import type { StarterData, StarterDataEntry } from "#types/save-data";
@@ -180,17 +180,28 @@ export function mergeStarterEntry(
 /** The account the merge is on, and the data it replaced */
 let pooled: { account: CollectionHolder; own: CollectionHolder } | null = null;
 
-/** Put the merge of this account and the partner's collection in place of the account's dex and starter data. */
-export function poolCollection(account: CollectionHolder, partner: CollectionData): void {
+/**
+ * Put the merge of this account and the partners' collections in place of the account's dex and starter data: one partner
+ * in a game of two, two in a game of three (D40). Each partner is merged into the merge before, so what the screen writes
+ * still reaches the player's own entry.
+ */
+export function poolCollection(account: CollectionHolder, partners: CollectionData | readonly CollectionData[]): void {
   unpoolCollection();
   const own: CollectionHolder = { dexData: account.dexData, starterData: account.starterData };
+  const all: readonly CollectionData[] = Array.isArray(partners) ? partners : [partners as CollectionData];
   const dexData: DexData = {};
   for (const [species, entry] of Object.entries(own.dexData)) {
-    dexData[Number(species)] = mergeDexEntry(entry, partner.dex[Number(species)]);
+    dexData[Number(species)] = all.reduce(
+      (merged, partner) => mergeDexEntry(merged, partner.dex[Number(species)]),
+      entry,
+    );
   }
   const starterData: StarterData = {};
   for (const [species, entry] of Object.entries(own.starterData)) {
-    starterData[Number(species)] = mergeStarterEntry(entry, partner.starters[Number(species)]);
+    starterData[Number(species)] = all.reduce(
+      (merged, partner) => mergeStarterEntry(merged, partner.starters[Number(species)]),
+      entry,
+    );
   }
   account.dexData = dexData;
   account.starterData = starterData;
@@ -215,35 +226,63 @@ export function ownAccountData(account: CollectionHolder): CollectionHolder {
 /** What {@linkcode CollectionExchange} needs of the link */
 export interface CollectionLink {
   sendLobby(message: LobbyMessage): void;
-  onLobby(listener: (message: LobbyMessage) => void): () => void;
+  /** `from`: the seat it came from (the host forwards a guest's in a game of three, D40) */
+  onLobby(listener: (message: LobbyMessage, from: Seat) => void): () => void;
   onEnd(listener: () => void): () => void;
+  /** This player's seat; default the host */
+  readonly seat?: Seat;
+  /** How many players the game has (D40); default 2 */
+  readonly players?: PlayerCount;
 }
 
 /**
- * Sends this player's collection on entering the lobby and gets the partner's. Each side sends its own with `ask`; a
- * collection with `ask` is answered with this player's, so the two arrive whichever player enters the lobby first (a
- * message sent before the partner listens is lost). Only the first `ask` is answered: a partner that asks over and over
+ * Sends this player's collection on entering the lobby and gets the others'. Each side sends its own with `ask`; a
+ * collection with `ask` is answered with this player's, so they arrive whichever player enters the lobby first (a message
+ * sent before the other listens is lost). Only the first `ask` of each player is answered: a player that asks over and over
  * gets nothing more (each answer is a whole collection).
+ *
+ * In a game of three the guests do not talk to each other (D40): the host passes each guest's collection on to the other,
+ * once when it comes and again in its answer to a guest's ask, with the guest's seat in `seat`.
  */
 export class CollectionExchange {
-  private partner: CollectionData | null = null;
-  private answered = false;
+  private readonly collections = new Map<Seat, CollectionData>();
+  private readonly answered = new Set<Seat>();
   private ended = false;
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribes: (() => void)[];
+  private readonly seat: Seat;
+  private readonly expected: readonly Seat[];
 
   constructor(link: CollectionLink, own: CollectionData) {
+    const players = link.players ?? 2;
+    this.seat = link.seat ?? "host";
+    this.expected = peers(this.seat, players);
+    const hub = players === 3 && this.seat === "host";
     this.unsubscribes = [
-      link.onLobby(message => {
+      link.onLobby((message, from = otherSeat(this.seat)) => {
         if (message.t !== "collection") {
           return;
         }
-        if (message.ask && !this.answered) {
-          this.answered = true;
-          link.sendLobby({ t: "collection", collection: own, ask: false });
+        const about = players === 3 && from === "host" && message.seat !== undefined ? message.seat : from;
+        if (about === this.seat || !this.expected.includes(about)) {
+          return;
         }
-        if (this.partner === null) {
-          this.partner = message.collection;
+        if (message.ask && !this.answered.has(from)) {
+          this.answered.add(from);
+          link.sendLobby({ t: "collection", collection: own, ask: false });
+          if (hub) {
+            for (const [seat, collection] of this.collections) {
+              if (seat !== from) {
+                link.sendLobby({ t: "collection", collection, ask: false, seat });
+              }
+            }
+          }
+        }
+        if (!this.collections.has(about)) {
+          this.collections.set(about, message.collection);
+          if (hub) {
+            link.sendLobby({ t: "collection", collection: message.collection, ask: false, seat: about });
+          }
           this.notify();
         }
       }),
@@ -259,15 +298,28 @@ export class CollectionExchange {
    * @returns The partner's collection, once it is here; `null` if the partner left first or it did not come within
    * `timeoutMs` (the starter select then shows this player's own Pokémon only)
    */
-  partnerCollection(timeoutMs: number): Promise<CollectionData | null> {
+  async partnerCollection(timeoutMs: number): Promise<CollectionData | null> {
+    return (await this.partnerCollections(timeoutMs))[0] ?? null;
+  }
+
+  /**
+   * @returns The other players' collections, in seat order, once all are here; those that came if a player left first or
+   * the rest did not come within `timeoutMs`
+   */
+  partnerCollections(timeoutMs: number): Promise<CollectionData[]> {
+    const have = (): CollectionData[] =>
+      this.expected.flatMap(seat => {
+        const collection = this.collections.get(seat);
+        return collection === undefined ? [] : [collection];
+      });
     return new Promise(resolve => {
       const check = (): boolean => {
-        if (this.partner === null && !this.ended) {
+        if (this.collections.size < this.expected.length && !this.ended) {
           return false;
         }
         clearTimeout(timer);
         this.listeners.delete(onChange);
-        resolve(this.partner);
+        resolve(have());
         return true;
       };
       const onChange = (): void => {
@@ -275,7 +327,7 @@ export class CollectionExchange {
       };
       const timer = setTimeout(() => {
         this.listeners.delete(onChange);
-        resolve(this.partner);
+        resolve(have());
       }, timeoutMs);
       if (!check()) {
         this.listeners.add(onChange);
