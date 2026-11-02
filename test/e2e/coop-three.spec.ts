@@ -10,6 +10,7 @@ import {
   type Client,
   choosePlayers,
   chooseRunMode,
+  enableThreePlayers,
   newClientContext,
   openClient,
   openCoopMenu,
@@ -64,7 +65,8 @@ test("three players link up, pick on one starter select, and the host starts the
     await client.page.evaluate(n => (window as any).__coop.setName(n), name);
   }
 
-  // The host: Co-op -> Host a game -> 3 players (Beta) -> Classic -> a join code
+  // The host: 3-Player Co-op (Beta) on in the settings; Co-op -> Host a game -> 3 players (Beta) -> Classic -> a join code
+  await enableThreePlayers(host);
   await openCoopMenu(host);
   await press(host, "ACTION");
   await expect.poll(() => coop<string[]>(host, "menuOptions"), { timeout: 20_000 }).toContain("3 players (Beta)");

@@ -5,6 +5,7 @@
  */
 
 import { GameMode } from "#app/game-mode";
+import { settings } from "#app/global-settings-manager";
 import * as buildInfo from "#coop/build-info";
 import { showCoopTitleMenu } from "#coop/lobby";
 import { endCoopSession } from "#coop/session";
@@ -12,15 +13,30 @@ import { Button } from "#enums/buttons";
 import { Challenges } from "#enums/challenges";
 import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
+import { defaultSettings } from "#system/default-settings";
 import { GameManager } from "#test/framework/game-manager";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
+import { generalSettingsUiItems } from "#ui/settings-ui-items";
 import i18next from "i18next";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-/** Host a game asks how many players first (DECISIONS D40): 2, or 3 (Beta); then Classic or Endless (D39) */
+/**
+ * Host a game asks how many players first (DECISIONS D40): 2, or 3 (Beta); then Classic or Endless (D39). The question is
+ * asked only when "3-Player Co-op (Beta)" is on in the general settings (off by default)
+ */
 
 const CALLBACKS = { onConnected: () => undefined, onCancel: () => undefined };
+
+describe("Co-op: the 3-Player Co-op (Beta) setting (D40)", () => {
+  it("is a general setting, off by default", () => {
+    expect(defaultSettings.general.coopThreePlayers).toBe(false);
+    expect(settings.general.coopThreePlayers).toBe(false);
+    const item = generalSettingsUiItems.find(entry => entry.key === "coopThreePlayers");
+    expect(item?.label).toBe("3-Player Co-op (Beta)");
+    expect(item?.options.map(option => option.value)).toEqual([false, true]);
+  });
+});
 
 describe("Co-op: 2 or 3 players (D40)", () => {
   let phaserGame: Phaser.Game;
@@ -63,12 +79,29 @@ describe("Co-op: 2 or 3 players (D40)", () => {
       texts.push(text);
       callback?.();
     });
+    settings.update("general", "coopThreePlayers", true);
   });
 
   afterEach(() => {
+    settings.update("general", "coopThreePlayers", false);
     endCoopSession();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
+  });
+
+  it("with the setting off, Host a game asks the mode only; Cancel goes back to the co-op menu", async () => {
+    settings.update("general", "coopThreePlayers", false);
+    showCoopTitleMenu(CALLBACKS);
+    await tick();
+    await choose("Host a game");
+    expect(texts).not.toContain("How many players?");
+    expect(texts.at(-1)).toBe(i18next.t("menu:selectGameMode"));
+    await until(i18next.t("gameMode:endless"));
+    expect(labels()).toContain(i18next.t("gameMode:classic"));
+
+    await choose(i18next.t("menu:cancel"));
+    await until("Host a game");
+    expect(labels()).toContain("Join a game");
   });
 
   it("asks how many players first; Cancel goes back to the co-op menu", async () => {

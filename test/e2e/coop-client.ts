@@ -238,8 +238,30 @@ export async function openCoopMenu(client: Client): Promise<void> {
   await expect.poll(() => ui(client), { timeout: 20_000 }).toBe("OPTION_SELECT");
 }
 
-/** 2 or 3 players (D40), which Host a game asks first: pick one */
+/** Where the game keeps its settings (a path variable: a literal import path fails the typecheck) */
+const SETTINGS_MODULE = "/src/globals/global-settings-manager.ts";
+
+/** Turn 3-Player Co-op (Beta) on in the general settings (D40), before Host a game */
+export async function enableThreePlayers(client: Client): Promise<void> {
+  await client.page.evaluate(async path => {
+    const { settings } = await import(path);
+    settings.update("general", "coopThreePlayers", true);
+  }, SETTINGS_MODULE);
+}
+
+/**
+ * 2 or 3 players (D40), which Host a game asks first when 3-Player Co-op (Beta) is on ({@linkcode enableThreePlayers}):
+ * pick one. With the setting off (the default) Host a game asks nothing and the game has 2 players
+ */
 export async function choosePlayers(client: Client, players: 2 | 3 = 2): Promise<void> {
+  const asked = await client.page.evaluate(async path => {
+    const { settings } = await import(path);
+    return settings.general.coopThreePlayers as boolean;
+  }, SETTINGS_MODULE);
+  if (!asked) {
+    expect(players, `${client.label}: 3 players needs enableThreePlayers first`).toBe(2);
+    return;
+  }
   await expect
     .poll(() => client.page.evaluate(() => (window as any).__coop.menuOptions as string[]), {
       message: `${client.label}: no players question`,

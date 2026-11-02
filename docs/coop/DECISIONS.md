@@ -1039,9 +1039,11 @@ A co-op run is Classic or Endless. Co-op Endless is solo Endless with every co-o
 
 ## D40. Three players
 
-A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; 3 players is a **Beta**. **Host a game** asks
-how many players first (2 players, 3 players (Beta)), then Classic or Endless (D39); Cancel on the second asks the first
-again. **Join a game** asks nothing: the guest learns the count from the host's `HELLO`.
+A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; 3 players is a **Beta**, offered only to a host
+who turns on **3-Player Co-op (Beta)** in the general settings (off by default). With it on, **Host a game** asks how many
+players first (2 players, 3 players (Beta)), then Classic or Endless (D39); Cancel on the second asks the first again. With
+it off, Host a game asks Classic or Endless only. **Join a game** asks nothing, whatever the setting: the guest learns the
+count from the host's `HELLO`.
 
 - **Seats:** `host`, `guest`, `guest2` (`Seat`, `seatsFor`, `peers` in `src/coop/protocol.ts`). A game of two has the first
   two only, so every 2-player path keeps its seat names; `otherSeat` is for a game of two.

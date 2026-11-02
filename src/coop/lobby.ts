@@ -323,9 +323,11 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
     {
       label: coopText("host", "Host a game"),
       handler: () => {
-        // How many players first, then the kind of run; Cancel on the second asks the first again (D40). A challenge run's
-        // challenges are picked last, on the challenge screen, whose Cancel asks the kind again (D41)
-        const host = (): void => askPlayers(callbacks, players => kind(players));
+        // How many players first, then the kind of run; Cancel on the second asks the first again (D40). The players are
+        // asked only with 3-Player Co-op (Beta) on in the settings. A challenge run's challenges are picked last, on the
+        // challenge screen, whose Cancel asks the kind again (D41)
+        const threePlayers = settings.general.coopThreePlayers;
+        const host = (): void => (threePlayers ? askPlayers(callbacks, players => kind(players)) : kind(2));
         const kind = (players: PlayerCount): void =>
           askRunMode(
             callbacks,
@@ -347,7 +349,7 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
                       )
                     : void hostGame(callbacks, runMode, undefined, players),
               ),
-            host,
+            threePlayers ? host : undefined,
             true,
           );
         host();

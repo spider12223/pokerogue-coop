@@ -1,4 +1,5 @@
 import { isDev } from "#constants/app-constants";
+import { coopText } from "#coop/text";
 import { BattleStyle } from "#enums/battle-style";
 import { CandyUpgradeDisplayMode } from "#enums/candy-upgrade-display-mode";
 import { CandyUpgradeNotificationMode } from "#enums/candy-upgrade-notification-mode";
@@ -218,6 +219,12 @@ export const generalSettingsUiItems: SettingsUiItem<GeneralSettingsKey>[] = [
   {
     key: "preferBatonPass",
     label: t("settings:preferBatonPass"),
+    options: useOnOffOptions(),
+  },
+  {
+    // Co-op (D40): Host a game offers 3 players only with this on
+    key: "coopThreePlayers",
+    label: coopText("threePlayersSetting", "3-Player Co-op (Beta)"),
     options: useOnOffOptions(),
   },
 ];

@@ -79,11 +79,10 @@ describe("Co-op: Classic or Endless (D39)", () => {
     vi.unstubAllGlobals();
   });
 
-  it("Host a game asks Classic or Endless after the players; Cancel goes back to the players question", async () => {
+  it("Host a game asks Classic or Endless; Cancel goes back to the co-op menu", async () => {
     showCoopTitleMenu(CALLBACKS);
     await tick();
     await choose("Host a game");
-    await choose("2 players");
     expect(texts.at(-1)).toBe(i18next.t("menu:selectGameMode"));
     // and Challenge when hosting (D41)
     expect(labels()).toEqual([
@@ -96,7 +95,7 @@ describe("Co-op: Classic or Endless (D39)", () => {
     await choose(i18next.t("menu:cancel"));
     await tick();
     expect(game.scene.ui.mode).toBe(UiMode.OPTION_SELECT);
-    expect(labels()).toContain("3 players (Beta)");
+    expect(labels()).toContain("Host a game");
   });
 
   it("Find a partner asks too, and waits in the queue of the kind chosen", async () => {

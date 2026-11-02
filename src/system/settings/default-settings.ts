@@ -27,6 +27,7 @@ import type {
 const defaultGeneralSettings: GeneralSettings = {
   battleCursorMemory: false,
   battleStyle: BattleStyle.SWITCH,
+  coopThreePlayers: false,
   dexForDevs: false,
   eggSkipPreference: EggSkipPreference.ASK,
   enableRetries: false,
