@@ -17,6 +17,7 @@ import {
   isHelloPayload,
   type PinnedSettings,
   type PlayerCount,
+  type Seat,
 } from "#coop/protocol";
 import type { MessageTransport, Scheduler, Unsubscribe } from "#coop/transport/transport";
 import { systemScheduler } from "#coop/transport/transport";
@@ -78,6 +79,8 @@ export interface HandshakeOptions {
   /** Give up after this long. Default 15 s. */
   timeoutMs?: number;
   scheduler?: Scheduler;
+  /** Guest: the seat the relay gave this player, `guest2` in a room of three (D40); default `guest` */
+  seat?: Seat;
 }
 
 export interface HostHandshakeOptions extends HandshakeOptions {
@@ -208,8 +211,9 @@ export function guestHandshake(
       }
       resolve(result);
     };
+    const seat = options.seat ?? "guest";
     const refuse = (reason: "mismatch" | "malformed", mismatches: HelloMismatch[]): void => {
-      transport.send({ key: null, author: "guest", kind: "REFUSE", payload: { mismatches } });
+      transport.send({ key: null, author: seat, kind: "REFUSE", payload: { mismatches } });
       finish({ ok: false, reason, mismatches });
     };
 
@@ -227,7 +231,8 @@ export function guestHandshake(
           if (hello !== null) {
             return; // a second HELLO changes nothing
           }
-          if (!isHelloPayload(message.payload)) {
+          // A second guest seat exists only in a game of three (D40)
+          if (!isHelloPayload(message.payload) || (message.payload.players === 2 && seat === "guest2")) {
             refuse("malformed", []);
             return;
           }
@@ -253,7 +258,7 @@ export function guestHandshake(
             name: cleanName(options.name),
             accountId: options.accountId ?? "",
           };
-          transport.send({ key: null, author: "guest", kind: "HELLO_ACK", payload: ack });
+          transport.send({ key: null, author: seat, kind: "HELLO_ACK", payload: ack });
           break;
         }
         case "HELLO_OK":

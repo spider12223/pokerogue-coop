@@ -273,6 +273,24 @@ describe("START", () => {
   ])("rejects %s", (_name, payload) => {
     expect(isStartPayload(payload)).toBe(false);
   });
+
+  it("of three needs the starters and account of guest2, at most two starters each (D40)", () => {
+    const three = {
+      ...start,
+      starters: { host: [starter], guest: [starter, starter], guest2: [starter] },
+      snapshots: { host: account, guest: account, guest2: account },
+    };
+    expect(isStartPayload(three, 3)).toBe(true);
+    expect(isStartPayload(start, 3)).toBe(false);
+    expect(isStartPayload({ ...three, snapshots: start.snapshots }, 3)).toBe(false);
+    expect(isStartPayload({ ...three, starters: { ...three.starters, guest: [starter, starter, starter] } }, 3)).toBe(
+      false,
+    );
+  });
+
+  it("of two refuses a guest2 (D40)", () => {
+    expect(isStartPayload({ ...start, starters: { ...start.starters, guest2: [starter] } })).toBe(false);
+  });
 });
 
 describe("LOBBY", () => {

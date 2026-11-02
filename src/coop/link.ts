@@ -535,7 +535,7 @@ export class CoopLink {
         }
         break;
       case "START":
-        if (this.seat !== "host" && message.author === "host" && isStartPayload(message.payload)) {
+        if (this.seat !== "host" && message.author === "host" && isStartPayload(message.payload, this.players)) {
           for (const listener of [...this.startListeners]) {
             listener(message.payload);
           }
@@ -1191,6 +1191,7 @@ export async function establishGuest(
   } = {},
 ): Promise<EstablishedGuest> {
   const result = await guestHandshake(room.reliable, build, overlay, {
+    seat: room.identity.seat,
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.accountId === undefined ? {} : { accountId: options.accountId }),

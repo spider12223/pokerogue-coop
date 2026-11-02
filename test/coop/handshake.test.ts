@@ -191,6 +191,34 @@ describe("asymmetric handshake (D1)", () => {
     expect(overlay.calls).toEqual([]);
   });
 
+  it("the guest of seat guest2 refuses a HELLO of two players, before applying it (D40)", async () => {
+    const link = createManualLink();
+    const overlay = fakeOverlay({});
+    const result = guestHandshake(link.guest, build, overlay.port, { seat: "guest2" });
+    link.guest.receive({
+      key: null,
+      author: "host",
+      kind: "HELLO",
+      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new", runMode: "classic", players: 2 },
+    });
+    expect(await result).toEqual({ ok: false, reason: "malformed", mismatches: [] });
+    expect(link.guest.outbox.map(m => m.kind)).toEqual(["REFUSE"]);
+    expect(overlay.calls).toEqual([]);
+  });
+
+  it("the guest of seat guest2 answers as guest2 (D40)", async () => {
+    const link = createManualLink();
+    const overlay = fakeOverlay({ battleStyle: 0 });
+    void guestHandshake(link.guest, build, overlay.port, { seat: "guest2" });
+    link.guest.receive({
+      key: null,
+      author: "host",
+      kind: "HELLO",
+      payload: { build, pinnedSettings: pinned, name: "Host", mode: "new", runMode: "classic", players: 3 },
+    });
+    expect(link.guest.outbox.map(m => [m.kind, m.author])).toEqual([["HELLO_ACK", "guest2"]]);
+  });
+
   it("the guest does not finish before the host's HELLO_OK", async () => {
     const link = createManualLink();
     const overlay = fakeOverlay({ battleStyle: 0 });

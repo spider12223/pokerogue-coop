@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { SeatRecord } from "#coop/protocol";
+import type { Seat, SeatRecord } from "#coop/protocol";
 
 /**
  * The account data the simulation reads (DECISIONS D4), frozen at run start. During co-op the
@@ -64,10 +64,17 @@ export function isAccountSnapshot(value: unknown): value is AccountSnapshot {
   );
 }
 
-export function isCoopAccountSnapshot(value: unknown): value is CoopAccountSnapshot {
+/** @param seats - The game's seats: each has an account, and no other seat has one (D40); default a game of two */
+export function isCoopAccountSnapshot(
+  value: unknown,
+  seats: readonly Seat[] = ["host", "guest"],
+): value is CoopAccountSnapshot {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const snapshots = value as Record<string, unknown>;
-  return isAccountSnapshot(snapshots["host"]) && isAccountSnapshot(snapshots["guest"]);
+  return (
+    seats.every(seat => isAccountSnapshot(snapshots[seat]))
+    && (seats.includes("guest2") || snapshots["guest2"] === undefined)
+  );
 }

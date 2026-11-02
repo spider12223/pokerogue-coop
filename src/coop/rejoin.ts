@@ -196,7 +196,9 @@ export async function tryAutoRejoin(): Promise<boolean> {
         name: getCoopName(),
         accountId: localAccountId(),
       });
-      const session = beginSession(established.link, "guest", overlay, { runMode: established.hello.runMode });
+      const session = beginSession(established.link, established.link.seat, overlay, {
+        runMode: established.hello.runMode,
+      });
       session.timing["rejoinStartedAt"] = startedAt;
       session.timing["handshakeAt"] = Date.now();
       session.awaitingReload = true;

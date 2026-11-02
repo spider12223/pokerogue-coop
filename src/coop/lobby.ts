@@ -776,6 +776,8 @@ export async function joinGame(
   ui.showText(coopText("connecting", "Connecting…"));
   try {
     const room = await joinRoom(getRelayUrl(), code);
+    // `guest2` in a room of three (D40)
+    coopLog().setContext({ room: code, seat: room.identity.seat });
     const overlay = createSettingsOverlayPort(settings);
     let established: Awaited<ReturnType<typeof establishGuest>>;
     try {
@@ -787,7 +789,9 @@ export async function joinGame(
       room.cancel();
       throw error;
     }
-    const session = beginSession(established.link, "guest", overlay, { runMode: established.hello.runMode });
+    const session = beginSession(established.link, established.link.seat, overlay, {
+      runMode: established.hello.runMode,
+    });
     lastFailedCode = null;
     if (established.hello.mode === "resume") {
       // The host continues a saved run: its wave start arrives next, and `installResync` loads it (D21)

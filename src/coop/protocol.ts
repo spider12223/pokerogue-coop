@@ -479,6 +479,22 @@ export const STARTERS_PER_SEAT_MAX = 3;
 /** The starter points both players share (D32): a solo classic run has 10 for one party */
 export const COOP_STARTER_POINTS = 15;
 
+/** How many starters a seat brings in a game of three (D40): two each, a party of six */
+export const STARTERS_PER_SEAT_THREE = 2;
+
+/** The starter points the three players share (D40) */
+export const COOP_STARTER_POINTS_THREE = 20;
+
+/** How many starters a seat brings in a game of this many players */
+export function startersPerSeat(players: PlayerCount): number {
+  return players === 3 ? STARTERS_PER_SEAT_THREE : STARTERS_PER_SEAT_MAX;
+}
+
+/** The starter points the players of a game of this many share */
+export function starterPoints(players: PlayerCount): number {
+  return players === 3 ? COOP_STARTER_POINTS_THREE : COOP_STARTER_POINTS;
+}
+
 /**
  * `START`, host to guest: everything both clients need to build the same run (D3, D4).
  * - `runSeed`: host-generated; both clients assign it to `globalScene.seed`
@@ -505,24 +521,26 @@ export function isTimedEventNames(value: unknown): value is string[] {
   );
 }
 
-export function isStartPayload(value: unknown): value is StartPayload {
+/** @param players - The game's players: each of its seats, and no other, brings starters and an account (D40) */
+export function isStartPayload(value: unknown, players: PlayerCount = 2): value is StartPayload {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const start = value as Record<string, unknown>;
   const starters = start["starters"] as Record<string, unknown> | null;
+  const seats = seatsFor(players);
+  const perSeat = startersPerSeat(players);
   return (
     typeof start["runSeed"] === "string"
     && start["runSeed"].length > 0
     && typeof starters === "object"
     && starters !== null
-    && SEATS.every(seat => {
+    && Object.keys(starters).every(seat => (seats as readonly string[]).includes(seat))
+    && seats.every(seat => {
       const list = starters[seat];
-      return (
-        Array.isArray(list) && list.length > 0 && list.length <= STARTERS_PER_SEAT_MAX && list.every(isCoopStarter)
-      );
+      return Array.isArray(list) && list.length > 0 && list.length <= perSeat && list.every(isCoopStarter);
     })
-    && isCoopAccountSnapshot(start["snapshots"])
+    && isCoopAccountSnapshot(start["snapshots"], seats)
     && isTimedEventNames(start["timedEvents"])
   );
 }
