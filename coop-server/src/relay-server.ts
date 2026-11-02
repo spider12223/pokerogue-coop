@@ -27,6 +27,7 @@ import {
   RELAY_PREFIX,
   type RelayControlMessage,
   type RelayErrorReason,
+  roomSeats,
   routedFrame,
   type Seat,
 } from "./relay-protocol.ts";
@@ -271,11 +272,13 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
   /** Whether the room has three seats (D40): its frames are routed, and its notices name the seat */
   const isRoomOfThree = (code: string): boolean => registry.sizeOf(code) === 3;
 
-  /** The other seats of a room that are connected right now, in seat order */
-  const peersOf = (code: string, seat: Seat): WebSocket[] => {
+  /**
+   * The other seats of a room that are connected right now, in seat order. `size` is given for a room the registry has
+   * already dropped (a sweep)
+   */
+  const peersOf = (code: string, seat: Seat, size = registry.sizeOf(code)): WebSocket[] => {
     const room = sockets.get(code);
-    return registry
-      .seatsOf(code)
+    return (size === undefined ? [] : roomSeats(size))
       .filter(other => other !== seat)
       .map(other => room?.[other])
       .filter((socket): socket is WebSocket => socket !== undefined);
@@ -286,9 +289,10 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     code: string,
     seat: Seat,
     message: { t: "relay:peerLeft"; holdMs: number | null } | { t: "relay:peerBack" } | { t: "relay:peerGone" },
+    size = registry.sizeOf(code),
   ): void => {
-    const notice = isRoomOfThree(code) ? { ...message, seat } : message;
-    for (const peer of peersOf(code, seat)) {
+    const notice = size === 3 ? { ...message, seat } : message;
+    for (const peer of peersOf(code, seat, size)) {
       send(peer, notice);
     }
   };
@@ -559,7 +563,8 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     for (const event of registry.sweep()) {
       if (event.type === "seatExpired") {
         log(`coop relay: ${event.seat} seat of ${event.code} expired`);
-        tellPeers(event.code, event.seat, { t: "relay:peerGone" });
+        // The sweep may have dropped the room already (its host seat expired): its size comes with the event
+        tellPeers(event.code, event.seat, { t: "relay:peerGone" }, event.size);
       } else {
         log(`coop relay: room ${event.code} closed (${event.reason})`);
         const room = sockets.get(event.code);

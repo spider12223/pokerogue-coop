@@ -253,6 +253,10 @@ export class Room extends DurableObject<Env> {
         state.token = null;
         state.heldUntil = null;
         room.lastActivity = Date.now();
+        if (this.peersOf(room, seat).length === 0) {
+          // The last one connected left: the seats still reserved run the clock, as on a disconnect
+          this.holdAll(room, room.lastActivity);
+        }
         await this.save();
         this.tellPeers(room, seat, { t: "relay:peerGone" });
         return;
@@ -275,15 +279,19 @@ export class Room extends DurableObject<Env> {
       }
       this.tellPeers(room, seat, { t: "relay:peerLeft", holdMs: null });
     } else {
-      // All are gone: every reserved seat is kept for `holdMs`
-      const until = now + this.holdMs;
-      for (const other of Object.values(room.seats)) {
-        if (other.token !== null) {
-          other.heldUntil = until;
-        }
-      }
+      this.holdAll(room, now);
     }
     await this.save();
+  }
+
+  /** All are gone: every reserved seat is kept for `holdMs` */
+  private holdAll(room: RoomState, now: number): void {
+    const until = now + this.holdMs;
+    for (const other of Object.values(room.seats)) {
+      if (other.token !== null) {
+        other.heldUntil = until;
+      }
+    }
   }
 
   /** Free the seats whose hold ran out, and close a room that cannot continue or sat idle */

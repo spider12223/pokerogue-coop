@@ -595,6 +595,13 @@ export class Sequencer {
         return;
       }
       const awaiter = this.awaiters[index]!;
+      if (!this.seats.includes(head.author)) {
+        // Only a broken or modified host stamps a seat this game does not have (guest2 in a game of two, D40)
+        this.fail(
+          new DesyncError(`decision by a seat not in this game: ${head.author}`, { actual: head.key, seq: head.seq }),
+        );
+        return;
+      }
       const illegal = this.legality?.(head.key, head.payload, head.author) ?? null;
       if (illegal !== null) {
         this.fail(new DesyncError(`illegal decision: ${illegal}`, { actual: head.key, seq: head.seq }));

@@ -32,7 +32,7 @@ export type RejoinResult = { seat: Seat; wasConnected: boolean } | "notFound" | 
 /** What a {@linkcode RoomRegistry.sweep} did, for the relay to act on. */
 export type SweepEvent =
   /** A held seat ran out of time and is free again. */
-  | { type: "seatExpired"; code: string; seat: Seat }
+  | { type: "seatExpired"; code: string; seat: Seat; size: RoomSeats }
   /** The room was removed: its host seat expired, or nothing happened in it for the idle time (D23). */
   | { type: "roomClosed"; code: string; reason: "hostGone" | "idle" };
 
@@ -179,13 +179,17 @@ export class RoomRegistry {
     }
     state.connected = false;
     room.lastActivity = this.now();
-    const seats = Object.values(room.seats);
-    if (seats.some(other => other.connected)) {
+    if (Object.values(room.seats).some(other => other.connected)) {
       state.heldUntil = null;
       return;
     }
+    this.holdAll(room);
+  }
+
+  /** Nobody is connected any more: every reserved seat gets `holdMs` from now */
+  private holdAll(room: Room): void {
     const until = this.now() + this.holdMs;
-    for (const other of seats) {
+    for (const other of Object.values(room.seats)) {
       if (other.token !== null) {
         other.heldUntil = until;
       }
@@ -212,6 +216,10 @@ export class RoomRegistry {
     state.connected = false;
     state.heldUntil = null;
     room.lastActivity = this.now();
+    if (!Object.values(room.seats).some(other => other.connected)) {
+      // The last one connected left: the seats still reserved run the clock, as on a disconnect
+      this.holdAll(room);
+    }
   }
 
   /** Whether the seat belongs to a player who is away right now (with or without a clock running) */
@@ -246,7 +254,7 @@ export class RoomRegistry {
           state.token = null;
           state.connected = false;
           state.heldUntil = null;
-          events.push({ type: "seatExpired", code, seat });
+          events.push({ type: "seatExpired", code, seat, size: room.size });
         }
       }
       if (room.seats.host?.token == null) {

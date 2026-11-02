@@ -56,8 +56,8 @@ describe("Sequencer: three seats (D40)", () => {
       guestLink,
       guest2Link,
       host: new Sequencer({ role: "host", transport: fanout, seats: seatsFor(3) }),
-      guest: new Sequencer({ role: "guest", transport: guestLink }),
-      guest2: new Sequencer({ role: "guest2", transport: guest2Link }),
+      guest: new Sequencer({ role: "guest", transport: guestLink, seats: seatsFor(3) }),
+      guest2: new Sequencer({ role: "guest2", transport: guest2Link, seats: seatsFor(3) }),
     };
   }
   const settleThree = () => new Promise(resolve => setTimeout(resolve, 30));
@@ -236,6 +236,14 @@ describe("Sequencer: delivery", () => {
     await guestSeq.awaitDecision(k(1));
     const pending = guestSeq.awaitDecision(k(2));
     guest.receive(sequenced(1, k(9)));
+    await expect(pending).rejects.toBeInstanceOf(DesyncError);
+    expect(guestSeq.desync?.seq).toBe(1);
+  });
+
+  it("treats a decision by a seat that is not in the game as a desync (guest2 in a game of two)", async () => {
+    const { guest, guestSeq } = setup();
+    const pending = guestSeq.awaitDecision(k(1));
+    guest.receive({ ...sequenced(1, k(1)), author: "guest2" });
     await expect(pending).rejects.toBeInstanceOf(DesyncError);
     expect(guestSeq.desync?.seq).toBe(1);
   });

@@ -53,6 +53,19 @@ describe("RoomRegistry: rooms of three (D40)", () => {
     expect(events).toContainEqual({ type: "roomClosed", code, reason: "hostGone" });
   });
 
+  it("runs the clock when the last connected guest leaves a room whose host is away", () => {
+    const { rooms, clock } = registry(1000);
+    const { code } = rooms.createRoom(3);
+    rooms.join(code);
+    rooms.disconnect(code, "host");
+    expect(rooms.isHeld(code, "host")).toBe(false);
+    rooms.leaveSeat(code, "guest");
+    expect(rooms.isHeld(code, "host")).toBe(true);
+    clock.now = 1000;
+    expect(rooms.sweep()).toContainEqual({ type: "roomClosed", code, reason: "hostGone" });
+    expect(rooms.has(code)).toBe(false);
+  });
+
   it("makes a room of two by default", () => {
     const { rooms } = registry();
     const { code } = rooms.createRoom();
@@ -177,8 +190,8 @@ describe("RoomRegistry: seat tokens and hold", () => {
     expect(rooms.sweep()).toEqual([]);
     clock.now = 1500;
     expect(rooms.sweep()).toEqual([
-      { type: "seatExpired", code, seat: "host" },
-      { type: "seatExpired", code, seat: "guest" },
+      { type: "seatExpired", code, seat: "host", size: 2 },
+      { type: "seatExpired", code, seat: "guest", size: 2 },
       { type: "roomClosed", code, reason: "hostGone" },
     ]);
     expect(rooms.has(code)).toBe(false);

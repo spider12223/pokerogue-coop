@@ -338,6 +338,24 @@ describe("relay server", () => {
       expect(await back.control("relay:peerLeft")).toEqual({ t: "relay:peerLeft", holdMs: null });
     });
 
+    it("tells the guest the host's seat is gone, then closes the room, when the host's hold runs out", async () => {
+      const host = await connect("role=host");
+      const created = await host.control("relay:created");
+      host.close();
+      await host.closed;
+      const guest = await connect(`code=${created.code}`);
+      await guest.control("relay:joined");
+      expect(await guest.control("relay:peerLeft")).toEqual({ t: "relay:peerLeft", holdMs: null });
+      const notices = [
+        await guest.next(text => text.startsWith('{"t":"relay:peer') || text.startsWith('{"t":"relay:closed"'), 2000),
+        await guest.next(text => text.startsWith('{"t":"relay:closed"'), 2000),
+      ];
+      expect(notices.map(text => JSON.parse(text))).toEqual([
+        { t: "relay:peerGone" },
+        { t: "relay:closed", reason: "hostGone" },
+      ]);
+    });
+
     it("refuses a wrong token and the other seat's token", async () => {
       const { guest, code, hostToken } = await pairedRoom();
       guest.close();
