@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D40, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D41, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -41,7 +41,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 |---|---|
 | Connection and sync | D1 handshake, D2 sequencing, D3 determinism, D13 desyncs, D18 epochs, D24 payload validation |
 | Accounts and settings | D4 account data, D4a account writes and run end, D5 settings, D31 account import, D32 the starter select of both, D35 play again, D36 rules kept as they are, D37 find a partner, D38 the chat box |
-| Game modes | D39 Endless, D40 three players |
+| Game modes | D39 Endless, D40 three players, D41 challenges |
 | Events | D33 timed events (Halloween and the others) |
 | Battles | D6 battle shape, D7 party and control, D8 commands, D34 trainers the run has met |
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
@@ -238,7 +238,7 @@ In a game of three the host sequences for both guests, who apply the same decisi
     run, so the co-op slot keeps the wave start and the run can be continued, and retried, later.
 - **Victory.** Ribbons go to each Pokémon's owner. The victory counts as a co-op clear on each player's own account
   ("Co-op Clears" in the stats) and goes into each player's run history with both display names. It does not trigger
-  the classic-win unlocks or their vouchers.
+  the classic-win unlocks or their vouchers. A challenge run's victory gives the vouchers of a solo challenge win (D41).
 
 ## D5. Settings
 
@@ -383,7 +383,7 @@ In a game of three each player owns 2 of the 6 (D40).
 ## D12. Off in co-op
 
 - Upstream's retry setting: `enableRetries` stays pinned off (D5). A wipe has its own retry, decided by the host (D4a).
-- Daily mode, Spliced Endless and challenges. Classic and Endless are on (D39).
+- Daily mode and Spliced Endless. Classic and Endless are on (D39), and challenges (D41).
 
 Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 
@@ -1064,6 +1064,22 @@ again. **Join a game** asks nothing: the guest learns the count from the host's 
   with 2 stays a game of two.
 - **End:** retry after a wipe is the host's (D4a); Play again starts a new game with whoever wants to play again.
 - **Find a partner** pairs two players only.
+
+## D41. Challenges
+
+- **Host a game** offers **Challenge** after Classic and Endless (for 2 or 3 players). The host picks the challenges on
+  the game's challenge screen, as in solo; Cancel there asks the kind of run again. Join asks nothing: the host's `HELLO`
+  carries the run kind and the challenges (`challenges`: id, value, severity of each one that is on; only a challenge run
+  has them, and it has at least one). Each client keeps a value within its challenge's range when it applies it.
+  **Find a partner** stays Classic or Endless.
+- A challenge run is a co-op Classic run with the challenges on (`createCoopGameMode(GameModes.CHALLENGE, …)`), the same
+  on every client: each player's starter select applies them (a starter they forbid cannot be picked), and the battles
+  follow them. The starter select's status line starts with "Challenge:".
+- The challenges are in the run's save, so **Continue** keeps them ("Continue (Challenge, wave N)"); the co-op slot keeps
+  them for the partner's handshake. They are in the state hash (D13). **Play again** starts a run with the same challenges.
+- **Winning** a challenge run gives each player, on their own account, what a solo challenge win gives: the classic victory
+  achievement and its voucher the first time, a Premium voucher after that, a Voucher Plus for each species of their own
+  Pokémon on its first win, and the challenges' achievements. The classic-win unlocks stay off, as in D4a.
 
 ## See also
 

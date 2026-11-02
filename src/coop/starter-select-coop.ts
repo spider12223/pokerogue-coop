@@ -8,6 +8,7 @@
  */
 
 import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
+import { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { coopText } from "#coop/bridge";
@@ -20,6 +21,7 @@ import { getCoopSession } from "#coop/session";
 import { captureAccountSnapshot } from "#coop/sim-account";
 import type { StarterLobby } from "#coop/starter-lobby";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";
 import type { Starter } from "#types/save-data";
 import type { StarterSpeciesId } from "#types/starter-species-id";
@@ -293,6 +295,15 @@ class PartnerView {
   }
 }
 
+/** An endless or challenge run says so on every status line (D39, D41): the guest learns the host's choice here */
+function runModePrefix(): string {
+  const runMode = getCoopSession()?.runMode;
+  if (runMode === "endless") {
+    return `${i18next.t("gameMode:endless")}: `;
+  }
+  return runMode === "challenge" ? `${GameMode.getModeName(GameModes.CHALLENGE)}: ` : "";
+}
+
 /** Names joined for a line: "Alex", "Alex and Kim" */
 function namesLine(names: readonly string[]): string {
   return names.length < 2
@@ -448,7 +459,7 @@ export class CoopStarterSelectController {
     const partners = [...this.lobby.partners];
     const notReady = partners.filter(([, state]) => !state.ready).map(([seat]) => nameOf(seat));
     const ready = partners.filter(([, state]) => state.ready).map(([seat]) => nameOf(seat));
-    const mode = getCoopSession()?.runMode === "endless" ? `${i18next.t("gameMode:endless")}: ` : "";
+    const mode = runModePrefix();
     const status = (text: string, tone: StatusTone): void => this.view.setStatus(mode + text, tone);
     if (this.lobby.closed) {
       status(coopText("playerLeftLobby", "A player left. Cancel: back to the title"), "warn");
@@ -473,8 +484,7 @@ export class CoopStarterSelectController {
   private renderStatus(): void {
     const { partner } = this.lobby;
     const vars = { partner: partnerName() };
-    // An endless run says so on every line (D39): the guest learns the host's choice here
-    const mode = getCoopSession()?.runMode === "endless" ? `${i18next.t("gameMode:endless")}: ` : "";
+    const mode = runModePrefix();
     const status = (text: string, tone: StatusTone): void => this.view.setStatus(mode + text, tone);
     if (this.lobby.closed) {
       status(coopText("partnerLeftLobby", "{{partner}} left. Cancel: back to the title", vars), "warn");

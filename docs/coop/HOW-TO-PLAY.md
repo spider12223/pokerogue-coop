@@ -14,7 +14,8 @@ the background runs slowly.
 ## Starting a game
 
 1. **Both:** on the title screen choose **Co-op**, then **Your name** and type the name your friend will see.
-2. **One of you hosts:** **Host a game**, then **2 players**, then **Classic** or **Endless**. A six-character code appears; **Copy code** puts
+2. **One of you hosts:** **Host a game**, then **2 players**, then **Classic**, **Endless** or **Challenge** (pick the
+   challenges, then Start). A six-character code appears; **Copy code** puts
    it in the clipboard. Send it to your friend.
 3. **The other joins:** **Join a game** and paste the code. You play the kind of run your friend chose; the starter select
    says "Endless" when it is one.
@@ -132,7 +133,8 @@ seconds.
 ## Limits
 
 - Two players per game; nobody can watch.
-- Classic mode only: no daily runs, endless mode or challenges in co-op.
+- No daily runs in co-op. A challenge run's win gives vouchers, as in solo; a plain co-op win gives ribbons and counts as
+  a co-op clear.
 - The co-op texts are in English; the rest of the game keeps its languages.
 - A room closes after 30 minutes without any play.
 - The host's run lives in the host's browser: clearing the site's data loses it.

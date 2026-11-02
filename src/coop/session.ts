@@ -15,6 +15,7 @@ import { PaceTracker } from "#coop/pace";
 import { PhaseTrace } from "#coop/phase-trace";
 import {
   type BuildIdentity,
+  type CoopChallenge,
   type CoopRunMode,
   type DecisionKey,
   otherSeat,
@@ -73,6 +74,8 @@ export interface CoopSessionInit {
   starterOwners?: readonly Seat[];
   /** The kind of run (D39): the host's choice, the guest's `HELLO`. Default `classic` */
   runMode?: CoopRunMode;
+  /** A challenge run's challenges (D41): the host's choice, the guest's `HELLO` */
+  challenges?: readonly CoopChallenge[];
 }
 
 /** How long this client waited for its partner's decisions, for the debug API and the latency report */
@@ -195,6 +198,8 @@ export class CoopSession {
   public link: CoopLink | null = null;
   /** The kind of run (D39): what a new run is built as. A loaded save has its own (its game mode's id). */
   public readonly runMode: CoopRunMode;
+  /** A challenge run's challenges (D41), what a new challenge run is built with; a loaded save has its own */
+  public readonly challenges: readonly CoopChallenge[];
   /** The decision keys the simulation is waiting for right now (the decision window, D2); for the debug API */
   public openWindow: readonly DecisionKey[] = [];
   /** The partner's checkpoints that arrived before this client reached them, by index */
@@ -222,6 +227,7 @@ export class CoopSession {
     this.explicitAccountIds = init.accountIds ?? null;
     this.owners = init.starterOwners ?? defaultStarterOwners();
     this.runMode = init.runMode ?? "classic";
+    this.challenges = init.challenges ?? [];
   }
 
   public get starterOwners(): readonly Seat[] {

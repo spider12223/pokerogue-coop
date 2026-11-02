@@ -187,6 +187,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
         name: getCoopName(),
         mode: "resume",
         runMode: slot!.runMode ?? "classic",
+        ...(slot!.challenges === undefined ? {} : { challenges: slot!.challenges }),
         expectedGuestAccountId: slot!.accountIds.guest,
       });
       resumeFromSlot(established, slot!, overlay, "rejoin");
@@ -322,6 +323,7 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
         name: getCoopName(),
         mode: "resume",
         runMode: slot.runMode ?? "classic",
+        ...(slot.challenges === undefined ? {} : { challenges: slot.challenges }),
         expectedGuestAccountId: slot.accountIds.guest,
       });
     } catch (error) {

@@ -80,7 +80,7 @@ describe("Co-op Endless (D39)", () => {
     phaserGame = new Phaser.Game({ type: Phaser.HEADLESS });
   });
 
-  it("is solo Endless with the co-op flag; anything but Endless is Classic", () => {
+  it("is solo Endless with the co-op flag; anything but Endless or Challenge is Classic", () => {
     const endless = createCoopGameMode(GameModes.ENDLESS);
     expect(endless.modeId).toBe(GameModes.ENDLESS);
     expect(endless).toMatchObject({ isCoop: true, isEndless: true, hasShortBiomes: true, hasRandomBosses: true });
@@ -88,8 +88,8 @@ describe("Co-op Endless (D39)", () => {
     expect(endless.isClassic).toBeFalsy();
     expect(endless.hasTrainers).toBeFalsy();
     expect(endless.hasMysteryEncounters).toBeFalsy();
-    // a save from before D39 has Classic's id, and a co-op run is never Daily or Challenge
-    for (const modeId of [undefined, GameModes.CLASSIC, GameModes.DAILY, GameModes.CHALLENGE]) {
+    // a save from before D39 has Classic's id, and a co-op run is never Daily (Challenge: D41)
+    for (const modeId of [undefined, GameModes.CLASSIC, GameModes.DAILY]) {
       const mode = createCoopGameMode(modeId);
       expect(mode.modeId).toBe(GameModes.CLASSIC);
       expect(mode).toMatchObject({ isCoop: true, isClassic: true, hasTrainers: true });

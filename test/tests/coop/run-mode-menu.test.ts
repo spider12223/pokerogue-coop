@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { GameMode } from "#app/game-mode";
 import * as buildInfo from "#coop/build-info";
 import { COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
 import { localAccountId, matchBuild, showCoopTitleMenu } from "#coop/lobby";
 import { endCoopSession } from "#coop/session";
 import { removeCoopSlot } from "#coop/wave-save";
 import { Button } from "#enums/buttons";
+import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
 import { GameManager } from "#test/framework/game-manager";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
@@ -83,7 +85,13 @@ describe("Co-op: Classic or Endless (D39)", () => {
     await choose("Host a game");
     await choose("2 players");
     expect(texts.at(-1)).toBe(i18next.t("menu:selectGameMode"));
-    expect(labels()).toEqual([i18next.t("gameMode:classic"), i18next.t("gameMode:endless"), i18next.t("menu:cancel")]);
+    // and Challenge when hosting (D41)
+    expect(labels()).toEqual([
+      i18next.t("gameMode:classic"),
+      i18next.t("gameMode:endless"),
+      GameMode.getModeName(GameModes.CHALLENGE),
+      i18next.t("menu:cancel"),
+    ]);
 
     await choose(i18next.t("menu:cancel"));
     await tick();
@@ -153,6 +161,17 @@ describe("Co-op: Classic or Endless (D39)", () => {
 
     // a damaged kind is a damaged slot
     writeCoopSlot(localStorage, { ...slot, runMode: "daily" as never });
+    expect(readCoopSlot(localStorage)).toBeNull();
+
+    // a challenge run (D41) says so, and keeps its challenges for the partner's handshake
+    writeCoopSlot(localStorage, { ...slot, runMode: "challenge", challenges: [{ id: 3, value: 1, severity: 0 }] });
+    game.scene.ui.getHandler().clear();
+    showCoopTitleMenu(CALLBACKS);
+    await tick();
+    expect(labels()[0]).toBe("Continue (Challenge, wave 340)");
+    expect(readCoopSlot(localStorage)?.challenges).toEqual([{ id: 3, value: 1, severity: 0 }]);
+    // without them it is damaged
+    writeCoopSlot(localStorage, { ...slot, runMode: "challenge" });
     expect(readCoopSlot(localStorage)).toBeNull();
   });
 });

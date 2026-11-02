@@ -82,6 +82,17 @@ describe("asymmetric handshake (D1)", () => {
     expect(b).toMatchObject({ ok: true, hello: { players: 3 } });
   });
 
+  it("tells the guest the challenges of a challenge run (D41)", async () => {
+    const { host, guest } = reliablePair();
+    const overlay = fakeOverlay({ battleStyle: 0 });
+    const challenges = [{ id: 1, value: 10, severity: 0 }];
+    const [, b] = await Promise.all([
+      hostHandshake(host, build, pinned, { runMode: "challenge", challenges }),
+      guestHandshake(guest, { ...build }, overlay.port),
+    ]);
+    expect(b).toMatchObject({ ok: true, hello: { runMode: "challenge", challenges } });
+  });
+
   it("tells the guest the kind of run the host chose (D39)", async () => {
     const { host, guest } = reliablePair();
     const overlay = fakeOverlay({ battleStyle: 0 });

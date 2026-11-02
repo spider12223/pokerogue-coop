@@ -14,6 +14,7 @@ import { commandToWire } from "#coop/turn-commands";
 import { modifierTypes } from "#data/data-lists";
 import { BiomeId } from "#enums/biome-id";
 import { Button } from "#enums/buttons";
+import { Challenges } from "#enums/challenges";
 import { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
 import { PokeballType } from "#enums/pokeball";
@@ -413,6 +414,45 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(game.phaseInterceptor.phaseLog).not.toContain("GameOverModifierRewardPhase");
       expect(achievement).not.toHaveBeenCalledWith(expect.objectContaining({ id: "CLASSIC_VICTORY" }));
       expect(game.scene.gameData.unlocks[Unlockables.ENDLESS_MODE]).toBe(false);
+    });
+
+    it("a challenge run's victory gives this client the classic victory achievement and a Voucher Plus for each of its first ribbons (D41)", async () => {
+      const r = await start({
+        ...finalBoss,
+        scenario: { challenges: [{ id: Challenges.INVERSE_BATTLE, value: 1, severity: 0 }] },
+      });
+      const { game } = r.ctx;
+      spyOnRibbons();
+      const achievement = vi.spyOn(game.scene, "validateAchv");
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      expect(game.scene.gameMode.isChallenge).toBe(true);
+
+      expect(await playToRunEnd(r)).toBe(true);
+      await game.phaseInterceptor.to("PostGameOverPhase", false);
+
+      expect(achievement).toHaveBeenCalledWith(expect.objectContaining({ id: "CLASSIC_VICTORY" }));
+      expect(game.scene.gameData.achvUnlocks["CLASSIC_VICTORY"]).toBeDefined();
+      // the first win of each of this player's species: a Voucher Plus each; the first clear: no Premium
+      expect(game.phaseInterceptor.phaseLog).toContain("RibbonModifierRewardPhase");
+      expect(game.phaseInterceptor.phaseLog).not.toContain("GameOverModifierRewardPhase");
+      // the challenge's achievements are checked too; the classic unlocks stay as in D4a
+      expect(achievement).toHaveBeenCalledWith(expect.objectContaining({ id: "INVERSE_BATTLE" }), expect.anything());
+      expect(game.phaseInterceptor.phaseLog).not.toContain("UnlockPhase");
+    });
+
+    it("a challenge run's victory after a first clear gives a Premium voucher (D41)", async () => {
+      const r = await start({
+        ...finalBoss,
+        scenario: { challenges: [{ id: Challenges.INVERSE_BATTLE, value: 1, severity: 0 }] },
+      });
+      const { game } = r.ctx;
+      spyOnRibbons();
+      game.scene.gameData.achvUnlocks["CLASSIC_VICTORY"] = 1;
+      await advanceTo(r.ctx, ["CommandPhase"]);
+
+      expect(await playToRunEnd(r)).toBe(true);
+      await game.phaseInterceptor.to("PostGameOverPhase", false);
+      expect(game.phaseInterceptor.phaseLog).toContain("GameOverModifierRewardPhase");
     });
 
     it("counts a victory as a co-op clear of this account, and writes the run to its history with both names", async () => {

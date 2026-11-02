@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { takeCoopChallengePick } from "#coop/challenge-pick";
 import type { Challenge } from "#data/challenge";
 import { Button } from "#enums/buttons";
 import { ChallengeCategory } from "#enums/challenge-category";
@@ -541,8 +542,14 @@ export class GameChallengesUiHandler extends UiHandler {
         // the game deactivates the start cursor and allows typical challenge selection behavior
         this.deactivateStartCursor();
       } else {
-        phaseManager.toTitleScreen();
-        phaseManager.getCurrentPhase().end();
+        const coop = takeCoopChallengePick();
+        if (coop === null) {
+          phaseManager.toTitleScreen();
+          phaseManager.getCurrentPhase().end();
+        } else {
+          // Co-op (D41): back to the mode question of Host a game
+          coop.cancel();
+        }
       }
       success = true;
     } else if (button === Button.CYCLE_FORM || button === Button.CYCLE_SHINY) {
@@ -550,8 +557,14 @@ export class GameChallengesUiHandler extends UiHandler {
     } else if (button === Button.SUBMIT || button === Button.ACTION) {
       if (this.hasSelectedChallenge) {
         if (this.startCursor.visible) {
-          phaseManager.unshiftNew("SelectStarterPhase");
-          phaseManager.getCurrentPhase().end();
+          const coop = takeCoopChallengePick();
+          if (coop === null) {
+            phaseManager.unshiftNew("SelectStarterPhase");
+            phaseManager.getCurrentPhase().end();
+          } else {
+            // Co-op (D41): the host hosts the game with these challenges; the starter select comes once linked
+            coop.start();
+          }
         } else {
           this.activateStartCursor();
         }

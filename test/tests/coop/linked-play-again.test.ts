@@ -6,6 +6,8 @@
 
 import type { HostRoom } from "#coop/link";
 import { playAgainNetwork, startPlayAgain } from "#coop/play-again";
+import type { CoopChallenge } from "#coop/protocol";
+import { Challenges } from "#enums/challenges";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { advanceTo } from "#test/helpers/coop-harness";
@@ -61,10 +63,14 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
   });
 
   /** Every turn both field Pokémon faint, until no one is left; the host ends the run (no retry) */
-  async function start(seat: LinkedScenario["seat"], endless = false): Promise<LinkedRun> {
+  async function start(
+    seat: LinkedScenario["seat"],
+    endless = false,
+    challenges?: CoopChallenge[],
+  ): Promise<LinkedRun> {
     run = await openLinkedRun(phaserGame, {
       seat,
-      scenario: { endless },
+      scenario: { endless, ...(challenges === undefined ? {} : { challenges }) },
       species: SIX,
       starterOwners: ["host", "guest", "host", "guest", "host", "guest"],
       configure: game => game.override.startingLevel(40),
@@ -142,6 +148,24 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     expect(await toTitle).toBe("TitlePhase");
     expect(startPlayAgain(callbacks)).toBe(true);
     expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "endless");
+  });
+
+  it("host of a challenge run: the new game has the same challenges (D41)", async () => {
+    const inverse = { id: Challenges.INVERSE_BATTLE, value: 1, severity: 0 };
+    const r = await start("host", false, [inverse]);
+    expect(r.ctx.game.scene.gameMode.isChallenge).toBe(true);
+    expect(await playToRunEnd(r)).toBe(false);
+    r.partner.sendLobby({ t: "again", want: true });
+    const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
+    await answerEndScreen(r, true);
+    await vi.waitUntil(() => r.partner.lobbySeen.some(message => message.t === "againCode"), {
+      interval: 5,
+      timeout: 10_000,
+    });
+    r.partner.bye();
+    expect(await toTitle).toBe("TitlePhase");
+    expect(startPlayAgain(callbacks)).toBe(true);
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "challenge", [inverse]);
   });
 
   it("guest: it waits for the host's answer, then for the code, and joins the new room", async () => {

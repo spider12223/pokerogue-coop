@@ -6,10 +6,11 @@
 
 import { globalScene } from "#app/global-scene";
 import { type AgainAnswer, listenForAgain } from "#coop/again-answer";
+import { challengesOn } from "#coop/challenge-pick";
 import { coopLog } from "#coop/coop-log";
 import { createRoom, type HostRoom } from "#coop/link";
 import { type CoopTitleCallbacks, getRelayUrl, hostAgain, joinGame, quietRunEnd } from "#coop/lobby";
-import type { CoopRunMode } from "#coop/protocol";
+import type { CoopChallenge, CoopRunMode } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { UiMode } from "#enums/ui-mode";
@@ -33,7 +34,7 @@ const LINE_MS = 2500;
 
 /** What the title screen starts after the run; module state, so it outlives `globalScene.reset()` */
 type Pending =
-  | { seat: "host"; room: HostRoom; partner: string; runMode: CoopRunMode }
+  | { seat: "host"; room: HostRoom; partner: string; runMode: CoopRunMode; challenges?: CoopChallenge[] }
   | { seat: "guest"; code: string };
 let pending: Pending | null = null;
 
@@ -172,8 +173,11 @@ export function askPlayAgain(): Promise<void> {
               finish(couldNot);
               return;
             }
-            // The new game is the same kind of run (D39)
-            pending = { seat: "host", room, partner, runMode: globalScene.gameMode.isEndless ? "endless" : "classic" };
+            // The new game is the same kind of run (D39), with the same challenges (D41)
+            const mode = globalScene.gameMode;
+            pending = mode.isChallenge
+              ? { seat: "host", room, partner, runMode: "challenge", challenges: challengesOn(mode) }
+              : { seat: "host", room, partner, runMode: mode.isEndless ? "endless" : "classic" };
             link.sendLobby({ t: "againCode", code: room.identity.code });
             // The guest leaves the old room as soon as it has the code; until then that room carries it
             timer = setTimeout(() => finish(null), LEAVE_WAIT_MS);
@@ -263,7 +267,9 @@ export function startPlayAgain(callbacks: CoopTitleCallbacks): boolean {
     return false;
   }
   if (next.seat === "host") {
-    void playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode);
+    void (next.challenges === undefined
+      ? playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode)
+      : playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode, next.challenges));
   } else {
     void playAgainNetwork.join(next.code, callbacks);
   }

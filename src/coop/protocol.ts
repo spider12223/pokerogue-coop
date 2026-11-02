@@ -308,13 +308,42 @@ export interface HelloPayload {
   runMode: CoopRunMode;
   /** How many players the game has (D40) */
   players: PlayerCount;
+  /** A challenge run's challenges (D41), and only a challenge run's: at least one is on */
+  challenges?: CoopChallenge[];
 }
 
-/** The kind of a co-op run (D39) */
-export type CoopRunMode = "classic" | "endless";
+/** The kind of a co-op run (D39); a challenge run is a classic run with challenges (D41) */
+export type CoopRunMode = "classic" | "endless" | "challenge";
 
 export function isCoopRunMode(value: unknown): value is CoopRunMode {
-  return value === "classic" || value === "endless";
+  return value === "classic" || value === "endless" || value === "challenge";
+}
+
+/**
+ * A challenge of a co-op challenge run as it goes over the wire (D41): the game's `ChallengeData` fields. Each client clamps
+ * the value and severity to the challenge's range when it applies them.
+ */
+export interface CoopChallenge {
+  id: number;
+  value: number;
+  severity: number;
+}
+
+/** More than the game has challenges */
+const MAX_CHALLENGES = 32;
+
+/** @returns Whether this is a list of challenges of a challenge run: at least one, at most {@linkcode MAX_CHALLENGES}, one on */
+export function isCoopChallenges(value: unknown): value is CoopChallenge[] {
+  const small = (n: unknown): boolean => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 255;
+  return (
+    Array.isArray(value)
+    && value.length > 0
+    && value.length <= MAX_CHALLENGES
+    && value.every(
+      c => typeof c === "object" && c !== null && small(c["id"]) && small(c["value"]) && small(c["severity"]),
+    )
+    && value.some(c => c.value > 0)
+  );
 }
 
 export interface HelloAckPayload {
@@ -417,6 +446,8 @@ export function isHelloPayload(value: unknown): value is HelloPayload {
     && (hello["mode"] === "new" || hello["mode"] === "resume")
     && isCoopRunMode(hello["runMode"])
     && (hello["players"] === 2 || hello["players"] === 3)
+    // A challenge run has its challenges, and no other run has any (D41)
+    && (hello["runMode"] === "challenge" ? isCoopChallenges(hello["challenges"]) : hello["challenges"] === undefined)
   );
 }
 

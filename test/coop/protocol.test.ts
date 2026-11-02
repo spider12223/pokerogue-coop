@@ -218,6 +218,30 @@ describe("HELLO", () => {
     expect(isHelloAckPayload({ build, effectiveSettingsHash: 5, name: "Sam", accountId: "1:2" })).toBe(false);
     expect(isHelloAckPayload({ effectiveSettingsHash: "abc", name: "Sam", accountId: "1:2" })).toBe(false);
   });
+
+  it("carries the challenges of a challenge run, and only of one (D41)", () => {
+    const mono = { id: 1, value: 1, severity: 0 };
+    expect(isHelloPayload({ ...hello, runMode: "challenge", challenges: [mono] })).toBe(true);
+    // a challenge run needs at least one challenge on
+    expect(isHelloPayload({ ...hello, runMode: "challenge" })).toBe(false);
+    expect(isHelloPayload({ ...hello, runMode: "challenge", challenges: [] })).toBe(false);
+    expect(isHelloPayload({ ...hello, runMode: "challenge", challenges: [{ ...mono, value: 0 }] })).toBe(false);
+    // and only a challenge run has them
+    expect(isHelloPayload({ ...hello, challenges: [mono] })).toBe(false);
+    // each is three small whole numbers
+    for (const bad of [
+      { ...mono, id: -1 },
+      { ...mono, value: 1.5 },
+      { ...mono, severity: "x" },
+      { id: 1, value: 1 },
+      null,
+    ]) {
+      expect(isHelloPayload({ ...hello, runMode: "challenge", challenges: [mono, bad] })).toBe(false);
+    }
+    expect(isHelloPayload({ ...hello, runMode: "challenge", challenges: Array.from({ length: 33 }, () => mono) })).toBe(
+      false,
+    );
+  });
 });
 
 const starter: CoopStarter = {

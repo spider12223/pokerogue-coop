@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type CoopRunMode, isCoopRunMode, type SeatRecord } from "#coop/protocol";
+import { type CoopChallenge, type CoopRunMode, isCoopChallenges, isCoopRunMode, type SeatRecord } from "#coop/protocol";
 import type { KeyValueStore } from "#coop/seat-store";
 
 /**
@@ -41,6 +41,8 @@ export interface CoopSlot {
   session: string;
   /** The kind of run (D39), for the title menu; a slot from before has none and is classic */
   runMode?: CoopRunMode;
+  /** A challenge run's challenges (D41), for the partner's handshake when the run is continued */
+  challenges?: CoopChallenge[];
 }
 
 export function isCoopSlot(value: unknown): value is CoopSlot {
@@ -70,6 +72,8 @@ export function isCoopSlot(value: unknown): value is CoopSlot {
     && typeof slot["session"] === "string"
     && slot["session"].length > 0
     && (slot["runMode"] === undefined || isCoopRunMode(slot["runMode"]))
+    // A challenge run has its challenges, and no other run has any (D41)
+    && (slot["runMode"] === "challenge" ? isCoopChallenges(slot["challenges"]) : slot["challenges"] === undefined)
   );
 }
 

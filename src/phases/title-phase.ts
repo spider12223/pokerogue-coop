@@ -223,8 +223,10 @@ export class TitlePhase extends Phase {
     return {
       onConnected: () => {
         this.coop = true;
-        // The run's kind (D39): the host chose it, the guest's `HELLO` said it
-        this.gameMode = getCoopSession()?.runMode === "endless" ? GameModes.ENDLESS : GameModes.CLASSIC;
+        // The run's kind (D39, D41): the host chose it, the guest's `HELLO` said it
+        const runMode = getCoopSession()?.runMode;
+        this.gameMode =
+          runMode === "endless" ? GameModes.ENDLESS : runMode === "challenge" ? GameModes.CHALLENGE : GameModes.CLASSIC;
         ui.setMode(UiMode.MESSAGE);
         ui.clearText();
         this.end();
@@ -402,8 +404,11 @@ export class TitlePhase extends Phase {
   // TODO: Refactor this
   end(): void {
     if (!this.loaded && !globalScene.gameMode.isDaily) {
-      globalScene.gameMode = this.coop ? createCoopGameMode(this.gameMode) : getGameMode(this.gameMode);
-      if (this.gameMode === GameModes.CHALLENGE) {
+      globalScene.gameMode = this.coop
+        ? createCoopGameMode(this.gameMode, getCoopSession()?.challenges)
+        : getGameMode(this.gameMode);
+      // A co-op host chose its challenges before hosting (D41)
+      if (this.gameMode === GameModes.CHALLENGE && !this.coop) {
         globalScene.phaseManager.pushNew("SelectChallengePhase");
       } else {
         globalScene.phaseManager.pushNew("SelectStarterPhase");

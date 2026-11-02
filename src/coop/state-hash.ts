@@ -82,6 +82,8 @@ export interface StateHashSnapshot {
   rewardPickCount: number;
   /** The timed events of the run (D33): shiny rates, wild Pokémon, rewards and biomes depend on them */
   timedEvents: string[];
+  /** A challenge run's challenges (D41), as `id:value:severity`: the rules of every battle depend on them */
+  challenges: string[];
   /** The trainers the run has met (D34): which trainer a wave gets depends on them */
   metTrainers: number[];
   /** The run seed and the wave seed derived from it */
@@ -204,6 +206,9 @@ export function captureStateSnapshot(scene: BattleScene = globalScene): StateHas
     pinnedSettings: readPinnedSettings(settings),
     rewardPickCount: getCoopSession()?.rewardPickCount ?? 0,
     timedEvents: [...(getCoopSession()?.timedEvents ?? [])],
+    challenges: (scene.gameMode?.challenges ?? [])
+      .filter(challenge => challenge.value !== 0)
+      .map(challenge => `${challenge.id}:${challenge.value}:${challenge.severity}`),
     metTrainers: [...(getCoopSession()?.metTrainers ?? [])],
     seed: scene.seed,
     waveSeed: scene.waveSeed,

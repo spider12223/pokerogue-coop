@@ -6,6 +6,7 @@
 
 import {
   type BuildIdentity,
+  type CoopChallenge,
   type CoopRunMode,
   cleanName,
   compareBuild,
@@ -95,6 +96,8 @@ export interface HostHandshakeOptions extends HandshakeOptions {
   runMode?: CoopRunMode;
   /** How many players the game has (D40); the guest is told. Default 2. */
   players?: PlayerCount;
+  /** A challenge run's challenges (D41); the guest is told */
+  challenges?: CoopChallenge[];
   /** The guest account the run was saved with (D21): another one is refused, with `accountId` as the field that differs */
   expectedGuestAccountId?: string;
 }
@@ -177,6 +180,7 @@ export function hostHandshake(
       mode: options.mode ?? "new",
       runMode: options.runMode ?? "classic",
       players: options.players ?? 2,
+      ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
     };
     transport.send({ key: null, author: "host", kind: "HELLO", payload: hello });
   });

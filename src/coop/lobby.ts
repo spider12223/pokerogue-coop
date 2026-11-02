@@ -7,6 +7,7 @@
  * code and wait) or join (type the code).
  */
 
+import { GameMode } from "#app/game-mode";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
@@ -15,6 +16,7 @@ import { stopAllAfkWatchers } from "#coop/afk";
 import { listenForAgain } from "#coop/again-answer";
 import { coopText } from "#coop/bridge";
 import { getLocalBuildIdentity, overridesAreDefaults } from "#coop/build-info";
+import { openCoopChallengePick } from "#coop/challenge-pick";
 import { startChat, stopChat } from "#coop/chat";
 import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
 import { copyText } from "#coop/clipboard";
@@ -38,6 +40,7 @@ import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-set
 import { coloredName } from "#coop/player-colors";
 import { hidePlayersLine, showPlayersLine } from "#coop/players-line";
 import {
+  type CoopChallenge,
   type CoopRunMode,
   hashCanonical,
   keyId,
@@ -61,6 +64,7 @@ import { RelayError } from "#coop/transport/relay-ws";
 import { validateProposal } from "#coop/validate";
 import { coopStore, currentCoopSlot } from "#coop/wave-save";
 import { GameDataType } from "#enums/game-data-type";
+import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
 import type { OptionSelectItem, OptionSelectModeConfig } from "#types/ui-types";
 import { randomString } from "#utils/common";
@@ -307,7 +311,9 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
             label:
               slot.runMode === "endless"
                 ? coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave })
-                : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave }),
+                : slot.runMode === "challenge"
+                  ? coopText("continueChallengeRun", "Continue (Challenge, wave {{wave}})", { wave: slot.wave })
+                  : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave }),
             handler: () => {
               continueHandler?.(callbacks);
               return true;
@@ -317,25 +323,32 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
     {
       label: coopText("host", "Host a game"),
       handler: () => {
-        // How many players first, then the kind of run; Cancel on the second asks the first again (D40)
-        const host = (): void =>
-          askPlayers(callbacks, players =>
-            askRunMode(
-              callbacks,
-              runMode =>
-                confirmOverwrite(
-                  callbacks,
-                  slot,
-                  saved =>
-                    coopText(
-                      "hostOverwrites",
-                      "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
-                      { wave: saved.wave },
-                    ),
-                  () => void hostGame(callbacks, runMode, undefined, players),
-                ),
-              host,
-            ),
+        // How many players first, then the kind of run; Cancel on the second asks the first again (D40). A challenge run's
+        // challenges are picked last, on the challenge screen, whose Cancel asks the kind again (D41)
+        const host = (): void => askPlayers(callbacks, players => kind(players));
+        const kind = (players: PlayerCount): void =>
+          askRunMode(
+            callbacks,
+            runMode =>
+              confirmOverwrite(
+                callbacks,
+                slot,
+                saved =>
+                  coopText(
+                    "hostOverwrites",
+                    "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
+                    { wave: saved.wave },
+                  ),
+                () =>
+                  runMode === "challenge"
+                    ? openCoopChallengePick(
+                        challenges => void hostGame(callbacks, runMode, undefined, players, challenges),
+                        () => kind(players),
+                      )
+                    : void hostGame(callbacks, runMode, undefined, players),
+              ),
+            host,
+            true,
           );
         host();
         return true;
@@ -459,13 +472,24 @@ function askPlayers(callbacks: CoopTitleCallbacks, chosen: (players: PlayerCount
 }
 
 /**
- * Classic or Endless (D39), asked before hosting and before looking for a partner
+ * Classic or Endless (D39), asked before hosting and before looking for a partner; and Challenge when hosting (D41)
  * @param back - What Cancel does; default: back to the co-op menu
+ * @param withChallenge - Offer a challenge run too
  */
-function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode) => void, back?: () => void): void {
+function askRunMode(
+  callbacks: CoopTitleCallbacks,
+  chosen: (runMode: CoopRunMode) => void,
+  back?: () => void,
+  withChallenge = false,
+): void {
   const { ui } = globalScene;
+  const labels: Record<CoopRunMode, string> = {
+    classic: i18next.t("gameMode:classic"),
+    endless: i18next.t("gameMode:endless"),
+    challenge: GameMode.getModeName(GameModes.CHALLENGE),
+  };
   const option = (runMode: CoopRunMode): OptionSelectItem => ({
-    label: i18next.t(runMode === "endless" ? "gameMode:endless" : "gameMode:classic"),
+    label: labels[runMode],
     handler: () => {
       chosen(runMode);
       return true;
@@ -478,6 +502,7 @@ function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode
         options: [
           option("classic"),
           option("endless"),
+          ...(withChallenge ? [option("challenge")] : []),
           {
             label: i18next.t("menu:cancel"),
             handler: () => {
@@ -630,7 +655,12 @@ export function beginSession(
   link: CoopLink,
   seat: Seat,
   overlay: ReturnType<typeof createSettingsOverlayPort>,
-  init: { runSeed?: string; accountIds?: SeatRecord<string>; runMode?: CoopRunMode } = {},
+  init: {
+    runSeed?: string;
+    accountIds?: SeatRecord<string>;
+    runMode?: CoopRunMode;
+    challenges?: readonly CoopChallenge[];
+  } = {},
 ): CoopSession {
   const session = startCoopSession({
     seat,
@@ -640,6 +670,7 @@ export function beginSession(
     overlay,
     ...(init.accountIds === undefined ? {} : { accountIds: init.accountIds }),
     ...(init.runMode === undefined ? {} : { runMode: init.runMode }),
+    ...(init.challenges === undefined ? {} : { challenges: init.challenges }),
   });
   session.link = link;
   // The seat token, so that a reloaded or reopened tab takes the seat back by itself (D20)
@@ -751,6 +782,8 @@ async function hostGame(
     onNoPartner?: () => void;
   },
   players: PlayerCount = 2,
+  /** A challenge run's challenges (D41) */
+  challenges?: CoopChallenge[],
 ): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
@@ -817,6 +850,7 @@ async function hostGame(
         sequencer: { validatePayload: validateProposal },
         name: getCoopName(),
         runMode,
+        ...(challenges === undefined ? {} : { challenges }),
         ...(three
           ? {
               onProgress: (names: Partial<Record<Seat, string>>) => {
@@ -837,7 +871,10 @@ async function hostGame(
       established.link.close();
       return;
     }
-    const session = beginSession(established.link, "host", overlay, { runMode });
+    const session = beginSession(established.link, "host", overlay, {
+      runMode,
+      ...(challenges === undefined ? {} : { challenges }),
+    });
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
     if (!cancelled) {
@@ -933,6 +970,7 @@ export async function joinGame(
     }
     const session = beginSession(established.link, established.link.seat, overlay, {
       runMode: established.hello.runMode,
+      ...(established.hello.challenges === undefined ? {} : { challenges: established.hello.challenges }),
     });
     lastFailedCode = null;
     if (established.hello.mode === "resume") {
@@ -1183,12 +1221,13 @@ export function hostAgain(
   room: HostRoom,
   partner: string,
   runMode: CoopRunMode = "classic",
+  challenges?: CoopChallenge[],
 ): Promise<void> {
   const waiting = coopText("againWaiting", "Waiting for {{partner}} to join the new game (code {{code}})…", {
     partner,
     code: room.identity.code,
   });
-  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" });
+  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, 2, challenges);
 }
 
 /** Host: start a game without the menus (the debug API and the end-to-end test use it) */

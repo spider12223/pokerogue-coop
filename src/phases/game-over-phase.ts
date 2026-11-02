@@ -249,16 +249,33 @@ export class GameOverPhase extends BattlePhase {
   /**
    * The end of a co-op run (DECISIONS D4a): victory and game over are shared (a game over ends the run unless the host
    * retries the wave, {@linkcode decideCoopRetry}). A victory gives each player the ribbons of their own Pokémon and counts as
-   * a co-op clear of their own account, and nothing else: no classic-win unlocks or vouchers. The run goes into each player's
-   * run history with both display names. Both clients then show the end screen, where each player may play again with the
-   * partner (D35).
+   * a co-op clear of their own account, and nothing else: no classic-win unlocks or vouchers. A challenge run's victory gives
+   * each player, on their own account, what a solo challenge win gives (D41): the classic victory achievement and its voucher
+   * the first time, a Premium voucher after that, a Voucher Plus for each of their own Pokémon's species on its first win,
+   * and the challenges' achievements. The run goes into each player's run history with both display names. Both clients then
+   * show the end screen, where each player may play again with the partner (D35).
    */
   private handleCoopRunEnd(): void {
     globalScene.disableMenu = true;
     beginRunEnd();
+    const challengeWin = this.isVictory && globalScene.gameMode.isChallenge;
+    let firstClear = false;
     if (this.isVictory) {
       this.awardRibbons();
       globalScene.gameData.gameStats.coopRunsWon++;
+    }
+    if (challengeWin) {
+      firstClear = globalScene.validateAchv(achvs.CLASSIC_VICTORY);
+      globalScene.validateAchv(achvs.UNEVOLVED_CLASSIC_VICTORY);
+      for (const pokemon of globalScene.getPlayerParty()) {
+        // Each client counts the first wins of its own player's Pokémon only (D4a)
+        if (writesForPokemon(pokemon)) {
+          this.awardFirstClassicCompletion(pokemon);
+          if (pokemon.species.getRootSpeciesId() !== pokemon.species.getRootSpeciesId(true)) {
+            this.awardFirstClassicCompletion(pokemon, true);
+          }
+        }
+      }
     }
     void this.recordCoopRun();
     globalScene.time.delayedCall(1000, () => {
@@ -271,6 +288,17 @@ export class GameOverPhase extends BattlePhase {
         globalScene.setFieldScale(1, true);
         globalScene.phaseManager.clearPhaseQueue();
         globalScene.ui.clearText();
+        if (challengeWin) {
+          for (const challenge of globalScene.gameMode.challenges) {
+            globalScene.validateAchvs(ChallengeAchv, challenge);
+          }
+          for (const species of this.firstRibbons) {
+            globalScene.phaseManager.pushNew("RibbonModifierRewardPhase", modifierTypes.VOUCHER_PLUS, species);
+          }
+          if (!firstClear) {
+            globalScene.phaseManager.pushNew("GameOverModifierRewardPhase", modifierTypes.VOUCHER_PREMIUM);
+          }
+        }
         globalScene.phaseManager.pushNew("PostGameOverPhase", globalScene.sessionSlotId);
         this.end();
       });

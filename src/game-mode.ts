@@ -3,6 +3,7 @@ import { CHALLENGE_MODE_MYSTERY_ENCOUNTER_WAVES, CLASSIC_MODE_MYSTERY_ENCOUNTER_
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
+import type { CoopChallenge } from "#coop/protocol";
 import { allChallenges, type Challenge, copyChallenge } from "#data/challenge";
 import {
   getDailyEventSeedBoss,
@@ -470,12 +471,36 @@ export class GameMode implements GameModeConfig {
 }
 
 /**
- * The game mode of a co-op run (DECISIONS D12, D29, D39): classic with trainers and Mystery Encounters, without daily-run
- * rules and challenges; or endless with solo endless's rules. It keeps the id of the solo mode it plays as, so saves,
- * rankings and i18n treat it as that mode.
- * @param modeId - {@linkcode GameModes.ENDLESS} for an endless run; anything else is classic (a save from before D39)
+ * The game mode of a co-op run (DECISIONS D12, D29, D39, D41): classic with trainers and Mystery Encounters, without
+ * daily-run rules; endless with solo endless's rules; or a challenge run, classic with the host's challenges on. It keeps
+ * the id of the solo mode it plays as, so saves, rankings and i18n treat it as that mode.
+ * @param modeId - {@linkcode GameModes.ENDLESS} for an endless run, {@linkcode GameModes.CHALLENGE} for a challenge run;
+ * anything else is classic (a save from before D39)
+ * @param challenges - A challenge run's challenges as the host sent them (D41), each kept within its range; a save restores
+ * its own
  */
-export function createCoopGameMode(modeId: GameModes = GameModes.CLASSIC): GameMode {
+export function createCoopGameMode(
+  modeId: GameModes = GameModes.CLASSIC,
+  challenges: readonly CoopChallenge[] = [],
+): GameMode {
+  if (modeId === GameModes.CHALLENGE) {
+    const mode = new GameMode(
+      GameModes.CHALLENGE,
+      { isClassic: true, hasTrainers: true, isChallenge: true, hasMysteryEncounters: true, isCoop: true },
+      classicFixedBattles,
+    );
+    for (const { id, value, severity } of challenges) {
+      const challenge = mode.challenges.find(c => c.id === id);
+      if (challenge !== undefined) {
+        mode.setChallengeValue(
+          challenge.id,
+          Math.max(0, Math.min(value, challenge.maxValue)),
+          Math.max(0, Math.min(severity, challenge.maxSeverity)),
+        );
+      }
+    }
+    return mode;
+  }
   if (modeId === GameModes.ENDLESS) {
     return new GameMode(GameModes.ENDLESS, {
       isEndless: true,

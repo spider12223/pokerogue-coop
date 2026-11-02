@@ -21,7 +21,15 @@ import { controllerOf, deciderOf, requireOwnerOf, switchTargets } from "#coop/co
 import { catchReleaseKey } from "#coop/decision-keys";
 import { describePhaseTraceDiff, diffPhaseTraces, type PhaseTraceEntry } from "#coop/phase-trace";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
-import { type DecisionKey, keysEqual, NO_REF, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
+import {
+  type CoopChallenge,
+  type DecisionKey,
+  keysEqual,
+  NO_REF,
+  otherSeat,
+  type Seat,
+  type SeatRecord,
+} from "#coop/protocol";
 import type { ResyncPayload } from "#coop/resync";
 import { endCoopSession, requireCoopSession, startCoopSession } from "#coop/session";
 // biome-ignore lint/performance/noNamespaceImport: necessary in order to spy on `simAccount`
@@ -207,6 +215,8 @@ export interface Scenario {
   starterOwners?: readonly Seat[];
   /** An endless run (D39) instead of a classic one */
   endless?: boolean;
+  /** A challenge run with these challenges (D41) instead of a classic one */
+  challenges?: CoopChallenge[];
   /** The money the run starts with (the harness starts the run without the starter screen, which would set it) */
   startingMoney?: number;
   /** From this wave on, the first wild wave with two enemies gets a Master Ball thrown at the second one left (D10) */
@@ -1224,7 +1234,10 @@ export async function openCoopRun(
   try {
     await game.runToTitle();
     game.onNextPrompt("TitlePhase", UiMode.TITLE, () => {
-      game.scene.gameMode = createCoopGameMode(scenario.endless ? GameModes.ENDLESS : GameModes.CLASSIC);
+      game.scene.gameMode =
+        scenario.challenges === undefined
+          ? createCoopGameMode(scenario.endless ? GameModes.ENDLESS : GameModes.CLASSIC)
+          : createCoopGameMode(GameModes.CHALLENGE, scenario.challenges);
       applyCoopRunSeed();
       const selectStarterPhase = new SelectStarterPhase();
       game.scene.phaseManager.pushNew("EncounterPhase", false);

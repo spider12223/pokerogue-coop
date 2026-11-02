@@ -21,6 +21,7 @@ import {
   type BuildIdentity,
   type ChatPayload,
   type CheckpointMessage,
+  type CoopChallenge,
   type CoopRunMode,
   cleanName,
   DEFAULT_NAME,
@@ -1147,6 +1148,7 @@ function establishHostOfThree(
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.mode === undefined ? {} : { mode: options.mode }),
     ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+    ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
     ...(options.expectedEffectiveSettingsHash === undefined
       ? {}
       : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
@@ -1281,6 +1283,8 @@ export async function establishHost(
     mode?: "new" | "resume";
     /** The kind of run (D39); default `classic` */
     runMode?: CoopRunMode;
+    /** A challenge run's challenges (D41) */
+    challenges?: CoopChallenge[];
     /** The guest account that may join (D21); another one is refused */
     expectedGuestAccountId?: string;
     /** A room of three (D40): the guests whose handshake is through, by seat, each time that changes */
@@ -1294,6 +1298,7 @@ export async function establishHost(
     ...(options.name === undefined ? {} : { name: options.name }),
     ...(options.mode === undefined ? {} : { mode: options.mode }),
     ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+    ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
     ...(options.expectedGuestAccountId === undefined ? {} : { expectedGuestAccountId: options.expectedGuestAccountId }),
     ...(options.expectedEffectiveSettingsHash === undefined
       ? {}
@@ -1335,7 +1340,14 @@ export async function establishHost(
 export interface EstablishedGuest {
   link: CoopLink;
   /** The host's build and the pinned settings it sent; the overlay is applied */
-  hello: { build: BuildIdentity; pinnedSettings: PinnedSettings; mode: "new" | "resume"; runMode: CoopRunMode };
+  hello: {
+    build: BuildIdentity;
+    pinnedSettings: PinnedSettings;
+    mode: "new" | "resume";
+    runMode: CoopRunMode;
+    /** A challenge run's challenges (D41) */
+    challenges?: CoopChallenge[];
+  };
 }
 
 /**
