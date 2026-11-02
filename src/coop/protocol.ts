@@ -205,6 +205,7 @@ export const MESSAGE_KINDS = [
   "REPORT",
   "BYE",
   "CHAT",
+  "ROSTER",
 ] as const;
 
 export type MessageKind = (typeof MESSAGE_KINDS)[number];
@@ -330,6 +331,25 @@ export interface HelloAckPayload {
 export const MAX_NAME_LENGTH = 16;
 /** The name of a player who set none */
 export const DEFAULT_NAME = "Player";
+
+/**
+ * `ROSTER`, host to the guests of a game of three (D40), each time a guest's handshake is through or a guest left before the
+ * game began: the name of every player in the room by seat. The room is full when every seat has one.
+ */
+export interface RosterPayload {
+  names: Partial<Record<Seat, string>>;
+}
+
+export function isRosterPayload(value: unknown): value is RosterPayload {
+  const names = (value as { names?: unknown } | null)?.names;
+  return (
+    typeof names === "object"
+    && names !== null
+    && Object.entries(names as Record<string, unknown>).every(
+      ([seat, name]) => isSeat(seat) && typeof name === "string" && name.length <= 64,
+    )
+  );
+}
 
 /**
  * Make a display name safe to show (D1): control characters out, invisible format characters (`\p{Cf}`: bidi overrides,

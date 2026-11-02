@@ -240,6 +240,72 @@ describe("CoopLink over the relay", () => {
       return { host: host.link, guest: guest.link, guest2: guest2.link };
     }
 
+    it("shakes hands with each guest as it joins, and tells everyone the names (D40)", async () => {
+      const room = await createRoom(url, { reliable, seats: 3 });
+      const progress: Partial<Record<string, string>>[] = [];
+      const hosting = establishHost(room, build, pinned, { name: "Sam", onProgress: names => progress.push(names) });
+      const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+      // Guest 1 is through before guest 2 has even joined: its handshake does not wait on the other's
+      const guest = (await establishGuest(guestRoom, build, guestOverlay, { name: "Alex" })).link;
+      links.push(guest);
+      expect(guest.rosterComplete).toBe(false);
+      const guest2Room = await joinRoom(url, room.identity.code, { reliable });
+      const guest2 = (await establishGuest(guest2Room, build, guestOverlay, { name: "Kim" })).link;
+      const host = (await hosting).link;
+      links.push(guest2, host);
+      expect(progress).toEqual([{ guest: "Alex" }, { guest: "Alex", guest2: "Kim" }]);
+      await waitFor(() => guest.rosterComplete && guest2.rosterComplete);
+      expect(guest.names).toEqual({ host: "Sam", guest: "Alex", guest2: "Kim" });
+      expect(guest2.names).toEqual({ host: "Sam", guest: "Alex", guest2: "Kim" });
+      expect(guest.partnerName).toBe("Sam & Kim");
+    });
+
+    it("gives the seat of a guest who left before the room was full to the next one (D40)", async () => {
+      const room = await createRoom(url, { reliable, seats: 3 });
+      const hosting = establishHost(room, build, pinned, { name: "Sam" });
+      const leaverRoom = await joinRoom(url, room.identity.code, { reliable });
+      const leaver = (await establishGuest(leaverRoom, build, guestOverlay, { name: "Lee" })).link;
+      leaverRoom.relay.leave();
+      leaver.close();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+      expect(guestRoom.identity.seat).toBe("guest");
+      const guest2Room = await joinRoom(url, room.identity.code, { reliable });
+      const [guest, guest2] = await Promise.all([
+        establishGuest(guestRoom, build, guestOverlay, { name: "Alex" }),
+        establishGuest(guest2Room, build, guestOverlay, { name: "Kim" }),
+      ]);
+      const host = (await hosting).link;
+      links.push(guest.link, guest2.link, host);
+      expect(host.names).toEqual({ host: "Sam", guest: "Alex", guest2: "Kim" });
+    });
+
+    it("refuses the game when one guest is on another build (D40)", async () => {
+      const room = await createRoom(url, { reliable, seats: 3 });
+      const hosting = establishHost(room, build, pinned);
+      const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+      const guest = (await establishGuest(guestRoom, build, guestOverlay)).link;
+      links.push(guest);
+      const guest2Room = await joinRoom(url, room.identity.code, { reliable });
+      const refused = await Promise.allSettled([
+        hosting,
+        establishGuest(guest2Room, { ...build, gitSha: "other" }, guestOverlay),
+      ]);
+      expect(refused.map(result => result.status)).toEqual(["rejected", "rejected"]);
+      expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(HandshakeRefusedError);
+      room.cancel();
+      guest2Room.cancel();
+    });
+
+    it("tells lobby listeners which seat a lobby message came from (D40)", async () => {
+      const { host, guest2 } = await connectThree();
+      const got: [LobbyMessage, string][] = [];
+      host.onLobby((message, from) => got.push([message, from]));
+      guest2.sendLobby({ t: "unready" });
+      await waitFor(() => got.length > 0);
+      expect(got).toEqual([[{ t: "unready" }, "guest2"]]);
+    });
+
     it("links three players, each in its seat, and the host knows the three names", async () => {
       const { host, guest, guest2 } = await connectThree();
       expect([host.seat, guest.seat, guest2.seat]).toEqual(["host", "guest", "guest2"]);

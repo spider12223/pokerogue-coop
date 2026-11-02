@@ -96,6 +96,19 @@ describe("EpochTransport", () => {
     expect(guestChannel.stats.droppedOlder).toBe(14);
   });
 
+  it("with deferStart, hands what waited below to every listener added before start (D40)", () => {
+    const link = createManualLink();
+    link.guest.receive(envelope("LOBBY", undefined, null));
+    const channel = new EpochTransport(link.guest, { deferStart: true });
+    const first: MessageKind[] = [];
+    const second: MessageKind[] = [];
+    channel.onMessage(message => first.push(message.kind));
+    channel.onMessage(message => second.push(message.kind));
+    expect(first).toEqual([]);
+    channel.start();
+    expect([first, second]).toEqual([["LOBBY"], ["LOBBY"]]);
+  });
+
   it("lets the pre-run traffic through whatever the epoch", () => {
     const link = createManualLink();
     const channel = new EpochTransport(link.guest);

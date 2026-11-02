@@ -28,6 +28,7 @@ import {
   isChatPayload,
   isCheckpointMessage,
   isLobbyMessage,
+  isRosterPayload,
   isStartPayload,
   type LobbyMessage,
   otherSeat,
@@ -114,8 +115,7 @@ export class CoopLink {
   readonly code: string;
   /** This player's display name (D1) */
   readonly name: string;
-  /** What to call the partner: their display name, told apart from this one's if equal (D1) */
-  readonly partnerName: string;
+
   /** The partner's name as they sent it */
   readonly theirName: string;
   /** What the cosmetic channel received and dropped (D16), for tests and the debug API */
@@ -138,7 +138,10 @@ export class CoopLink {
   private readonly presence = new Map<Seat, boolean>();
   private readonly presenceListeners = new Set<(seat: Seat, present: boolean) => void>();
   private relay: RelayWsTransport | null;
-  private readonly lobbyListeners = new Set<(message: LobbyMessage) => void>();
+  private readonly lobbyListeners = new Set<(message: LobbyMessage, from: Seat) => void>();
+  private readonly rosterListeners = new Set<() => void>();
+  /** What to call the partner of a game of two (D1) */
+  private readonly partnerOfTwo: string;
   private readonly startListeners = new Set<(payload: StartPayload) => void>();
   private readonly checkpointListeners = new Set<(checkpoint: CheckpointMessage) => void>();
   private readonly resyncListeners = new Set<(message: ResyncMessage) => void>();
@@ -198,7 +201,7 @@ export class CoopLink {
     this.connection = options.connection ?? null;
     this.name = cleanName(options.names?.mine ?? DEFAULT_NAME);
     this.theirName = cleanName(options.names?.theirs ?? DEFAULT_NAME);
-    this.partnerName = partnerDisplayName(this.name, this.theirName);
+    this.partnerOfTwo = partnerDisplayName(this.name, this.theirName);
     this.seatNames = { [this.seat]: this.name };
     if (this.players === 2) {
       this.seatNames[otherSeat(this.seat)] = this.theirName;
@@ -222,7 +225,8 @@ export class CoopLink {
     if (inner === null) {
       throw new Error("a link needs a reliable channel or, for the host of a game of three, a fan-out");
     }
-    this.channel = new EpochTransport(inner);
+    // Started once both the sequencer and the router listen: what arrived right behind the handshake reaches both
+    this.channel = new EpochTransport(inner, { deferStart: true });
     this.sequencer = new Sequencer({
       role: this.seat,
       transport: this.channel,
@@ -230,6 +234,7 @@ export class CoopLink {
       ...options.sequencer,
     });
     this.unsubscribes.push(this.channel.onMessage(message => this.route(message)));
+    this.channel.start();
     this.watchRelay();
   }
 
@@ -240,6 +245,33 @@ export class CoopLink {
   /** The epoch this link is in (D18) */
   get epoch(): number {
     return this.channel.epoch;
+  }
+
+  /**
+   * What to call the partner: their display name, told apart from this one's if equal (D1); in a game of three, the others'
+   * names joined ("Sam & Kim", D40)
+   */
+  get partnerName(): string {
+    if (this.players === 2) {
+      return this.partnerOfTwo;
+    }
+    return peers(this.seat, this.players)
+      .map(seat => this.seatNames[seat])
+      .filter((name): name is string => name !== undefined)
+      .join(" & ");
+  }
+
+  /** Whether every player's name is known: always in a game of two; a guest of three, once the host's roster says so */
+  get rosterComplete(): boolean {
+    return this.players === 2 || seatsFor(this.players).every(seat => this.seatNames[seat] !== undefined);
+  }
+
+  /** The host's roster changed (a guest of a game of three, D40) */
+  onRoster(listener: () => void): Unsubscribe {
+    this.rosterListeners.add(listener);
+    return () => {
+      this.rosterListeners.delete(listener);
+    };
   }
 
   /** Whether the partner is connected right now (in a game of three: anyone else) */
@@ -311,7 +343,8 @@ export class CoopLink {
     this.send({ key: null, author: this.seat, kind: "LOBBY", payload: message });
   }
 
-  onLobby(listener: (message: LobbyMessage) => void): Unsubscribe {
+  /** @param listener - Gets the seat it came from: in a game of three the host forwards a guest's (D40) */
+  onLobby(listener: (message: LobbyMessage, from: Seat) => void): Unsubscribe {
     this.lobbyListeners.add(listener);
     return () => {
       this.lobbyListeners.delete(listener);
@@ -529,9 +562,32 @@ export class CoopLink {
     switch (message.kind) {
       case "LOBBY":
         if (isLobbyMessage(message.payload) && message.author !== this.seat) {
+          // The host of three knows the sender from the relay's stamp, never from the wire (D40)
+          const from = message.from ?? message.author;
           for (const listener of [...this.lobbyListeners]) {
-            listener(message.payload);
+            listener(message.payload, from);
           }
+        }
+        break;
+      case "ROSTER":
+        if (
+          this.seat !== "host"
+          && this.players === 3
+          && message.author === "host"
+          && isRosterPayload(message.payload)
+        ) {
+          for (const seat of peers(this.seat, this.players)) {
+            const name = message.payload.names[seat];
+            if (name === undefined) {
+              delete this.seatNames[seat];
+            } else {
+              this.seatNames[seat] = cleanName(name);
+            }
+          }
+          for (const listener of [...this.rosterListeners]) {
+            listener();
+          }
+          this.notifyChange();
         }
         break;
       case "START":
@@ -887,6 +943,10 @@ export interface HostRoom {
   readonly webSocketFactory?: WebSocketFactory | undefined;
   /** Resolves when every guest joined (and again does not: the first time only); rejects if the room closed first */
   readonly partner: Promise<void>;
+  /** The guest seats someone took by code and still has, in a room of three (D40) */
+  readonly joinedSeats: ReadonlySet<Seat>;
+  /** A guest took a seat of a room of three (D40) */
+  onJoined(listener: (seat: Seat) => void): Unsubscribe;
   cancel(): void;
 }
 
@@ -920,6 +980,19 @@ export async function createRoom(url: string, options: RoomOptions = {}): Promis
     relay.onClose(() => reject(new Error("relay connection closed")));
   });
   partner.catch(() => {});
+  // In a room of three, who took which seat, from the moment the code exists (D40)
+  const joinedSeats = new Set<Seat>();
+  const joinedListeners = new Set<(seat: Seat) => void>();
+  relay.onRelayEvent(event => {
+    if (event.t === "relay:peerJoined") {
+      joinedSeats.add(event.seat);
+      for (const listener of [...joinedListeners]) {
+        listener(event.seat);
+      }
+    } else if (event.t === "relay:peerGone" && event.seat !== undefined) {
+      joinedSeats.delete(event.seat);
+    }
+  });
   let identity: RelayIdentity;
   try {
     identity = await relay.ready;
@@ -938,6 +1011,13 @@ export async function createRoom(url: string, options: RoomOptions = {}): Promis
     url,
     webSocketFactory: options.webSocketFactory,
     partner,
+    joinedSeats,
+    onJoined: listener => {
+      joinedListeners.add(listener);
+      return () => {
+        joinedListeners.delete(listener);
+      };
+    },
     cancel: () => {
       reliable.close();
       relay.close();
@@ -1040,55 +1120,134 @@ export class HandshakeRefusedError extends Error {
 }
 
 /**
- * The host of a room of three (D40): one channel per guest over the room's connection, a handshake on each, and a link whose
- * transport sends to both. The two guests shake hands at the same time; a refusal of either refuses the game.
+ * The host of a room of three (D40): one channel per guest over the room's connection, and a link whose transport sends to
+ * both. The host shakes hands with each guest as it joins, so nobody's handshake waits on the other guest, and sends both a
+ * `ROSTER` each time the room changes. A guest who leaves before the room is full frees the seat for the next one; a refusal
+ * refuses the game.
  */
-async function establishHostOfThree(
+function establishHostOfThree(
   room: HostRoom,
   build: BuildIdentity,
   pinned: PinnedSettings,
   options: Parameters<typeof establishHost>[3] & object,
 ): Promise<EstablishedHost> {
-  const hub = new RoutedHub(room.relay, ["guest", "guest2"]);
-  const channels = new Map<Seat, ReliableTransport>(
-    (["guest", "guest2"] as const).map(seat => [seat, new ReliableTransport(hub.channel(seat), room.reliableOptions)]),
-  );
-  const results = await Promise.all(
-    [...channels.values()].map(channel =>
-      hostHandshake(channel, build, pinned, {
+  const guests = ["guest", "guest2"] as const;
+  const hub = new RoutedHub(room.relay, guests);
+  const hostName = cleanName(options.name ?? DEFAULT_NAME);
+  /** The channel of each guest seat that someone joined, and what its handshake gave */
+  const channels = new Map<Seat, ReliableTransport>();
+  const through = new Map<Seat, { name: string; remote: BuildIdentity }>();
+  const handshakeOptions = {
+    players: 3 as const,
+    ...(options.name === undefined ? {} : { name: options.name }),
+    ...(options.mode === undefined ? {} : { mode: options.mode }),
+    ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+    ...(options.expectedEffectiveSettingsHash === undefined
+      ? {}
+      : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
+    ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+  };
+  return new Promise<EstablishedHost>((resolve, reject) => {
+    let over = false;
+    const stops: Unsubscribe[] = [];
+    const names = (): Partial<Record<Seat, string>> =>
+      Object.fromEntries([...through].map(([seat, done]) => [seat, done.name]));
+    const changed = (): void => {
+      const roster = { host: hostName, ...names() };
+      for (const [seat, channel] of channels) {
+        if (through.has(seat)) {
+          channel.send({ key: null, author: "host", kind: "ROSTER", payload: { names: roster } });
+        }
+      }
+      options.onProgress?.(names());
+    };
+    const fail = (error: Error): void => {
+      if (over) {
+        return;
+      }
+      over = true;
+      for (const stop of stops) {
+        stop();
+      }
+      for (const channel of channels.values()) {
+        channel.close();
+      }
+      reject(error);
+    };
+    const complete = (): void => {
+      over = true;
+      for (const stop of stops) {
+        stop();
+      }
+      const link = new CoopLink({
+        seat: "host",
+        fanout: new FanoutTransport(new Map(guests.map(seat => [seat, channels.get(seat)!]))),
         players: 3,
-        ...(options.name === undefined ? {} : { name: options.name }),
-        ...(options.mode === undefined ? {} : { mode: options.mode }),
-        ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
-        ...(options.expectedEffectiveSettingsHash === undefined
-          ? {}
-          : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
-        ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
-      }),
-    ),
-  );
-  const [first, second] = results;
-  if (first === undefined || second === undefined || !first.ok || !second.ok) {
-    for (const channel of channels.values()) {
+        peerNames: names(),
+        relay: room.relay,
+        code: room.identity.code,
+        names: { mine: hostName, theirs: guests.map(seat => through.get(seat)!.name).join(" & ") },
+        ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
+        ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
+      });
+      resolve({ link, remote: through.get("guest")!.remote, partnerName: link.partnerName });
+    };
+    /** A guest took the seat: shake hands with them on a channel of their own */
+    const shake = (seat: Seat): void => {
+      if (over || seat === "host") {
+        return;
+      }
+      const old = channels.get(seat);
+      if (old !== undefined) {
+        old.close();
+      }
+      const channel = new ReliableTransport(
+        old === undefined ? hub.channel(seat) : hub.reopen(seat),
+        room.reliableOptions,
+      );
+      channels.set(seat, channel);
+      void hostHandshake(channel, build, pinned, handshakeOptions).then(result => {
+        if (over || channels.get(seat) !== channel) {
+          return; // the player left meanwhile, and someone else may have the seat now
+        }
+        if (!result.ok) {
+          fail(new HandshakeRefusedError(result));
+          return;
+        }
+        through.set(seat, { name: cleanName(result.name), remote: result.remote });
+        changed();
+        if (guests.every(guest => through.has(guest))) {
+          complete();
+        }
+      });
+    };
+    /** A guest left before the room was full: they are out, and a guest who ended their session freed the seat (D40) */
+    const left = (seat: Seat): void => {
+      const channel = channels.get(seat);
+      if (over || channel === undefined) {
+        return;
+      }
       channel.close();
-    }
-    const refused = results.find(result => !result.ok);
-    throw new HandshakeRefusedError(
-      refused !== undefined && !refused.ok ? refused : { ok: false, reason: "timeout", mismatches: [] },
+      channels.delete(seat);
+      through.delete(seat);
+      changed();
+    };
+    // Who leaves is known from the start: a notice between two handshakes is not lost (D40)
+    stops.push(
+      room.relay.onRelayEvent(event => {
+        if (event.t === "relay:closed") {
+          fail(new Error("room closed"));
+        } else if ((event.t === "relay:peerLeft" || event.t === "relay:peerGone") && event.seat !== undefined) {
+          left(event.seat);
+        }
+      }),
+      room.relay.onClose(() => fail(new Error("relay connection closed"))),
+      room.onJoined(shake),
     );
-  }
-  const link = new CoopLink({
-    seat: "host",
-    fanout: new FanoutTransport(channels),
-    players: 3,
-    peerNames: { guest: first.name, guest2: second.name },
-    relay: room.relay,
-    code: room.identity.code,
-    names: { mine: options.name ?? DEFAULT_NAME, theirs: `${cleanName(first.name)} & ${cleanName(second.name)}` },
-    ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
-    ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
+    for (const seat of room.joinedSeats) {
+      shake(seat);
+    }
   });
-  return { link, remote: first.remote, partnerName: link.partnerName };
 }
 
 export interface EstablishedHost {
@@ -1119,6 +1278,8 @@ export async function establishHost(
     runMode?: CoopRunMode;
     /** The guest account that may join (D21); another one is refused */
     expectedGuestAccountId?: string;
+    /** A room of three (D40): the guests whose handshake is through, by seat, each time that changes */
+    onProgress?: (names: Partial<Record<Seat, string>>) => void;
   } = {},
 ): Promise<EstablishedHost> {
   if ("seats" in room && room.seats === 3) {

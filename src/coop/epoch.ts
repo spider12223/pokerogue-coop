@@ -84,7 +84,27 @@ export class EpochTransport implements EpochInner {
   private innerStop: Unsubscribe | null = null;
   private held: Envelope[] = [];
 
-  constructor(private readonly inner: EpochInner) {}
+  /** Whether it takes messages from the channel below yet (see `deferStart`) */
+  private started: boolean;
+
+  /**
+   * @param options.deferStart - Take nothing from the channel below until {@linkcode start}: what waited there then reaches
+   * every listener added by then, not only the first
+   */
+  constructor(
+    private readonly inner: EpochInner,
+    options: { deferStart?: boolean } = {},
+  ) {
+    this.started = options.deferStart !== true;
+  }
+
+  /** Begin taking messages from the channel below, for a transport made with `deferStart` */
+  start(): void {
+    this.started = true;
+    if (this.listeners.size > 0) {
+      this.innerStop ??= this.inner.onMessage(message => this.receive(message));
+    }
+  }
 
   /** The epoch this end is in */
   get epoch(): number {
@@ -151,7 +171,9 @@ export class EpochTransport implements EpochInner {
   onMessage(listener: (message: Envelope) => void): Unsubscribe {
     this.listeners.add(listener);
     // One subscription to the channel below, shared: a message held back is handed to every listener at once
-    this.innerStop ??= this.inner.onMessage(message => this.receive(message));
+    if (this.started) {
+      this.innerStop ??= this.inner.onMessage(message => this.receive(message));
+    }
     return () => {
       this.listeners.delete(listener);
     };

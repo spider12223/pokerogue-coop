@@ -95,7 +95,10 @@ export class RoutedHub {
    * @param relay - The host's connection to a room of three
    * @param guests - The guest seats of the room
    */
-  constructor(relay: RawTransport, guests: readonly Seat[]) {
+  constructor(
+    private readonly relay: RawTransport,
+    guests: readonly Seat[],
+  ) {
     for (const seat of guests) {
       this.channels.set(seat, new GuestChannel(seat, relay));
     }
@@ -106,6 +109,22 @@ export class RoutedHub {
       }
       this.channels.get(frame.slice(0, at) as Seat)?.receive(frame.slice(at + ROUTE_SEPARATOR.length));
     });
+  }
+
+  /**
+   * A new channel for a seat whose player left before the game began, for the next one to take it (D40); the old channel
+   * is closed
+   * @throws If `seat` is not a guest seat of the room
+   */
+  reopen(seat: Seat): RawTransport {
+    const old = this.channels.get(seat);
+    if (old === undefined) {
+      throw new RangeError(`${seat} is not a guest of this room`);
+    }
+    old.close();
+    const channel = new GuestChannel(seat, this.relay);
+    this.channels.set(seat, channel);
+    return channel;
   }
 
   /** @throws If `seat` is not a guest seat of the room */
