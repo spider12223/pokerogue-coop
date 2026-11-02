@@ -148,6 +148,12 @@ export class Room extends DurableObject<Env> {
     await this.save();
     const socket = this.accept(seat, sizeOf(room));
     sendControl(socket.server, { t: "relay:joined", code: room.code, seat, token });
+    if (sizeOf(room) === 3) {
+      // The host of three shakes hands with each guest as it comes (D40)
+      for (const peer of this.peersOf(room, seat)) {
+        sendControl(peer, { t: "relay:peerJoined", seat });
+      }
+    }
     this.announcePaired(room);
     if (!this.socketOf("host") && room.seats.host?.token != null) {
       sendControl(socket.server, this.notice(room, "host", { t: "relay:peerLeft", holdMs: null }));

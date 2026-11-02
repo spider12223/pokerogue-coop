@@ -515,6 +515,12 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     log(`coop relay: ${joined.seat} joined ${code}`);
     attach(socket, code, joined.seat, ip);
     send(socket, { t: "relay:joined", code, seat: joined.seat, token: joined.token });
+    if (isRoomOfThree(code)) {
+      // The host of three shakes hands with each guest as it comes (D40)
+      for (const peer of peersOf(code, joined.seat)) {
+        send(peer, { t: "relay:peerJoined", seat: joined.seat });
+      }
+    }
     announcePaired(code);
     if (registry.isReserved(code, "host")) {
       send(

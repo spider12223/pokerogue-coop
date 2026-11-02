@@ -185,6 +185,22 @@ describe("relay server", () => {
       return { host, guest, guest2, code: created.code };
     }
 
+    it("tells the others in a room of three which seat a guest took (not in a room of two)", async () => {
+      const host = await connect("role=host&seats=3");
+      const created = await host.control("relay:created");
+      const guest = await connect(`code=${created.code}`);
+      await guest.control("relay:joined");
+      expect(await host.control("relay:peerJoined")).toEqual({ t: "relay:peerJoined", seat: "guest" });
+      const guest2 = await connect(`code=${created.code}`);
+      await guest2.control("relay:joined");
+      expect(await host.control("relay:peerJoined")).toEqual({ t: "relay:peerJoined", seat: "guest2" });
+      expect(await guest.control("relay:peerJoined")).toEqual({ t: "relay:peerJoined", seat: "guest2" });
+      await guest2.expectSilence(50, text => text.includes("relay:peerJoined"));
+
+      const { host: host2 } = await pairedRoom();
+      await host2.expectSilence(100, text => text.includes("relay:peerJoined"));
+    });
+
     it("takes two guests, announces the room complete only then, and refuses a fourth", async () => {
       const host = await connect("role=host&seats=3");
       const created = await host.control("relay:created");

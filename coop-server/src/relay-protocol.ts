@@ -75,6 +75,8 @@ export type RelayControlMessage =
   | { t: "relay:peerLeft"; holdMs: number | null; seat?: Seat }
   /** The partner took their seat back. */
   | { t: "relay:peerBack"; seat?: Seat }
+  /** In a room of three, to the others: a guest took a free seat by code (D40) */
+  | { t: "relay:peerJoined"; seat: "guest" | "guest2" }
   /**
    * The partner's seat hold expired, or (in a room of three) a guest ended its session: they can no longer rejoin. In a room
    * of three these notices name the seat (D40).

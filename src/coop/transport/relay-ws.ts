@@ -23,6 +23,8 @@ export type RelayEvent =
   | { t: "relay:peerLeft"; holdMs: number | null; seat?: Seat }
   | { t: "relay:peerBack"; seat?: Seat }
   | { t: "relay:peerGone"; seat?: Seat }
+  /** Room of three: a guest took a free seat by code */
+  | { t: "relay:peerJoined"; seat: "guest" | "guest2" }
   | { t: "relay:closed"; reason: "hostGone" | "partnerLeft" | "idle" };
 
 type RelayControlMessage =

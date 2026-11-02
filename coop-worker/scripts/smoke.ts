@@ -196,6 +196,16 @@ check(
   (await g2.next(is("relay:joined"), "relay:joined (guest2)"))["seat"] === "guest2",
   "the second join is not guest2",
 );
+const joins = [
+  (await host3.next(is("relay:peerJoined"), "relay:peerJoined (guest)"))["seat"],
+  (await host3.next(is("relay:peerJoined"), "relay:peerJoined (guest2)"))["seat"],
+];
+check(joins[0] === "guest" && joins[1] === "guest2", `the host's join notices: ${JSON.stringify(joins)}`);
+check(
+  (await g1.next(is("relay:peerJoined"), "relay:peerJoined at guest"))["seat"] === "guest2",
+  "guest was not told guest2 joined",
+);
+ok("the others are told which seat each guest took");
 await host3.next(is("relay:paired"), "relay:paired (three)");
 const fourth = await connect(`code=${code3}`);
 const full3 = await fourth.next(is("relay:error"), "relay:error full (three)");
