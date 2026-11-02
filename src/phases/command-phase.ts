@@ -17,6 +17,7 @@ import { AbilityId } from "#enums/ability-id";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
+import { type BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { Command } from "#enums/command";
@@ -41,6 +42,11 @@ export class CommandPhase extends FieldPhase {
    * Whether the command phase is handling a switch command
    */
   private isSwitch = false;
+
+  /** The battler of this slot: its key in the turn's commands (the third slot of a game of three is `PLAYER_3`, D40) */
+  private get battler(): BattlerIndex {
+    return playerBattlerOf(this.fieldIndex);
+  }
 
   constructor(fieldIndex: number) {
     super();
@@ -91,9 +97,11 @@ export class CommandPhase extends FieldPhase {
 
     // Co-op (D8): the ally's command is the partner's, and a Ball or Run of theirs is only settled once the partner has
     // accepted it (`CoopTurnSyncPhase`)
-    const allyCommand = isLinked() ? undefined : globalScene.currentBattle.turnCommands[this.fieldIndex - 1];
+    const allyCommand = isLinked()
+      ? undefined
+      : globalScene.currentBattle.turnCommands[playerBattlerOf(this.fieldIndex - 1)];
     if (allyCommand?.command === Command.BALL || allyCommand?.command === Command.RUN) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      globalScene.currentBattle.turnCommands[this.battler] = {
         command: allyCommand?.command,
         skip: true,
       };
@@ -104,7 +112,9 @@ export class CommandPhase extends FieldPhase {
   private isCommanding(): boolean {
     return (
       !!globalScene.currentBattle?.double
-      && this.getPokemon().getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon()
+      && this.getPokemon()
+        .getAllies()
+        .some(ally => ally.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this.getPokemon())
     );
   }
 
@@ -115,7 +125,7 @@ export class CommandPhase extends FieldPhase {
   private checkCommander(): void {
     // If the Pokemon has applied Commander's effects to its ally, skip this command
     if (this.isCommanding()) {
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      globalScene.currentBattle.turnCommands[this.battler] = {
         command: Command.FIGHT,
         move: { move: MoveId.NONE, targets: [], useMode: MoveUseMode.NORMAL },
         skip: true,
@@ -197,7 +207,7 @@ export class CommandPhase extends FieldPhase {
       // The partner's client drops the moves at the front of the Pokémon's queue that it can no longer use (a rampage cut
       // short by Torment or Disable) before it chooses: so does this one, or `MovePhase` takes another use mode from it.
       // A Pokémon commanding its ally skips that (`checkCommander`)
-      if (!this.isCommanding() && !globalScene.currentBattle.turnCommands[this.fieldIndex]?.skip) {
+      if (!this.isCommanding() && !globalScene.currentBattle.turnCommands[this.battler]?.skip) {
         this.clearUnusableMoves();
       }
       // The partner may have chosen while this player was still reading: the cosmetic "ready" was dropped then (D16), the
@@ -213,7 +223,7 @@ export class CommandPhase extends FieldPhase {
 
     this.checkCommander();
 
-    if (globalScene.currentBattle.turnCommands[this.fieldIndex]?.skip) {
+    if (globalScene.currentBattle.turnCommands[this.battler]?.skip) {
       this.end();
       return;
     }
@@ -304,7 +314,7 @@ export class CommandPhase extends FieldPhase {
     };
     const preTurnCommand: TurnCommand = {
       command,
-      targets: [this.fieldIndex],
+      targets: [this.battler],
       skip: command === Command.FIGHT,
     };
 
@@ -321,7 +331,7 @@ export class CommandPhase extends FieldPhase {
           };
 
     if (moveId === MoveId.NONE) {
-      turnCommand.targets = [this.fieldIndex];
+      turnCommand.targets = [this.battler];
     }
 
     console.log(
@@ -334,7 +344,7 @@ export class CommandPhase extends FieldPhase {
     );
 
     if (moveTargets.targets.length > 1 && moveTargets.multiple) {
-      globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex);
+      globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.battler);
     }
 
     if (turnCommand.move && (moveTargets.targets.length <= 1 || moveTargets.multiple)) {
@@ -346,11 +356,11 @@ export class CommandPhase extends FieldPhase {
     ) {
       turnCommand.move.targets = playerPokemon.getMoveQueue()[0].targets;
     } else {
-      globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.fieldIndex);
+      globalScene.phaseManager.unshiftNew("SelectTargetPhase", this.battler);
     }
 
-    globalScene.currentBattle.preTurnCommands[this.fieldIndex] = preTurnCommand;
-    globalScene.currentBattle.turnCommands[this.fieldIndex] = turnCommand;
+    globalScene.currentBattle.preTurnCommands[this.battler] = preTurnCommand;
+    globalScene.currentBattle.turnCommands[this.battler] = turnCommand;
 
     return true;
   }
@@ -484,13 +494,13 @@ export class CommandPhase extends FieldPhase {
         }
       }
 
-      globalScene.currentBattle.turnCommands[this.fieldIndex] = {
+      globalScene.currentBattle.turnCommands[this.battler] = {
         command: Command.BALL,
         cursor,
       };
-      globalScene.currentBattle.turnCommands[this.fieldIndex]!.targets = targets;
+      globalScene.currentBattle.turnCommands[this.battler]!.targets = targets;
       if (this.fieldIndex && !isLinked()) {
-        globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+        globalScene.currentBattle.turnCommands[playerBattlerOf(this.fieldIndex - 1)]!.skip = true;
       }
       return true;
     }
@@ -587,7 +597,7 @@ export class CommandPhase extends FieldPhase {
     }
 
     if (isBatonSwitch || !this.handleTrap()) {
-      currentBattle.turnCommands[this.fieldIndex] = this.isSwitch
+      currentBattle.turnCommands[this.battler] = this.isSwitch
         ? {
             command: Command.POKEMON,
             cursor,
@@ -597,7 +607,7 @@ export class CommandPhase extends FieldPhase {
             command: Command.RUN,
           };
       if (!this.isSwitch && this.fieldIndex && !isLinked()) {
-        currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+        currentBattle.turnCommands[playerBattlerOf(this.fieldIndex - 1)]!.skip = true;
       }
       return true;
     }
@@ -712,8 +722,17 @@ export class CommandPhase extends FieldPhase {
 
   cancel() {
     // Co-op (D8): only this player's own slots are reopened; the partner's command is not theirs to take back. A player
-    // with one slot has no earlier command of their own to go back to.
-    if (isLinked() && [0, 1].filter(slot => controllerOf(slot) === mySeat()).length < 2) {
+    // with no earlier slot of their own has nothing to go back to. In a game of three that slot may be any earlier one
+    // (D40)
+    if (isLinked()) {
+      const earlier = [0, 1, 2]
+        .slice(0, globalScene.currentBattle.getPlayerBattlerCount())
+        .filter(slot => slot < this.fieldIndex && controllerOf(slot) === mySeat());
+      if (earlier.length > 0 && controllerOf(this.fieldIndex) === mySeat()) {
+        globalScene.phaseManager.unshiftNew("CommandPhase", earlier.at(-1)!);
+        globalScene.phaseManager.unshiftNew("CommandPhase", this.fieldIndex);
+        this.end();
+      }
       return;
     }
     if (this.fieldIndex) {

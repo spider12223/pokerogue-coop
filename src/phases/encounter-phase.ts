@@ -135,7 +135,7 @@ export class EncounterPhase extends BattlePhase {
           }
           globalScene
             .getPlayerParty()
-            .slice(0, battle.double ? 2 : 1)
+            .slice(0, battle.playerSlots)
             .reverse()
             .forEach(playerPokemon => {
               applyAbAttrs("SyncEncounterNatureAbAttr", { pokemon: playerPokemon, target: battle.enemyParty[e] });
@@ -347,7 +347,7 @@ export class EncounterPhase extends BattlePhase {
   protected doEncounter(): void {
     audioManager.playBgm(undefined, true);
     globalScene.updateModifiers(false);
-    globalScene.setFieldScale(1);
+    globalScene.setFieldScale(globalScene.baseFieldScale());
 
     for (const pokemon of globalScene.getPlayerParty()) {
       // Currently, a new wave is not considered a new battle if there is no arena reset
@@ -597,6 +597,14 @@ export class EncounterPhase extends BattlePhase {
           globalScene.phaseManager.pushNew("ToggleDoublePositionPhase", true);
           if (!availablePartyMembers[1].isOnField()) {
             globalScene.phaseManager.pushNew("SummonPhase", 1);
+          }
+          // Co-op (D40): the third of ours, in a game of three
+          if (
+            globalScene.currentBattle.playerSlots === 3
+            && availablePartyMembers.length > 2
+            && !availablePartyMembers[2].isOnField()
+          ) {
+            globalScene.phaseManager.pushNew("SummonPhase", 2);
           }
         }
       } else {

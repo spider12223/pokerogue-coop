@@ -684,6 +684,12 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     return this.baseY;
   }
 
+  /** Co-op (D40): put the box at this place for good (its rest position, which the target cursor's bob returns to) */
+  placeAt(x: number, y: number): void {
+    this.setPosition(x, y);
+    this.baseY = y;
+  }
+
   resetY(): void {
     this.y = this.baseY;
   }

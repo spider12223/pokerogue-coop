@@ -43,6 +43,7 @@ import type { SpeciesFormChange } from "#data/pokemon-forms";
 import type { PokemonSpecies, PokemonSpeciesFilter } from "#data/pokemon-species";
 import { getTypeRgb } from "#data/type";
 import { BattleType } from "#enums/battle-type";
+import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { FormChangeItem } from "#enums/form-change-item";
@@ -735,7 +736,7 @@ export class BattleScene extends SceneBase {
   public getPlayerField(active = false): PlayerPokemon[] {
     const party = this.getPlayerParty();
     return party
-      .slice(0, Math.min(party.length, this.currentBattle?.double ? 2 : 1))
+      .slice(0, Math.min(party.length, this.currentBattle?.playerSlots ?? 1))
       .filter(p => !active || p.isActive());
   }
 
@@ -778,11 +779,15 @@ export class BattleScene extends SceneBase {
    * If speed order matters, use {@linkcode inSpeedOrder}.
    */
   public getField(activeOnly = false): Pokemon[] {
-    const ret: Pokemon[] = new Array(4).fill(null);
     const playerField = this.getPlayerField();
     const enemyField = this.getEnemyField();
-    ret.splice(0, playerField.length, ...playerField);
+    // Co-op (D40): the third Pokémon of ours, in a game of three, is `BattlerIndex.PLAYER_3`, after the enemies
+    const ret: Pokemon[] = new Array(playerField.length > 2 ? 5 : 4).fill(null);
+    ret.splice(0, Math.min(playerField.length, 2), ...playerField.slice(0, 2));
     ret.splice(2, enemyField.length, ...enemyField);
+    if (playerField.length > 2) {
+      ret[BattlerIndex.PLAYER_3] = playerField[2];
+    }
     return activeOnly ? ret.filter(p => p?.isActive()) : ret;
   }
 
@@ -1570,7 +1575,7 @@ export class BattleScene extends SceneBase {
     }
 
     // use the old value of `double` to ensure both combatants are handled properly when going from double to single battles
-    const playerField = this.getPlayerParty().slice(0, 1 + Number(lastBattle.double));
+    const playerField = this.getPlayerParty().slice(0, lastBattle.playerSlots);
     if (resetArenaState) {
       // Remove the tag so that Tatsugiri is ejected, and will be recalled correctly
       for (const pokemon of playerField) {
@@ -1712,9 +1717,14 @@ export class BattleScene extends SceneBase {
     }
   }
 
+  /** Co-op (D40): the field's zoom for the battle: 1, or 0.8 for three of ours side by side */
+  baseFieldScale(): number {
+    return this.currentBattle?.playerSlots === 3 ? 0.8 : 1;
+  }
+
   updateFieldScale(): Promise<void> {
     return new Promise(resolve => {
-      const fieldScale =
+      const zoom =
         Math.floor(
           Math.pow(
             1
@@ -1724,6 +1734,8 @@ export class BattleScene extends SceneBase {
             0.7,
           ) * 40,
         ) / 40;
+      // Co-op (D40): never closer than a battle of three allows
+      const fieldScale = this.currentBattle?.playerSlots === 3 ? Math.min(zoom, this.baseFieldScale()) : zoom;
       this.setFieldScale(fieldScale).then(() => resolve());
     });
   }

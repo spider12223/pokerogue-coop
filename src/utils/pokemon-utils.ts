@@ -3,7 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { POKERUS_STARTER_COUNT } from "#balance/starters";
 import { starterColors } from "#data/data-lists";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, isPlayerBattler } from "#enums/battler-index";
 import { MAX_REGULAR_POKEMON_TYPE, MIN_REGULAR_POKEMON_TYPE, type RegularPokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";
 import type { EnemyPokemon, PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -127,10 +127,8 @@ export function areAllies(a: BattlerIndex, b: BattlerIndex): boolean {
   if (a === BattlerIndex.ATTACKER || b === BattlerIndex.ATTACKER) {
     return false;
   }
-  return (
-    (a === BattlerIndex.PLAYER || a === BattlerIndex.PLAYER_2)
-    === (b === BattlerIndex.PLAYER || b === BattlerIndex.PLAYER_2)
-  );
+  // (the third of ours in a battle of three is `PLAYER_3`, co-op D40)
+  return isPlayerBattler(a) === isPlayerBattler(b);
 }
 
 /**

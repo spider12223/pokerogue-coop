@@ -104,14 +104,14 @@ export function commandFromWire(wire: WireTurnCommand): TurnCommand {
 }
 
 /**
- * Battler indices: at most the four battlers of a double battle, each `BattlerIndex.ATTACKER` (-1, a counter-attack) or
- * one of the four field positions
+ * Battler indices: at most the five battlers of a battle of three (D40), each `BattlerIndex.ATTACKER` (-1, a
+ * counter-attack) or one of the field positions (`PLAYER_3` is 4)
  */
 function isBattlerList(value: unknown): value is number[] {
   return (
     Array.isArray(value)
-    && value.length <= 4
-    && value.every(entry => Number.isInteger(entry) && entry >= -1 && entry <= 3)
+    && value.length <= 5
+    && value.every(entry => Number.isInteger(entry) && entry >= -1 && entry <= 4)
   );
 }
 

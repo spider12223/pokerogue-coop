@@ -6,7 +6,7 @@ import { getPokemonNameWithAffix } from "#app/messages";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
 import { getPokeballAtlasKey, getPokeballTintColor } from "#data/pokeball";
 import { BattleType } from "#enums/battle-type";
-import { FieldPosition } from "#enums/field-position";
+import { FieldPosition, threeSlotPosition } from "#enums/field-position";
 import { MysteryEncounterMode } from "#enums/mystery-encounter-mode";
 import { TrainerSlot } from "#enums/trainer-slot";
 import type { Pokemon } from "#field/pokemon";
@@ -131,7 +131,10 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     pokeball.setOrigin(0.5, 0.625);
     globalScene.field.add(pokeball);
 
-    if (this.fieldIndex === 1) {
+    if (this.player && globalScene.currentBattle.playerSlots === 3) {
+      // Co-op (D40): left, centre, right
+      pokemon.setFieldPosition(threeSlotPosition(this.fieldIndex), 0);
+    } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => p.isAllowedInBattle()).length;
@@ -215,7 +218,9 @@ export class SummonPhase extends PartyMemberPokemonPhase {
   summonWild(): void {
     const pokemon = this.getPokemon();
 
-    if (this.fieldIndex === 1) {
+    if (this.player && globalScene.currentBattle.playerSlots === 3) {
+      pokemon.setFieldPosition(threeSlotPosition(this.fieldIndex), 0);
+    } else if (this.fieldIndex === 1) {
       pokemon.setFieldPosition(FieldPosition.RIGHT, 0);
     } else {
       const availablePartyMembers = this.getParty().filter(p => !p.isFainted()).length;
@@ -271,7 +276,12 @@ export class SummonPhase extends PartyMemberPokemonPhase {
     // a new Pokémon is sent out in the first slot.
     if (this.player) {
       const playerPokemonOnField = globalScene.getPlayerParty().filter(pkmn => pkmn.isOnField());
-      if (playerPokemonOnField.length === 2) {
+      if (globalScene.currentBattle.playerSlots === 3) {
+        // Co-op (D40): the one further back is drawn first (left, then right, then the centre on top)
+        for (const pokemon of [...playerPokemonOnField].sort((a, b) => a.y - b.y)) {
+          globalScene.field.bringToTop(pokemon);
+        }
+      } else if (playerPokemonOnField.length === 2) {
         globalScene.field.bringToTop(playerPokemonOnField[1]);
       }
     }

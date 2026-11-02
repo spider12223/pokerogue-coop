@@ -1057,20 +1057,33 @@ count from the host's `HELLO`.
   `HELLO.players`.
 - **Colours:** each player has one, the same on every screen: P1 (the host) yellow, P2 blue, P3 green.
 - **Battle:** 3 player Pokémon against 2 enemies (a single boss stays one). The third player battler is numbered after the
-  enemies (`BattlerIndex.PLAYER_3 = 4`), so the enemies' numbers and everything sent over the wire stay. The field zooms
-  out (about 0.8). Any Pokémon can target any enemy. Enemies in a game of three get HP x1.5 and Attack and Sp. Atk x1.15,
-  bosses too.
+  enemies (`BattlerIndex.PLAYER_3 = 4`), so the enemies' numbers and everything sent over the wire stay; the turn's
+  commands are keyed by battler (slot 2 is `PLAYER_3`). On screen the slots stand left, centre, right (P1, P2, P3) on a
+  field zoomed out to 0.8. Enemies in a game of three get HP x1.5 and Attack and Sp. Atk x1.15, bosses too.
+- **Targets:** no adjacency: any Pokémon can target any enemy and either ally; a spread move that hits "all others" hits
+  both allies. Effects on "the ally": a passive one works for each ally (Friend Guard, Flower Gift, Battery, Plus/Minus,
+  Hospitality, Curious Medicine, Flower Veil, Victory Star, Cotton Down, Flame Burst's splash); a targeted one works on the
+  ally chosen (Pollen Puff, Helping Hand). Where one ally must be picked, it is the first in field order that fits: the
+  target of a move whose target fainted, Costar, Healer's cure (one roll, as in a double), Commander's Dondozo (only that
+  pair is held from switching), a Revival Blessing from the bench (the first fainted slot). Pledges combine with the next
+  ally in move order that uses another Pledge; Doodle gives the ability to each ally whose ability can be replaced.
+- **HP on screen** (each client draws its own; display only): one's own Pokémon has the full box where a single battle has
+  it; each teammate's Pokémon has a small bar over it with the player's name in their colour; the enemy boxes are 5/6 of
+  their size and higher up.
 - **Party:** 2 Pokémon per player, 20 starter points shared, a catch cap of 2 per player. On the starter select each
   partner's picks show in a window of their own with their name in their colour, and everyone sees the Pokémon of all
   three (D32); the host passes each guest's picks, ready and collection on to the other guest. A player who leaves the
   starter select ends it for the other two.
-- **Turns:** each player commands the Pokémon in their slot; an empty slot is filled from a teammate's bench and commanded
-  by that teammate. Ball and Run are the host's decision.
+- **Turns:** each player commands the Pokémon in their slot. A seat with no legal Pokémon is covered by the next seat in
+  order (host, guest, guest2, then the host again) that has one, at the wave start and after a faint: that teammate
+  commands it. Ball and Run are the host's decision: a guest's needs the host's accept, the host's needs nobody's. The
+  catch cap, a gift's cap and Shedinja's are 2 per player.
 - **Between waves:** the reward picker rotates host, guest, guest2; a trade names its counterpart.
 - **Absent players:** after the AFK timer either waiting player may take over. A disconnected player's Pokémon are
   commanded by take-over until they rejoin, its prompts are answered by the host, and nothing is written to its account.
   A player who rejoins comes in at the next wave start; the other two are not reloaded. The host dropping pauses everyone.
-- **Saves:** the host chooses 2 or 3 players at **Continue** of a 3-player run. With 2 it plays as a game of two (2v2, no
+- **Saves:** the save of a game of three holds the third account; only the same three accounts load it. The host
+  chooses 2 or 3 players at **Continue** of a 3-player run. With 2 it plays as a game of two (2v2, no
   buff), the absent player's two Pokémon commanded one by each present player; with 3 everything goes back. A run started
   with 2 stays a game of two.
 - **End:** retry after a wipe is the host's (D4a); Play again starts a new game with whoever wants to play again.

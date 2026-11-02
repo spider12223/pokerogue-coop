@@ -2,7 +2,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { getPokeballTintColor } from "#data/pokeball";
-import { FieldPosition } from "#enums/field-position";
+import { FieldPosition, threeSlotPosition } from "#enums/field-position";
 import type { Pokemon } from "#field/pokemon";
 import { BattlePhase } from "#phases/battle-phase";
 import { playTween } from "#utils/anim-utils";
@@ -43,7 +43,15 @@ export class PartyReorderSwitchPhase extends BattlePhase {
     // Only fill the second slot if there is a second Pokémon able to battle; otherwise,
     // SummonPhase would fail to find a replacement for it and trigger a game over
     const availableCount = globalScene.getPokemonAllowedInBattle().length;
-    const desiredField = party.slice(0, isDouble && availableCount > 1 ? 2 : 1);
+    // Co-op (D40): a game of three has a third slot of ours
+    const desiredField = party.slice(
+      0,
+      globalScene.currentBattle.playerSlots === 3
+        ? Math.min(3, availableCount)
+        : isDouble && availableCount > 1
+          ? 2
+          : 1,
+    );
 
     if (desiredField.length === 0) {
       this.end();
@@ -97,7 +105,10 @@ export class PartyReorderSwitchPhase extends BattlePhase {
       }
 
       let targetPosition: FieldPosition = FieldPosition.CENTER;
-      if (isDouble && availablePartyMembers > 1) {
+      if (globalScene.currentBattle.playerSlots === 3) {
+        // Co-op (D40): left, centre, right
+        targetPosition = threeSlotPosition(index);
+      } else if (isDouble && availablePartyMembers > 1) {
         targetPosition = index === 1 ? FieldPosition.RIGHT : FieldPosition.LEFT;
       }
 

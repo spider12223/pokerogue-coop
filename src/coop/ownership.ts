@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
+import { isSeat, otherSeat, type PlayerCount, type Seat, type SeatRecord } from "#coop/protocol";
 
 /**
  * Who owns which Pokémon (DECISIONS D7): `pokemon.id -> seat`. Ownership changes only through a trade or a catch.
@@ -15,36 +15,48 @@ import { otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
  * @module
  */
 
-/** How many starters each seat brings (D7). */
+/** How many starters each seat brings (D7); two in a game of three (D40, `startersPerSeat`) */
 export const STARTERS_PER_SEAT = 3;
 
 /**
- * The party order of a run that starts with each seat's starters (D7): the seats alternate, the host first, until both
- * lists are used up. Both clients build the same party from the same two lists.
+ * The party order of a run that starts with each seat's starters (D7): the seats take turns, the host first, until every
+ * list is used up; a game of three (D40) goes round host, guest, guest2, so their first starters stand in slots 0, 1
+ * and 2. Every client builds the same party from the same lists.
+ * @param guest2 - The second guest's starters, in a game of three
  * @returns The starters in party order, and who owns each
  */
-export function interleaveStarters<T>(host: readonly T[], guest: readonly T[]): { starters: T[]; owners: Seat[] } {
+export function interleaveStarters<T>(
+  host: readonly T[],
+  guest: readonly T[],
+  guest2?: readonly T[],
+): { starters: T[]; owners: Seat[] } {
+  const lists: [Seat, readonly T[]][] = [
+    ["host", host],
+    ["guest", guest],
+  ];
+  if (guest2 !== undefined) {
+    lists.push(["guest2", guest2]);
+  }
   const starters: T[] = [];
   const owners: Seat[] = [];
-  for (let i = 0; i < Math.max(host.length, guest.length); i++) {
-    if (i < host.length) {
-      starters.push(host[i]);
-      owners.push("host");
-    }
-    if (i < guest.length) {
-      starters.push(guest[i]);
-      owners.push("guest");
+  for (let i = 0; i < Math.max(...lists.map(([, list]) => list.length)); i++) {
+    for (const [seat, list] of lists) {
+      if (i < list.length) {
+        starters.push(list[i]);
+        owners.push(seat);
+      }
     }
   }
   return { starters, owners };
 }
 
 /**
- * The seats of the starters of a run, in party order: the host's starters, then the guest's.
- * Tests script ownership with this; the lobby will send the real picks.
+ * The seats of the starters of a run, in party order: the host's starters, then the guest's (then the second guest's, in
+ * a game of three). Tests script ownership with this; the lobby sends the real picks.
  */
-export function defaultStarterOwners(perSeat = STARTERS_PER_SEAT): Seat[] {
-  return [...new Array(perSeat).fill("host"), ...new Array(perSeat).fill("guest")];
+export function defaultStarterOwners(perSeat = STARTERS_PER_SEAT, players: PlayerCount = 2): Seat[] {
+  const seats: Seat[] = players === 3 ? ["host", "guest", "guest2"] : ["host", "guest"];
+  return seats.flatMap(seat => new Array<Seat>(perSeat).fill(seat));
 }
 
 export class OwnerMap {
@@ -99,7 +111,7 @@ export class OwnerMap {
   public countBySeat(): SeatRecord<number> {
     const counts: SeatRecord<number> = { host: 0, guest: 0 };
     for (const seat of this.owners.values()) {
-      counts[seat]++;
+      counts[seat] = (counts[seat] ?? 0) + 1;
     }
     return counts;
   }
@@ -143,8 +155,6 @@ export function isOwnerRecord(value: unknown): value is Record<string, Seat> {
     typeof value === "object"
     && value !== null
     && !Array.isArray(value)
-    && Object.entries(value).every(
-      ([id, seat]) => Number.isInteger(Number(id)) && Number(id) >= 0 && (seat === "host" || seat === "guest"),
-    )
+    && Object.entries(value).every(([id, seat]) => Number.isInteger(Number(id)) && Number(id) >= 0 && isSeat(seat))
   );
 }

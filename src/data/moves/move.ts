@@ -42,7 +42,7 @@ import { AbilityId } from "#enums/ability-id";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, isPlayerBattler } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import { BiomeId } from "#enums/biome-id";
 import { ChallengeType } from "#enums/challenge-type";
@@ -1039,7 +1039,7 @@ export abstract class Move implements Localizable {
   getTargetBenefitScore(user: Pokemon, target: Pokemon, move: Move): number {
     let score = 0;
 
-    if (target.getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target) {
+    if (target.getAllies().some(ally => ally.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target)) {
       return 20 * (target.isPlayer() === user.isPlayer() ? -1 : 1); // always -20 with how the AI handles this score
     }
 
@@ -1132,8 +1132,8 @@ export abstract class Move implements Localizable {
     };
 
     applyAbAttrs("VariableMovePowerAbAttr", abAttrParams);
-    const ally = source.getAlly();
-    if (ally != null) {
+    // Each ally's: two in a battle of three of ours (co-op, D40)
+    for (const ally of source.getAllies()) {
       applyAbAttrs("AllyMoveCategoryPowerBoostAbAttr", { ...abAttrParams, pokemon: ally });
     }
 
@@ -1365,7 +1365,7 @@ export abstract class Move implements Localizable {
       return false;
     }
 
-    if (this.hasAttr("HealOnAllyAttr") && target?.getAlly() === user) {
+    if (this.hasAttr("HealOnAllyAttr") && target?.isAllyOf(user)) {
       return false;
     }
 
@@ -2131,8 +2131,7 @@ export class CounterRedirectAttr extends MoveAttr {
     if (desiredTarget !== null && desiredTarget !== BattlerIndex.ATTACKER) {
       // check if the target is still alive
       if (globalScene.currentBattle.double && !globalScene.getField()[desiredTarget]?.isActive(true)) {
-        const targetField =
-          desiredTarget >= BattlerIndex.ENEMY ? globalScene.getEnemyField() : globalScene.getPlayerField();
+        const targetField = isPlayerBattler(desiredTarget) ? globalScene.getPlayerField() : globalScene.getEnemyField();
         args[0].value = targetField.find(p => p.hp > 0)?.getBattlerIndex() ?? BattlerIndex.ATTACKER;
       } else {
         args[0].value = desiredTarget;
@@ -2600,7 +2599,7 @@ export class VariableHealAttr extends HealAttr {
  */
 export class HealOnAllyAttr extends HealAttr {
   public override canApply(user: Pokemon, target: Pokemon, move: Move, args: any[]): boolean {
-    return target === user.getAlly() && super.canApply(user, target, move, args);
+    return user.isAllyOf(target) && super.canApply(user, target, move, args);
   }
 
   public override apply(user: Pokemon, target: Pokemon, move: Move, args: any[]): boolean {
@@ -2704,25 +2703,24 @@ export class FlameBurstAttr extends MoveEffectAttr {
    * @returns A boolean indicating whether the effect was successfully applied.
    */
   apply(_user: Pokemon, target: Pokemon, _move: Move, _args: any[]): boolean {
-    const targetAlly = target.getAlly();
-    const cancelled = new BooleanHolder(false);
-
-    if (targetAlly != null) {
+    let splashed = false;
+    // Each ally of the target: two in a battle of three of ours (co-op, D40)
+    for (const targetAlly of target.getAllies()) {
+      const cancelled = new BooleanHolder(false);
       applyAbAttrs("BlockNonDirectDamageAbAttr", { pokemon: targetAlly, cancelled });
+      if (cancelled.value || targetAlly.switchOutStatus) {
+        continue;
+      }
+      targetAlly.damageAndUpdate(Math.max(1, Math.floor((1 / 16) * targetAlly.getMaxHp())), {
+        result: HitResult.INDIRECT,
+      });
+      splashed = true;
     }
-
-    if (cancelled.value || !targetAlly || targetAlly.switchOutStatus) {
-      return false;
-    }
-
-    targetAlly.damageAndUpdate(Math.max(1, Math.floor((1 / 16) * targetAlly.getMaxHp())), {
-      result: HitResult.INDIRECT,
-    });
-    return true;
+    return splashed;
   }
 
   getTargetBenefitScore(_user: Pokemon, target: Pokemon, _move: Move): number {
-    return target.getAlly() == null ? 0 : -5;
+    return target.getAllies().length === 0 ? 0 : -5;
   }
 }
 
@@ -2761,7 +2759,7 @@ export class SacrificialFullRestoreAttr extends SacrificialAttr {
 
   getCondition(): MoveConditionFunc {
     return (_user, _target, _move) =>
-      globalScene.getPlayerParty().filter(p => p.isActive()).length > globalScene.currentBattle.getBattlerCount();
+      globalScene.getPlayerParty().filter(p => p.isActive()).length > globalScene.currentBattle.getPlayerBattlerCount();
   }
 }
 
@@ -3852,7 +3850,16 @@ export class AwaitCombinedPledgeAttr extends OverrideMoveEffectAttr {
 
     const overridden = args[0] as BooleanHolder;
 
-    const allyMovePhase = globalScene.phaseManager.getMovePhase(phase => phase.pokemon.isPlayer() === user.isPlayer());
+    // In a battle of three of ours (co-op, D40), the next ally in move order whose move is another Pledge
+    const three = user.isPlayer() && globalScene.currentBattle.playerSlots === 3;
+    const allyMovePhase = globalScene.phaseManager.getMovePhase(
+      phase =>
+        phase.pokemon.isPlayer() === user.isPlayer()
+        && (!three
+          || (phase.pokemon !== user
+            && phase.move.getMove() !== move
+            && phase.move.getMove().hasAttr("AwaitCombinedPledgeAttr"))),
+    );
     if (allyMovePhase) {
       const allyMove = allyMovePhase.move.getMove();
       if (allyMove !== move && allyMove.hasAttr("AwaitCombinedPledgeAttr")) {
@@ -3869,7 +3876,8 @@ export class AwaitCombinedPledgeAttr extends OverrideMoveEffectAttr {
         );
 
         // Move the ally's MovePhase (if needed) so that the ally moves next
-        globalScene.phaseManager.forceMoveNext((phase: MovePhase) => phase.pokemon === user.getAlly());
+        const partner = three ? allyMovePhase.pokemon : user.getAlly();
+        globalScene.phaseManager.forceMoveNext((phase: MovePhase) => phase.pokemon === partner);
 
         overridden.value = true;
         return true;
@@ -8209,9 +8217,10 @@ export class RepeatMoveAttr extends MoveEffectAttr {
       globalScene.currentBattle.double
       && moveTargets.length === 1
       && firstTarget.isFainted()
-      && firstTarget !== target.getAlly()
+      && !target.isAllyOf(firstTarget)
     ) {
-      const ally = firstTarget.getAlly();
+      // (the first active ally in field order, in a battle of three: co-op, D40)
+      const ally = firstTarget.getAllies().find(other => other.isActive());
       if (ally?.isActive()) {
         moveTargets = [ally.getBattlerIndex()];
       }
@@ -8540,18 +8549,20 @@ export class AbilityCopyAttr extends MoveEffectAttr {
     );
 
     user.setTempAbility(abilityId);
-    const ally = user.getAlly();
 
-    // TODO: is this the best way to check that the ally is active?
-    if (this.copyToPartner && globalScene.currentBattle?.double && ally?.hp) {
-      globalScene.phaseManager.queueMessage(
-        i18next.t("moveTriggers:copiedTargetAbility", {
-          pokemonName: getPokemonNameWithAffix(ally),
-          targetName: getPokemonNameWithAffix(target),
-          abilityName,
-        }),
-      );
-      ally.setTempAbility(abilityId);
+    // Each ally whose ability can be replaced: two in a battle of three of ours (co-op, D40)
+    for (const ally of user.getAllies()) {
+      // TODO: is this the best way to check that the ally is active?
+      if (this.copyToPartner && globalScene.currentBattle?.double && ally.hp && ally.getAbility().replaceable) {
+        globalScene.phaseManager.queueMessage(
+          i18next.t("moveTriggers:copiedTargetAbility", {
+            pokemonName: getPokemonNameWithAffix(ally),
+            targetName: getPokemonNameWithAffix(target),
+            abilityName,
+          }),
+        );
+        ally.setTempAbility(abilityId);
+      }
     }
 
     return true;
@@ -8559,10 +8570,11 @@ export class AbilityCopyAttr extends MoveEffectAttr {
 
   public override getCondition(): MoveConditionFunc {
     return (user, target, _move) => {
-      const ally = user.getAlly();
       let ret = target.getAbility().copiable && user.getAbility().replaceable;
       if (this.copyToPartner && globalScene.currentBattle?.double) {
-        ret = ret && (!ally?.hp || ally?.getAbility().replaceable);
+        // In a battle of three of ours (co-op, D40) an ally whose ability cannot be replaced is skipped
+        const three = user.isPlayer() && globalScene.currentBattle.playerSlots === 3;
+        ret = ret && (three || user.getAllies().every(ally => !ally.hp || ally.getAbility().replaceable));
       } else {
         ret = ret && user.getAbility().id !== target.getAbility().id;
       }
@@ -11469,7 +11481,7 @@ export function initMoves() {
       .target(MoveTarget.USER_AND_ALLIES)
       .condition(
         (user, _target, _move) =>
-          !![user, user.getAlly()]
+          !![user, ...user.getAllies()]
             .filter(p => p?.isActive())
             .find(p => !![AbilityId.PLUS, AbilityId.MINUS].find(a => p?.hasAbility(a, false))),
       ),
@@ -11672,7 +11684,7 @@ export function initMoves() {
       .target(MoveTarget.USER_AND_ALLIES)
       .condition(
         (user, _target, _move) =>
-          !![user, user.getAlly()]
+          !![user, ...user.getAllies()]
             .filter(p => p?.isActive())
             .find(p => !![AbilityId.PLUS, AbilityId.MINUS].find(a => p?.hasAbility(a, false))),
       ),
@@ -12637,7 +12649,9 @@ export function initMoves() {
       .attr(VariableTargetAttr, (user, _target, _move) =>
         user.hasSpecies(SpeciesId.TERAPAGOS)
         && (user.isTerastallized
-          || globalScene.currentBattle.preTurnCommands[user.getFieldIndex()]?.command === Command.TERA)
+          // (the battler of ours: the third of a battle of three is `PLAYER_3`, co-op D40)
+          || globalScene.currentBattle.preTurnCommands[user.isPlayer() ? user.getBattlerIndex() : user.getFieldIndex()]
+            ?.command === Command.TERA)
           ? MoveTarget.ALL_NEAR_ENEMIES
           : MoveTarget.NEAR_OTHER,
       )

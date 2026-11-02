@@ -4,6 +4,7 @@ import { coopSwitchFilter } from "#coop/control";
 import { sendIntent } from "#coop/cosmetic-view";
 import { isCoop } from "#coop/session";
 import { getTypeRgb } from "#data/type";
+import { playerBattlerOf } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
 import { PartyUiMode } from "#enums/party-ui-mode";
@@ -81,7 +82,7 @@ export class CommandUiHandler extends UiHandler {
 
     if (this.canTera()) {
       this.teraButton.setVisible(true);
-      this.teraButton.setFrame(PokemonType[globalScene.getField()[this.fieldIndex].getTeraType()].toLowerCase());
+      this.teraButton.setFrame(PokemonType[globalScene.getPlayerField()[this.fieldIndex].getTeraType()].toLowerCase());
     } else {
       this.teraButton.setVisible(false);
       if (this.getCursor() === Command.TERA) {
@@ -202,12 +203,16 @@ export class CommandUiHandler extends UiHandler {
   }
 
   canTera(): boolean {
-    const activePokemon = globalScene.getField()[this.fieldIndex];
+    // (our field: the third slot of a battle of three of ours is after the enemies on the whole field, co-op D40)
+    const activePokemon = globalScene.getPlayerField()[this.fieldIndex];
     const currentTeras = globalScene.arena.playerTerasUsed;
     const canTera = activePokemon.isPlayer() && canTerastallize(activePokemon);
-    const plannedTera = +(
-      globalScene.currentBattle.preTurnCommands[0]?.command === Command.TERA && this.fieldIndex > 0
-    );
+    // A Tera an earlier slot of ours chose this turn
+    const plannedTera = [0, 1]
+      .filter(slot => slot < this.fieldIndex)
+      .filter(
+        slot => globalScene.currentBattle.preTurnCommands[playerBattlerOf(slot)]?.command === Command.TERA,
+      ).length;
     return canTera && currentTeras + plannedTera < MAX_TERAS_PER_ARENA;
   }
 
@@ -215,7 +220,7 @@ export class CommandUiHandler extends UiHandler {
     this.teraButton.setPipeline(globalScene.spritePipeline, {
       tone: [0.0, 0.0, 0.0, 0.0],
       ignoreTimeTint: true,
-      teraColor: getTypeRgb(globalScene.getField()[this.fieldIndex].getTeraType()),
+      teraColor: getTypeRgb(globalScene.getPlayerField()[this.fieldIndex].getTeraType()),
       isTerastallized: this.getCursor() === Command.TERA,
     });
   }

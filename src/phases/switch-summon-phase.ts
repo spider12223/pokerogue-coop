@@ -8,6 +8,7 @@ import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeActiveTrigger } from "#data/form-change-triggers";
 import { getPokeballTintColor } from "#data/pokeball";
 import { ArenaTagSide } from "#enums/arena-tag-side";
+import { playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import { SwitchType } from "#enums/switch-type";
 import { TrainerSlot } from "#enums/trainer-slot";
@@ -234,7 +235,9 @@ export class SwitchSummonPhase extends SummonPhase {
     const moveId = globalScene.currentBattle.lastMove;
     const lastUsedMove = moveId ? allMoves[moveId] : undefined;
 
-    const currentCommand = globalScene.currentBattle.turnCommands[this.fieldIndex]?.command;
+    // (the command of our third slot of a battle of three is `PLAYER_3`'s, co-op D40)
+    const commandKey = this.player ? playerBattlerOf(this.fieldIndex) : this.fieldIndex;
+    const currentCommand = globalScene.currentBattle.turnCommands[commandKey]?.command;
     const lastPokemonIsForceSwitchedAndNotFainted =
       SELF_SWITCH_MOVE_ATTRS.some(attr => lastUsedMove?.hasAttr(attr)) && !this.lastPokemon.isFainted();
     const lastPokemonHasForceSwitchAbAttr =

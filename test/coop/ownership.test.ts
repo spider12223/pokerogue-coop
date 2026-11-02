@@ -82,12 +82,26 @@ describe("starter ownership", () => {
     expect(defaultStarterOwners()).toEqual(["host", "host", "host", "guest", "guest", "guest"]);
     expect(defaultStarterOwners(1)).toEqual(["host", "guest"]);
   });
+
+  it("is two each in a game of three (D40)", () => {
+    expect(defaultStarterOwners(2, 3)).toEqual(["host", "host", "guest", "guest", "guest2", "guest2"]);
+  });
+
+  it("counts the Pokémon of each of three seats", () => {
+    const owners = new OwnerMap();
+    owners.set(1, "host");
+    owners.set(2, "guest2");
+    owners.set(3, "guest2");
+    expect(owners.countBySeat()).toEqual({ host: 1, guest: 0, guest2: 2 });
+  });
 });
 
 describe("isOwnerRecord", () => {
   it("accepts ids mapped to seats and rejects the rest", () => {
     expect(isOwnerRecord({})).toBe(true);
     expect(isOwnerRecord({ "12": "host", "13": "guest" })).toBe(true);
+    expect(isOwnerRecord({ "12": "host", "13": "guest2" })).toBe(true);
+    expect(isOwnerRecord({ "12": "guest3" })).toBe(false);
     expect(isOwnerRecord({ "12": "both" })).toBe(false);
     expect(isOwnerRecord({ x: "host" })).toBe(false);
     expect(isOwnerRecord({ "-1": "host" })).toBe(false);

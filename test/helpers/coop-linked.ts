@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { globalScene } from "#app/global-scene";
 import { listenForAgain } from "#coop/again-answer";
 import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
 import { controllerOf, deciderOf, ownerOf, switchTargets } from "#coop/control";
@@ -26,11 +27,14 @@ import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions
 import { Sequencer } from "#coop/sequencer";
 import { type CoopSession, requireCoopSession, rewardPickerOf } from "#coop/session";
 import type { AfkTimers } from "#coop/takeover";
-import { createLoopbackPair } from "#coop/transport/loopback";
+import { FanoutTransport } from "#coop/transport/fanout";
+import { createLoopbackPair, createLoopbackRoom } from "#coop/transport/loopback";
+import type { RelayWsTransport } from "#coop/transport/relay-ws";
 import { ReliableTransport } from "#coop/transport/reliable";
+import { RoutedHub } from "#coop/transport/routed";
 import { commandToWire, type SideActionPayload, type TurnCommandsPayload } from "#coop/turn-commands";
 import { validateProposal } from "#coop/validate";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";
 import { MoveId } from "#enums/move-id";
@@ -122,7 +126,7 @@ export function attackCommand(
       ),
       move: { move: moveId, targets, useMode: MoveUseMode.NORMAL },
     }),
-    pre: commandToWire({ command: Command.FIGHT, targets: [slot], skip: true }),
+    pre: commandToWire({ command: Command.FIGHT, targets: [playerBattlerOf(slot)], skip: true }),
   };
 }
 
@@ -152,9 +156,10 @@ export class ScriptedPartner {
     private readonly session: CoopSession,
     private readonly game: GameManager,
     public policy: PartnerPolicy = {},
+    seats: readonly Seat[] = ["host", "guest"],
   ) {
     this.channel = new EpochTransport(reliable);
-    this.sequencer = new Sequencer({ role: seat, transport: this.channel });
+    this.sequencer = new Sequencer({ role: seat, transport: this.channel, seats });
     reliable.onMessage(message => {
       if (message.kind === "COSMETIC") {
         const payload = message.payload as CosmeticMessage;
@@ -308,7 +313,11 @@ export class ScriptedPartner {
         return this.policy.commands?.(pokemon, slot) ?? attackCommand(this.game, slot);
       }
       case "SIDE_ACTION": {
-        if (pokemon === undefined || ownerOf(pokemon) === this.seat) {
+        if (
+          pokemon === undefined
+          || ownerOf(pokemon) === this.seat
+          || deciderOf({ kind: "SIDE_ACTION", proposer: ownerOf(pokemon)! }) !== this.seat
+        ) {
           return undefined;
         }
         return this.policy.sideAction?.(pokemon) ?? { accept: true };
@@ -477,7 +486,122 @@ export async function openLinkedRun(phaserGame: Phaser.Game, scenario: LinkedSce
 
 /** Which seat controls each field slot right now */
 export function controllers(): (Seat | null)[] {
-  return [controllerOf(0), controllerOf(1)];
+  return [0, 1, 2].slice(0, globalScene.currentBattle.getPlayerBattlerCount()).map(slot => controllerOf(slot));
+}
+
+/** The relay of a room of three, as far as the host's link asks it: nobody comes or goes (presence of each seat) */
+class QuietRelay {
+  onRelayEvent(): () => void {
+    return () => undefined;
+  }
+  onClose(): () => void {
+    return () => undefined;
+  }
+  close(): void {}
+  leave(): void {}
+}
+
+export interface LinkedRunOfThree extends CoopRun {
+  link: CoopLink;
+  /** The two scripted guests: `guest` and `guest2` */
+  partners: ReadonlyMap<Seat, ScriptedPartner>;
+  session: CoopSession;
+}
+
+export const LINKED_SHARED_THREE: SharedRun = {
+  runSeed: "co-op-three-linked",
+  snapshot: { host: LINKED_ACCOUNT, guest: LINKED_ACCOUNT, guest2: LINKED_ACCOUNT },
+  hostPlayerGender: 1 as PlayerGender,
+};
+
+/**
+ * A linked run of a game of three (D40): the real client is the host, on a hub of one channel per guest, as the game wires
+ * it; both guests are {@linkcode ScriptedPartner}s. The client waits at its first `EncounterPhase`.
+ */
+export async function openLinkedRunOfThree(
+  phaserGame: Phaser.Game,
+  scenario: Omit<LinkedScenario, "seat" | "names"> & { policies?: Partial<Record<Seat, PartnerPolicy>> },
+): Promise<LinkedRunOfThree> {
+  const client: ClientConfig = {
+    seat: "host",
+    liveAccount: LINKED_ACCOUNT,
+    localSettings: {},
+    applyOverlay: true,
+    bypassSnapshot: false,
+    stallMs: 8_000,
+  };
+  const run = await openCoopRun(phaserGame, LINKED_SHARED_THREE, client, Decider.recording(), {
+    players: 3,
+    species: scenario.species,
+    waves: 0,
+    moveset: scenario.moveset ?? [MoveId.BITE, MoveId.MEMENTO, MoveId.SAND_ATTACK, MoveId.TAIL_WHIP],
+    faints: scenario.faints ?? [],
+    faintMove: MoveId.MEMENTO,
+    starterOwners: scenario.starterOwners,
+    ...(scenario.configure === undefined ? {} : { configure: scenario.configure }),
+    ...scenario.scenario,
+  });
+  const session = requireCoopSession();
+  const room = createLoopbackRoom(3);
+  const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+  const reliable = { rtoMs: 40, tickMs: 5 };
+  const fanout = new FanoutTransport(
+    new Map([
+      ["guest", new ReliableTransport(hub.channel("guest"), reliable)],
+      ["guest2", new ReliableTransport(hub.channel("guest2"), reliable)],
+    ] as const),
+  );
+  const link = new CoopLink({
+    seat: "host",
+    fanout,
+    players: 3,
+    relay: new QuietRelay() as unknown as RelayWsTransport,
+    sequencer: { validatePayload: validateProposal },
+  });
+  session.link = link;
+  if (scenario.afkTimers !== undefined) {
+    session.afkTimers = scenario.afkTimers;
+  }
+  attachCheckpointExchange(session, link);
+  listenForAgain(link);
+  const stopResync = installResync(session, link);
+  const seats = ["host", "guest", "guest2"] as const;
+  const partners = new Map<Seat, ScriptedPartner>(
+    (["guest", "guest2"] as const).map(seat => [
+      seat,
+      new ScriptedPartner(
+        seat,
+        new ReliableTransport(room.guests.get(seat)!, reliable),
+        session,
+        run.ctx.game,
+        scenario.policies?.[seat] ?? scenario.policy,
+        seats,
+      ),
+    ]),
+  );
+  startCosmeticView(link, "guest");
+  const retry = scenario.retry ?? false;
+  const retryMenu =
+    retry === "menu"
+      ? null
+      : vi
+          .spyOn(GameOverPhase.prototype as unknown as { askCoopRetry(): Promise<RetryPayload> }, "askCoopRetry")
+          .mockResolvedValue({ retry });
+  return {
+    ...run,
+    link,
+    partners,
+    session,
+    close() {
+      retryMenu?.mockRestore();
+      stopResync();
+      stopCosmeticView();
+      for (const partner of partners.values()) {
+        partner.close();
+      }
+      run.close();
+    },
+  };
 }
 
 // #region The reward screen (D9)
@@ -647,7 +771,7 @@ export function ballCommand(
   const [enemy] = r.ctx.game.scene.getEnemyField().filter(e => e.isActive(true));
   return {
     command: commandToWire({ command: Command.BALL, cursor: ball, targets: [enemy.getBattlerIndex()] }),
-    pre: commandToWire({ command: Command.FIGHT, targets: [slot], skip: true }),
+    pre: commandToWire({ command: Command.FIGHT, targets: [playerBattlerOf(slot)], skip: true }),
   };
 }
 

@@ -76,7 +76,7 @@ export async function coopDecideSwitch(options: {
           fieldIndex,
           (slotIndex: number, option: PartyOption) => {
             const valid =
-              slotIndex >= globalScene.currentBattle.getBattlerCount()
+              slotIndex >= globalScene.currentBattle.getPlayerBattlerCount()
               && slotIndex < 6
               && isAllowedSwitch(fieldIndex, slotIndex, reason);
             resolve({ partyIndex: valid ? slotIndex : null, baton: option === PartyOption.PASS_BATON });

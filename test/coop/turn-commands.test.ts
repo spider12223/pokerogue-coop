@@ -87,12 +87,14 @@ describe("turn commands on the wire (D2, D8)", () => {
     expect(isTurnCommandsPayload(null)).toBe(false);
   });
 
-  it("takes battler lists of at most the four battlers, each a field position or the attacker (-1)", () => {
+  it("takes battler lists of at most the five battlers of a battle of three, each a field position or the attacker (-1)", () => {
     const move = { move: 33, targets: [2], useMode: MoveUseMode.NORMAL };
     expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [-1] })).toBe(true);
     expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3] })).toBe(true);
-    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3, 3] })).toBe(false);
-    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [4] })).toBe(false);
+    // the third of ours in a game of three is battler 4 (D40)
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3, 4] })).toBe(true);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [0, 1, 2, 3, 4, 4] })).toBe(false);
+    expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [5] })).toBe(false);
     expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move, targets: [-2] })).toBe(false);
     expect(isWireCommand({ command: Command.FIGHT, cursor: 0, move: { ...move, targets: [7] } })).toBe(false);
     expect(isWireCommand({ command: Command.BALL, cursor: 0, targets: Array.from({ length: 100_000 }, () => 2) })).toBe(
@@ -168,6 +170,17 @@ describe("party order of a co-op run (D7)", () => {
     expect(interleaveStarters(["h1"], ["g1", "g2"])).toEqual({
       starters: ["h1", "g1", "g2"],
       owners: ["host", "guest", "guest"],
+    });
+  });
+
+  it("goes round the three seats of a game of three (D40), so they stand in slots 0, 1 and 2", () => {
+    expect(interleaveStarters(["h1", "h2"], ["g1", "g2"], ["k1", "k2"])).toEqual({
+      starters: ["h1", "g1", "k1", "h2", "g2", "k2"],
+      owners: ["host", "guest", "guest2", "host", "guest", "guest2"],
+    });
+    expect(interleaveStarters(["h1"], ["g1", "g2"], ["k1"])).toEqual({
+      starters: ["h1", "g1", "k1", "g2"],
+      owners: ["host", "guest", "guest2", "guest"],
     });
   });
 });

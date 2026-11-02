@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { CommonBattleAnim } from "#data/battle-anims";
-import type { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex } from "#enums/battler-index";
 import type { CommonAnim } from "#enums/move-anims-common";
 import { PokemonPhase } from "#phases/pokemon-phase";
 
@@ -28,7 +28,10 @@ export class CommonAnimPhase extends PokemonPhase {
     const target =
       this.targetIndex === undefined
         ? this.getPokemon()
-        : (this.player ? globalScene.getEnemyField() : globalScene.getPlayerField())[this.targetIndex];
+        : !this.player && this.targetIndex === BattlerIndex.PLAYER_3
+          ? // the third of ours in a battle of three (co-op, D40)
+            globalScene.getPlayerField()[2]
+          : (this.player ? globalScene.getEnemyField() : globalScene.getPlayerField())[this.targetIndex];
     new CommonBattleAnim(this.anim, this.getPokemon(), target).play(false, () => {
       this.end();
     });

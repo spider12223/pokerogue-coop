@@ -2,6 +2,7 @@ import { DAILY_BOSS_LEVEL } from "#app/constants";
 import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { getCoopSession } from "#coop/session";
 import { currentSeedBlockId, simRandInt } from "#coop/sim-rng";
 import { isDailyFinalBoss } from "#data/daily-seed-utils";
 import { ArenaTagType } from "#enums/arena-tag-type";
@@ -130,6 +131,14 @@ export class Battle {
           new Array(wildEnemyCount).fill(null).map(() => this.getLevelForWave());
   }
 
+  /** How many Pokémon of ours are on the field: 1 in a single battle, 2 in a double, 3 in a game of three (co-op, D40) */
+  public get playerSlots(): 1 | 2 | 3 {
+    if (!this.double) {
+      return 1;
+    }
+    return getCoopSession()?.players === 3 ? 3 : 2;
+  }
+
   public get isClassicFinalBoss(): boolean {
     return this.gameMode.isClassic && this.gameMode.isWaveFinal(this.waveIndex);
   }
@@ -172,6 +181,11 @@ export class Battle {
 
   getBattlerCount(): number {
     return this.double ? 2 : 1;
+  }
+
+  /** How many of ours are on the field: {@linkcode getBattlerCount}, or 3 in a game of three (co-op, D40) */
+  getPlayerBattlerCount(): number {
+    return this.playerSlots;
   }
 
   incrementTurn(): void {

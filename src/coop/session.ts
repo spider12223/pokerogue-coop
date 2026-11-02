@@ -19,6 +19,7 @@ import {
   type CoopRunMode,
   type DecisionKey,
   otherSeat,
+  type PlayerCount,
   type Seat,
   type SeatRecord,
 } from "#coop/protocol";
@@ -76,6 +77,8 @@ export interface CoopSessionInit {
   runMode?: CoopRunMode;
   /** A challenge run's challenges (D41): the host's choice, the guest's `HELLO` */
   challenges?: readonly CoopChallenge[];
+  /** How many players the game has (D40), for a session without a link; a linked session takes its link's. Default 2 */
+  players?: PlayerCount;
 }
 
 /** How long this client waited for its partner's decisions, for the debug API and the latency report */
@@ -198,6 +201,8 @@ export class CoopSession {
   public sidePick: number[] | null = null;
   /** The connection to the partner; `null` in a session without a network (tests of the rules) */
   public link: CoopLink | null = null;
+  /** {@linkcode players} of a session without a link */
+  private readonly initPlayers: PlayerCount;
   /** The kind of run (D39): what a new run is built as. A loaded save has its own (its game mode's id). */
   public readonly runMode: CoopRunMode;
   /** A challenge run's challenges (D41), what a new challenge run is built with; a loaded save has its own */
@@ -230,6 +235,12 @@ export class CoopSession {
     this.owners = init.starterOwners ?? defaultStarterOwners();
     this.runMode = init.runMode ?? "classic";
     this.challenges = init.challenges ?? [];
+    this.initPlayers = init.players ?? 2;
+  }
+
+  /** How many players the game has (D40): the link's, or the session's own without one */
+  public get players(): PlayerCount {
+    return this.link?.players ?? this.initPlayers;
   }
 
   public get starterOwners(): readonly Seat[] {
@@ -310,8 +321,11 @@ export class CoopSession {
     if (this.explicitAccountIds !== null) {
       return this.explicitAccountIds;
     }
-    const { host, guest } = this.accountSnapshot;
-    return { host: accountIdOf(host), guest: accountIdOf(guest) };
+    const { host, guest, guest2 } = this.accountSnapshot;
+    // (a game of three has a third account, D40)
+    return guest2 === undefined
+      ? { host: accountIdOf(host), guest: accountIdOf(guest) }
+      : { host: accountIdOf(host), guest: accountIdOf(guest), guest2: accountIdOf(guest2) };
   }
 
   /**

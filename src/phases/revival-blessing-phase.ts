@@ -42,9 +42,12 @@ export class RevivalBlessingPhase extends BattlePhase {
             true,
           );
 
-          const allyPokemon = this.user.getAlly();
+          // In a battle of three of ours (co-op, D40) a Pokémon from the bench takes the first fainted slot in field order
+          const allies = this.user.getAllies();
+          const allyPokemon =
+            allies.length > 1 ? (allies.find(ally => ally.isFainted()) ?? allies[0]) : this.user.getAlly();
           if (globalScene.currentBattle.double && globalScene.getPlayerParty().length > 1 && allyPokemon != null) {
-            if (slotIndex <= 1) {
+            if (slotIndex < globalScene.currentBattle.getPlayerBattlerCount()) {
               // Revived ally pokemon
               globalScene.phaseManager.unshiftNew(
                 "SwitchSummonPhase",

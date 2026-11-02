@@ -11,7 +11,11 @@ export abstract class PartyMemberPokemonPhase extends FieldPhase {
     super();
 
     this.partyMemberIndex = partyMemberIndex;
-    this.fieldIndex = partyMemberIndex < globalScene.currentBattle.getBattlerCount() ? partyMemberIndex : -1;
+    // Co-op (D40): a game of three has a third slot of ours
+    const slots = player
+      ? globalScene.currentBattle.getPlayerBattlerCount()
+      : globalScene.currentBattle.getBattlerCount();
+    this.fieldIndex = partyMemberIndex < slots ? partyMemberIndex : -1;
     this.player = player;
   }
 

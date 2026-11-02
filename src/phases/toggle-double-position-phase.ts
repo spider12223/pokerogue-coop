@@ -15,6 +15,12 @@ export class ToggleDoublePositionPhase extends BattlePhase {
   start() {
     super.start();
 
+    // Co-op (D40): in a battle of three of ours each slot keeps its place (left, centre, right)
+    if (globalScene.currentBattle.playerSlots === 3) {
+      this.end();
+      return;
+    }
+
     const playerPokemon = globalScene.getPlayerField().find(p => p.isActive(true));
     if (playerPokemon) {
       playerPokemon

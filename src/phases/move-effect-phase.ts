@@ -364,7 +364,7 @@ export class MoveEffectPhase extends PokemonPhase {
     if (
       !fieldTargeted
       && globalScene.currentBattle.double
-      && target.getAlly()?.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target
+      && target.getAllies().some(ally => ally.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === target)
     ) {
       return [HitCheckResult.MISS, 0];
     }
@@ -630,7 +630,7 @@ export class MoveEffectPhase extends PokemonPhase {
    */
   protected applyMoveDamage(user: Pokemon, target: Pokemon, effectiveness: TypeDamageMultiplier): MoveDamageTuple {
     // TODO: make sure this doesn't break anything, possibly find better solution
-    if (this.move.hasAttr("HealOnAllyAttr") && target === user.getAlly()) {
+    if (this.move.hasAttr("HealOnAllyAttr") && user.isAllyOf(target)) {
       return [HitCheckResult.HIT, 0, false];
     }
 

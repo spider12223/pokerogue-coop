@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { sendIntent } from "#coop/cosmetic-view";
 import { SubstituteTag } from "#data/battler-tags";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, isPlayerBattler } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import type { MoveId } from "#enums/move-id";
 import type { Pokemon } from "#field/pokemon";
@@ -17,6 +17,7 @@ export class TargetSelectUiHandler extends UiHandler {
   private targetSelectCallback: TargetSelectCallback;
   private cursor0: number; // associated with BattlerIndex.PLAYER
   private cursor1: number; // associated with BattlerIndex.PLAYER_2
+  private cursor2: number; // associated with BattlerIndex.PLAYER_3 (co-op, D40)
 
   private isMultipleTargets = false;
   private targets: BattlerIndex[];
@@ -67,6 +68,9 @@ export class TargetSelectUiHandler extends UiHandler {
       this.resetCursor(this.cursor0, user);
     } else if (this.fieldIndex === BattlerIndex.PLAYER_2) {
       this.resetCursor(this.cursor1, user);
+    } else if (this.fieldIndex === 2) {
+      // Co-op (D40): the third slot of ours in a battle of three
+      this.resetCursor(this.cursor2, user);
     }
     return true;
   }
@@ -77,10 +81,7 @@ export class TargetSelectUiHandler extends UiHandler {
    * @param user the Pokemon using the move
    */
   resetCursor(cursorN: number, user: Pokemon): void {
-    if (
-      cursorN != null
-      && ([BattlerIndex.PLAYER, BattlerIndex.PLAYER_2].includes(cursorN) || user.summonData.waveTurnCount === 1)
-    ) {
+    if (cursorN != null && (isPlayerBattler(cursorN) || user.summonData.waveTurnCount === 1)) {
       // Reset cursor on the first turn of a fight or if an ally was targeted last turn
       cursorN = -1;
     }
@@ -102,9 +103,13 @@ export class TargetSelectUiHandler extends UiHandler {
         }
       } else if (this.fieldIndex === BattlerIndex.PLAYER_2 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
         this.cursor1 = this.cursor;
+      } else if (this.fieldIndex === 2) {
+        this.cursor2 = this.cursor;
       }
     } else if (this.isMultipleTargets) {
       success = false;
+    } else if (globalScene.currentBattle.playerSlots === 3) {
+      success = this.moveCursorOfThree(button);
     } else {
       switch (button) {
         case Button.UP:
@@ -135,6 +140,33 @@ export class TargetSelectUiHandler extends UiHandler {
     }
 
     return success;
+  }
+
+  /**
+   * Co-op (D40): the cursor of a battle of three of ours. The enemies are one row, ours the other, each in the order they
+   * stand on screen: up and down change rows, left and right move along one
+   */
+  private moveCursorOfThree(button: Button): boolean {
+    const rows: BattlerIndex[][] = [
+      [BattlerIndex.ENEMY, BattlerIndex.ENEMY_2],
+      [BattlerIndex.PLAYER, BattlerIndex.PLAYER_2, BattlerIndex.PLAYER_3],
+    ];
+    const ours = isPlayerBattler(this.cursor);
+    const row = rows[ours ? 1 : 0].filter(target => this.targets.includes(target));
+    const other = rows[ours ? 0 : 1].filter(target => this.targets.includes(target));
+    const at = row.indexOf(this.cursor);
+    switch (button) {
+      case Button.UP:
+        return ours && other.length > 0 && this.setCursor(other[0]);
+      case Button.DOWN:
+        return !ours && other.length > 0 && this.setCursor(other[0]);
+      case Button.LEFT:
+        return at > 0 && this.setCursor(row[at - 1]);
+      case Button.RIGHT:
+        return at >= 0 && at < row.length - 1 && this.setCursor(row[at + 1]);
+      default:
+        return false;
+    }
   }
 
   setCursor(cursor: number): boolean {

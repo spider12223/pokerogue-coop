@@ -5,9 +5,8 @@ import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
 import { catchReleaseKey } from "#coop/decision-keys";
-import { STARTERS_PER_SEAT } from "#coop/ownership";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
-import type { Seat } from "#coop/protocol";
+import { type Seat, startersPerSeat } from "#coop/protocol";
 import { DesyncError } from "#coop/sequencer";
 import { getCoopSession } from "#coop/session";
 import { writesForSeat } from "#coop/sim-account";
@@ -68,7 +67,10 @@ export class AttemptCapturePhase extends PokemonPhase {
     return (this.throwerId === undefined ? undefined : session.ownership.get(this.throwerId)) ?? session.seat;
   }
 
-  /** @returns Whether the thrower has no room for the catch: a full party in solo play, three of their own in co-op (D10) */
+  /**
+   * @returns Whether the thrower has no room for the catch: a full party in solo play, three of their own in co-op (D10),
+   * two in a game of three (D40)
+   */
   private isSeatFull(thrower: Seat | null): boolean {
     const session = getCoopSession();
     if (thrower === null || session === null) {
@@ -76,7 +78,7 @@ export class AttemptCapturePhase extends PokemonPhase {
     }
     const partyIds = globalScene.getPlayerParty().map(member => member.id);
     return (
-      session.ownership.countOwned(partyIds, thrower) >= STARTERS_PER_SEAT
+      session.ownership.countOwned(partyIds, thrower) >= startersPerSeat(session.players)
       || globalScene.getPlayerParty().length >= PLAYER_PARTY_MAX_SIZE
     );
   }

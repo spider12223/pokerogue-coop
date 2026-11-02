@@ -36,7 +36,7 @@ function fighterView(pokemon: PlayerPokemon): FighterView {
   const session = getCoopSession();
   const moveset = pokemon.getMoveset();
   const fieldIndex = pokemon.getFieldIndex();
-  const battlers = globalScene.currentBattle.getBattlerCount();
+  const battlers = globalScene.currentBattle.getPlayerBattlerCount();
   const queued = pokemon.getMoveQueue()[0];
   return {
     fieldIndex,
@@ -174,7 +174,7 @@ export function gameLegalityView(): LegalityView {
       if (fieldIndex < 0) {
         return [];
       }
-      const battlers = globalScene.currentBattle.getBattlerCount();
+      const battlers = globalScene.currentBattle.getPlayerBattlerCount();
       return party()
         .map((_, index) => index)
         .filter(index => index >= battlers && isAllowedSwitch(fieldIndex, index, reason));

@@ -1337,7 +1337,7 @@ export class DestinyBondTag extends SerializableBattlerTag {
     }
 
     // Don't kill allies or opposing bosses.
-    if (source.getAlly() === pokemon) {
+    if (source.isAllyOf(pokemon)) {
       return false;
     }
 

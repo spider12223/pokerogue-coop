@@ -194,8 +194,10 @@ export class FaintPhase extends PokemonPhase {
       }
     }
 
-    // in double battles redirect potential moves off fainted pokemon
-    const allyPokemon = pokemon.getAlly();
+    // in double battles redirect potential moves off fainted pokemon (in a battle of three of ours, to the first active
+    // ally in field order: co-op D40)
+    const allies = pokemon.getAllies();
+    const allyPokemon = allies.length > 1 ? allies.find(ally => ally.isActive()) : pokemon.getAlly();
     if (globalScene.currentBattle.double && allyPokemon != null) {
       globalScene.redirectPokemonMoves(pokemon, allyPokemon);
     }

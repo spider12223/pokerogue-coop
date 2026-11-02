@@ -6,8 +6,7 @@
 
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { STARTERS_PER_SEAT } from "#coop/ownership";
-import { otherSeat, type Seat } from "#coop/protocol";
+import { otherSeat, type Seat, seatsFor, startersPerSeat } from "#coop/protocol";
 import { getCoopSession, requireCoopSession, rewardPickerOf } from "#coop/session";
 import { coopText } from "#coop/text";
 import type { PlayerPokemon, Pokemon } from "#field/pokemon";
@@ -65,7 +64,7 @@ export function requireOwnerOf(pokemon: PlayerPokemon): Seat {
 
 /**
  * Co-op (D10): a Pokémon an evolution adds beside the one that evolved (Nincada's Shedinja) is its owner's, within the cap
- * of {@linkcode STARTERS_PER_SEAT}: an owner who has their three gets none
+ * of `startersPerSeat`: an owner who has their three (two in a game of three, D40) gets none
  * @returns Whether it may be added; always in solo play
  */
 export function mayAddBeside(evolving: PlayerPokemon): boolean {
@@ -75,7 +74,7 @@ export function mayAddBeside(evolving: PlayerPokemon): boolean {
   }
   const owner = session.ownership.require(evolving.id);
   const party = globalScene.getPlayerParty().map(member => member.id);
-  return session.ownership.countOwned(party, owner) < STARTERS_PER_SEAT;
+  return session.ownership.countOwned(party, owner) < startersPerSeat(session.players);
 }
 
 /** Co-op (D10): the Pokémon an evolution added ({@linkcode mayAddBeside}) belongs to the owner of the one that evolved */
@@ -100,7 +99,7 @@ export function controllerOf(fieldIndex: number): Seat | null {
 export function legalBench(): PlayerPokemon[] {
   return globalScene
     .getPlayerParty()
-    .slice(globalScene.currentBattle.getBattlerCount())
+    .slice(globalScene.currentBattle.getPlayerBattlerCount())
     .filter(pokemon => pokemon.isAllowedInBattle());
 }
 
@@ -115,7 +114,8 @@ export type SwitchReason = "voluntary" | "faint" | "forced";
 /**
  * Who may be sent into a slot (D7):
  * - voluntary: the controller's own bench only
- * - faint, forced: the owner's bench of the Pokémon that left the slot; if it is empty, the partner's bench
+ * - faint, forced: the owner's bench of the Pokémon that left the slot; if it is empty, the next seat's in order
+ *   that has one (the partner's in a game of two; D40)
  *
  * An empty result means upstream behaviour: with no bench at all nothing is asked, and the field re-centres or the run
  * ends.
@@ -132,8 +132,17 @@ export function switchTargets(fieldIndex: number, reason: SwitchReason): PlayerP
     return [];
   }
   const owner = requireOwnerOf(fainted);
-  const own = bench.filter(pokemon => requireOwnerOf(pokemon) === owner);
-  return own.length > 0 ? own : bench.filter(pokemon => requireOwnerOf(pokemon) === otherSeat(owner));
+  // The owner's bench; if it is empty, the next seat's in order that has one (the partner's, in a game of two; D40)
+  const seats = seatsFor(requireCoopSession().players);
+  const at = seats.indexOf(owner);
+  for (let step = 0; step < seats.length; step++) {
+    const seat = seats[(at + step) % seats.length];
+    const theirs = bench.filter(pokemon => requireOwnerOf(pokemon) === seat);
+    if (theirs.length > 0) {
+      return theirs;
+    }
+  }
+  return [];
 }
 
 /** @returns Whether sending out the party member at `partyIndex` into the slot is allowed */
@@ -176,8 +185,8 @@ export function deciderOf(decision: CoopDecision): Seat | "either" | null {
       // the Pokémon that switches itself out is commanded by its controller, who picks the replacement
       return controllerOf(decision.fieldIndex);
     case "SIDE_ACTION":
-      // a Ball or Run needs the partner's accept (D8)
-      return otherSeat(decision.proposer);
+      // a Ball or Run needs the partner's accept (D8); in a game of three, the host's (D40)
+      return session.players === 3 ? "host" : otherSeat(decision.proposer);
     case "SIDE_PICK":
       // both chose a Ball or a Run: the host picks the one that happens (D8)
       return "host";

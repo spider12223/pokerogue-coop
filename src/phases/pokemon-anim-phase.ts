@@ -1,6 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { SubstituteTag } from "#data/battler-tags";
+import { BattlerTagType } from "#enums/battler-tag-type";
 import { PokemonAnimType } from "#enums/pokemon-anim-type";
 import { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";
@@ -254,7 +255,17 @@ export class PokemonAnimPhase extends BattlePhase {
       this.end();
       return;
     }
-    const dondozo = this.pokemon.getAlly();
+    // In a battle of three of ours (co-op, D40), the Dondozo it is about to command: an active one, not commanded yet
+    const allies = this.pokemon.getAllies();
+    const dondozo =
+      allies.length > 1
+        ? allies.find(
+            ally =>
+              ally.isActive(true)
+              && ally.species.speciesId === SpeciesId.DONDOZO
+              && ally.getTag(BattlerTagType.COMMANDED) == null,
+          )
+        : this.pokemon.getAlly();
 
     if (dondozo?.species?.speciesId !== SpeciesId.DONDOZO) {
       this.end();
@@ -335,7 +346,11 @@ export class PokemonAnimPhase extends BattlePhase {
   private doCommanderRemoveAnim(): void {
     // Note: unlike the other Commander animation, this is played through the
     // Dondozo instead of the Tatsugiri.
-    const tatsugiri = this.pokemon.getAlly();
+    // In a battle of three of ours (co-op, D40), the one that commands it
+    const tatsugiri =
+      this.pokemon.getAllies().length > 1
+        ? this.pokemon.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon()
+        : this.pokemon.getAlly();
     if (tatsugiri == null) {
       console.warn("Aborting COMMANDER_REMOVE anim: Tatsugiri is undefined");
       this.end();

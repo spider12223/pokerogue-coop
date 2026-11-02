@@ -484,7 +484,7 @@ export function initAbilities() {
       .conditionalAttr(
         p =>
           globalScene.currentBattle.double
-          && [AbilityId.PLUS, AbilityId.MINUS].some(a => p.getAlly()?.hasAbility(a) ?? false),
+          && [AbilityId.PLUS, AbilityId.MINUS].some(a => p.getAllies().some(ally => ally.hasAbility(a))),
         StatMultiplierAbAttr,
         Stat.SPATK,
         1.5,
@@ -494,7 +494,7 @@ export function initAbilities() {
       .conditionalAttr(
         p =>
           globalScene.currentBattle.double
-          && [AbilityId.PLUS, AbilityId.MINUS].some(a => p.getAlly()?.hasAbility(a) ?? false),
+          && [AbilityId.PLUS, AbilityId.MINUS].some(a => p.getAllies().some(ally => ally.hasAbility(a))),
         StatMultiplierAbAttr,
         Stat.SPATK,
         1.5,
@@ -912,7 +912,11 @@ export function initAbilities() {
       .bypassFaint()
       .build(),
     new AbBuilder(AbilityId.HEALER, 5) //
-      .conditionalAttr(pokemon => pokemon.getAlly() != null && randSeedInt(2) === 1, PostTurnResetStatusAbAttr, true)
+      .conditionalAttr(
+        pokemon => pokemon.getAllies().length > 0 && randSeedInt(2) === 1,
+        PostTurnResetStatusAbAttr,
+        true,
+      )
       .build(),
     new AbBuilder(AbilityId.FRIEND_GUARD, 5) //
       .attr(AlliedFieldDamageReductionAbAttr, 0.75)
@@ -969,7 +973,7 @@ export function initAbilities() {
       .edgeCase() // Cannot recover berries used up by fling or natural gift (unimplemented)
       .build(),
     new AbBuilder(AbilityId.TELEPATHY, 5) //
-      .attr(MoveImmunityAbAttr, (pokemon, attacker, move) => pokemon.getAlly() === attacker && move.is("AttackMove"))
+      .attr(MoveImmunityAbAttr, (pokemon, attacker, move) => pokemon.isAllyOf(attacker) && move.is("AttackMove"))
       .ignorable()
       .build(),
     new AbBuilder(AbilityId.MOODY, 5) //

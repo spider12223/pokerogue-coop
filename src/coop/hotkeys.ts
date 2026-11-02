@@ -47,6 +47,10 @@ export function pingTargetOfCursor(): CosmeticTarget {
   switch (ui.mode) {
     case UiMode.TARGET_SELECT: {
       const cursor = ui.getHandler().getCursor();
+      if (cursor === BattlerIndex.PLAYER_3) {
+        // the third of ours in a battle of three (D40)
+        return { k: "ally", index: 2 };
+      }
       if (cursor >= BattlerIndex.ENEMY) {
         return { k: "enemy", index: cursor - BattlerIndex.ENEMY };
       }

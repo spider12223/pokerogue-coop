@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { isLinked } from "#coop/bridge";
 import { coopCheckpoint } from "#coop/checkpoints";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, fieldIndexOfBattler, isPlayerBattler } from "#enums/battler-index";
 import { TurnInitEvent } from "#events/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";
 import {
@@ -33,7 +33,7 @@ export class TurnInitPhase extends FieldPhase {
           globalScene.phaseManager.clearPhaseQueue();
           globalScene.phaseManager.unshiftNew("GameOverPhase");
         } else if (
-          allowedPokemon.length >= globalScene.currentBattle.getBattlerCount()
+          allowedPokemon.length >= globalScene.currentBattle.getPlayerBattlerCount()
           || (globalScene.currentBattle.double && !allowedPokemon[0].isActive(true))
         ) {
           // If there is at least one pokemon in the back that is legal to switch in, force a switch.
@@ -67,7 +67,12 @@ export class TurnInitPhase extends FieldPhase {
         globalScene.phaseManager.pushNew("CoopTurnSyncPhase");
       }
     };
-    globalScene.getField().forEach((pokemon, i) => {
+    // Ours first, then the enemies: the third of ours in a game of three is after the enemies on the field (co-op, D40)
+    const field = globalScene
+      .getField()
+      .map((pokemon, i) => ({ pokemon, i }))
+      .sort((a, b) => Number(!isPlayerBattler(a.i)) - Number(!isPlayerBattler(b.i)));
+    field.forEach(({ pokemon, i }) => {
       if (pokemon?.isActive()) {
         if (pokemon.isPlayer()) {
           globalScene.currentBattle.addParticipant(pokemon as PlayerPokemon);
@@ -76,7 +81,7 @@ export class TurnInitPhase extends FieldPhase {
         pokemon.resetTurnData();
 
         if (pokemon.isPlayer()) {
-          globalScene.phaseManager.pushNew("CommandPhase", i);
+          globalScene.phaseManager.pushNew("CommandPhase", fieldIndexOfBattler(i));
         } else {
           syncCommands();
           globalScene.phaseManager.pushNew("EnemyCommandPhase", i - BattlerIndex.ENEMY);

@@ -463,7 +463,7 @@ export class PartyUiHandler extends MessageUiHandler {
       this.doRelease(this.cursor);
       return true;
     }
-    if (this.cursor >= globalScene.currentBattle.getBattlerCount() || !pokemon.isAllowedInBattle()) {
+    if (this.cursor >= globalScene.currentBattle.getPlayerBattlerCount() || !pokemon.isAllowedInBattle()) {
       this.blockInput = true;
       const options: ConfirmModeConfig = {
         yesHandler: () => {
@@ -1208,7 +1208,7 @@ export class PartyUiHandler extends MessageUiHandler {
   private processPartyDirectionalInput(button: Button.UP | Button.DOWN | Button.LEFT | Button.RIGHT): boolean {
     const ui = this.getUi();
     const slotCount = this.partySlots.length;
-    const battlerCount = globalScene.currentBattle.getBattlerCount();
+    const battlerCount = globalScene.currentBattle.getPlayerBattlerCount();
 
     if (this.lastCursor < battlerCount) {
       this.lastLeftPokemonCursor = this.lastCursor;
@@ -1233,7 +1233,9 @@ export class PartyUiHandler extends MessageUiHandler {
             break;
           }
           if (this.cursor === 6) {
-            success = this.setCursor(slotCount <= globalScene.currentBattle.getBattlerCount() ? 7 : slotCount - 1);
+            success = this.setCursor(
+              slotCount <= globalScene.currentBattle.getPlayerBattlerCount() ? 7 : slotCount - 1,
+            );
             break;
           }
           if (this.cursor === 7) {
@@ -1255,7 +1257,9 @@ export class PartyUiHandler extends MessageUiHandler {
           }
           if (this.cursor === 7) {
             success = this.setCursor(
-              slotCount > globalScene.currentBattle.getBattlerCount() ? globalScene.currentBattle.getBattlerCount() : 6,
+              slotCount > globalScene.currentBattle.getPlayerBattlerCount()
+                ? globalScene.currentBattle.getPlayerBattlerCount()
+                : 6,
             );
             break;
           }
@@ -1605,7 +1609,7 @@ export class PartyUiHandler extends MessageUiHandler {
       case PartyUiMode.SWITCH:
       case PartyUiMode.FAINT_SWITCH:
       case PartyUiMode.POST_BATTLE_SWITCH:
-        if (this.cursor >= globalScene.currentBattle.getBattlerCount()) {
+        if (this.cursor >= globalScene.currentBattle.getPlayerBattlerCount()) {
           const allowBatonModifierSwitch = this.allowBatonModifierSwitch();
           const isBatonPassMove = this.isBatonPassMove();
 
@@ -2212,7 +2216,7 @@ class PartySlot extends Phaser.GameObjects.Container {
     tmMoveId: MoveId,
     modifierItemId: EvolutionItem | FormChangeItem | undefined,
   ) {
-    const isBenched = slotIndex >= globalScene.currentBattle.getBattlerCount();
+    const isBenched = slotIndex >= globalScene.currentBattle.getPlayerBattlerCount();
     const isDoubleBattle = globalScene.currentBattle.double;
     const isItemManageMode = partyUiMode === PartyUiMode.MODIFIER_TRANSFER || partyUiMode === PartyUiMode.DISCARD;
 

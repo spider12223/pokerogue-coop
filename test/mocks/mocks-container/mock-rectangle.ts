@@ -16,6 +16,19 @@ export class MockRectangle implements MockGameObject {
     return this;
   }
 
+  setFillStyle(fillColor, _alpha?): this {
+    this.fillColor = fillColor;
+    return this;
+  }
+
+  setStrokeStyle(_lineWidth, _color?, _alpha?): this {
+    return this;
+  }
+
+  setPosition(_x, _y): this {
+    return this;
+  }
+
   setAlpha(_alpha): this {
     return this;
   }

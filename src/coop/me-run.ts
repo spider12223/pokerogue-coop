@@ -9,8 +9,7 @@ import { globalScene } from "#app/global-scene";
 import { coopDecide, coopText, mySeat } from "#coop/bridge";
 import { notYourPokemonText } from "#coop/control";
 import { isMeChoiceOf, type MeChoice, type MeChoiceKind, type MeQuestion, meChoiceKey } from "#coop/me-choice";
-import { STARTERS_PER_SEAT } from "#coop/ownership";
-import type { Seat } from "#coop/protocol";
+import { type Seat, startersPerSeat } from "#coop/protocol";
 import { getCoopSession, isCoop, requireCoopSession } from "#coop/session";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
@@ -87,14 +86,15 @@ export function passOwnership(previous: { id: number }, next: { id: number }): v
   session.ownership.retain(globalScene.getPlayerParty().map(member => member.id));
 }
 
-/** Whether a seat has as many Pokémon as it may (the cap of 3, D10), or the party is full */
+/** Whether a seat has as many Pokémon as it may (the cap of 3, D10; 2 in a game of three, D40), or the party is full */
 export function coopSeatFull(seat: Seat): boolean {
   const party = globalScene.getPlayerParty();
+  const session = requireCoopSession();
   return (
-    requireCoopSession().ownership.countOwned(
+    session.ownership.countOwned(
       party.map(member => member.id),
       seat,
-    ) >= STARTERS_PER_SEAT || party.length >= PLAYER_PARTY_MAX_SIZE
+    ) >= startersPerSeat(session.players) || party.length >= PLAYER_PARTY_MAX_SIZE
   );
 }
 

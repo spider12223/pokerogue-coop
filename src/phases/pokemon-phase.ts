@@ -1,5 +1,5 @@
 import { globalScene } from "#app/global-scene";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, fieldIndexOfBattler, isPlayerBattler } from "#enums/battler-index";
 import type { Pokemon } from "#field/pokemon";
 import { FieldPhase } from "#phases/field-phase";
 
@@ -30,13 +30,13 @@ export abstract class PokemonPhase extends FieldPhase {
     }
 
     this.battlerIndex = battlerIndex;
-    this.player = battlerIndex < 2;
-    this.fieldIndex = battlerIndex % 2;
+    this.player = isPlayerBattler(battlerIndex);
+    this.fieldIndex = fieldIndexOfBattler(battlerIndex);
   }
 
   // TODO: This should have `undefined` in its signature
   getPokemon(): Pokemon {
-    if (this.battlerIndex > BattlerIndex.ENEMY_2) {
+    if (this.battlerIndex > BattlerIndex.ENEMY_2 && this.battlerIndex !== BattlerIndex.PLAYER_3) {
       return globalScene.getPokemonById(this.battlerIndex)!;
     }
     return globalScene.getField()[this.battlerIndex]!;

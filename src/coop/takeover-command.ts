@@ -12,6 +12,7 @@ import { showOverlayMenu } from "#coop/overlay";
 import { commandTargetPick } from "#coop/sim-rng";
 import type { TurnCommandsPayload } from "#coop/turn-commands";
 import { allMoves } from "#data/data-lists";
+import { playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import { FieldPosition } from "#enums/field-position";
 import { MoveId } from "#enums/move-id";
@@ -157,7 +158,7 @@ export async function askCommandFor(
         cursor,
         move: { move: moveId, targets: moveTargets, useMode: MoveUseMode.NORMAL },
       },
-      pre: { command: Command.FIGHT, targets: [slot], skip: true },
+      pre: { command: Command.FIGHT, targets: [playerBattlerOf(slot)], skip: true },
     };
   }
 }

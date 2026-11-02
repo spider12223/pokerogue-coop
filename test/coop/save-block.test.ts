@@ -109,6 +109,24 @@ describe("checkSaveBlock", () => {
     );
   });
 
+  it("takes the save of a game of three (D40), and only for the same three accounts", () => {
+    const three = block({
+      accountIds: { host: "h", guest: "g", guest2: "k" },
+      owners: { "10": "host", "20": "guest", "30": "guest2" },
+      accounts: { host: account(1), guest: account(2), guest2: account(3) },
+    });
+    expect(isCoopSaveBlock(three)).toBe(true);
+    expect(() => checkSaveBlock(three, { accountIds: { host: "h", guest: "g", guest2: "k" } })).not.toThrow();
+    expect(() => checkSaveBlock(three, { accountIds: { host: "h", guest: "g", guest2: "x" } })).toThrow(
+      CoopSaveRefusedError,
+    );
+    // a game of two does not continue a save of three
+    expect(() => checkSaveBlock(three, session)).toThrow(CoopSaveRefusedError);
+    // a third account without its snapshot, or a snapshot without its account, is damaged
+    expect(isCoopSaveBlock({ ...three, accounts: { host: account(1), guest: account(2) } })).toBe(false);
+    expect(isCoopSaveBlock({ ...three, accountIds: { host: "h", guest: "g" } })).toBe(false);
+  });
+
   it("a session that does not know its players yet accepts any pair", () => {
     expect(() => checkSaveBlock(block(), { accountIds: null })).not.toThrow();
   });

@@ -82,8 +82,10 @@ function isCosmeticTarget(value: unknown): value is CosmeticTarget {
     case "none":
       return true;
     case "enemy":
-    case "ally":
       return isInt(target["index"], 0, 1);
+    case "ally":
+      // a game of three has a third slot of ours (D40)
+      return isInt(target["index"], 0, 2);
     case "party":
       return isInt(target["pokemonId"], 0, Number.MAX_SAFE_INTEGER);
     case "reward":
@@ -109,7 +111,7 @@ export function isCosmeticMessage(value: unknown): value is CosmeticMessage {
       return (
         isInt(message["pokemonId"], 0, Number.MAX_SAFE_INTEGER)
         && (message["move"] === null || isInt(message["move"], 0, 10_000))
-        && (message["target"] === null || isInt(message["target"], 0, 3))
+        && (message["target"] === null || isInt(message["target"], 0, 4))
         && typeof message["ready"] === "boolean"
       );
     case "cursor":

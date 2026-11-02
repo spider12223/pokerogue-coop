@@ -66,13 +66,13 @@ export class SwitchPhase extends BattlePhase {
     }
 
     // Check if there is any space still in field
-    if (this.isModal && globalScene.getPlayerField(true).length > globalScene.currentBattle.getBattlerCount()) {
+    if (this.isModal && globalScene.getPlayerField(true).length > globalScene.currentBattle.getPlayerBattlerCount()) {
       return super.end();
     }
 
     // Override field index to 0 in case of double battle where 2/3 remaining legal party members fainted at once
     const fieldIndex =
-      globalScene.currentBattle.getBattlerCount() === 1 || globalScene.getPokemonAllowedInBattle().length > 1
+      globalScene.currentBattle.getPlayerBattlerCount() === 1 || globalScene.getPokemonAllowedInBattle().length > 1
         ? this.fieldIndex
         : 0;
 
@@ -94,7 +94,7 @@ export class SwitchPhase extends BattlePhase {
       fieldIndex,
       (slotIndex: number, option: PartyOption) => {
         if (
-          slotIndex >= globalScene.currentBattle.getBattlerCount()
+          slotIndex >= globalScene.currentBattle.getPlayerBattlerCount()
           && slotIndex < 6
           && (!isCoop() || isAllowedSwitch(fieldIndex, slotIndex, reason))
         ) {

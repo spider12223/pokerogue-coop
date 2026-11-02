@@ -19,6 +19,7 @@ import {
 import { tracePhaseStart } from "#coop/checkpoints";
 import { controllerOf, deciderOf, requireOwnerOf, switchTargets } from "#coop/control";
 import { catchReleaseKey } from "#coop/decision-keys";
+import { defaultStarterOwners } from "#coop/ownership";
 import { describePhaseTraceDiff, diffPhaseTraces, type PhaseTraceEntry } from "#coop/phase-trace";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
 import {
@@ -27,6 +28,7 @@ import {
   keysEqual,
   NO_REF,
   otherSeat,
+  type PlayerCount,
   type Seat,
   type SeatRecord,
 } from "#coop/protocol";
@@ -197,14 +199,16 @@ export class Decider {
 // #region Scenario
 
 export interface Scenario {
-  /** At least two: slots 0 and 1 are the first two */
+  /** At least two: slots 0 and 1 are the first two (three in a game of three) */
   species: SpeciesId[];
+  /** How many players the game has (D40); default 2. A game of three: two starters each, the owners round robin */
+  players?: PlayerCount;
   /** Play waves `1..waves` */
   waves: number;
   /** The moves every party member knows (the first is the one used in turns) */
   moveset: [MoveId, MoveId, MoveId, MoveId];
   /** In these turns the Pokémon in these slots use `faintMove` and faint: their replacements are decisions */
-  faints: readonly { wave: number; turn: number; slots: readonly (0 | 1)[] }[];
+  faints: readonly { wave: number; turn: number; slots: readonly (0 | 1 | 2)[] }[];
   /** The move that makes its user faint */
   faintMove: MoveId;
   /** Runs after a wave's reward screen (or its fixed rewards), before the next wave is set up */
@@ -613,7 +617,7 @@ export function queueTurnCommands(ctx: Ctx): void {
   // Only the slots that have a Pokémon that can act are commanded; with a network, only this client's own (D8): the
   // other client chooses for the partner's slot, whose `CommandPhase` ends without asking. A Pokémon locked into a move
   // goes on with it, without asking either
-  const slots = ([BattlerIndex.PLAYER, BattlerIndex.PLAYER_2] as const).filter(slot => {
+  const slots = ([0, 1, 2] as const).slice(0, b.playerSlots).filter(slot => {
     const controller = controllerOf(slot);
     return (
       controller !== null
@@ -642,7 +646,8 @@ export function queueTurnCommands(ctx: Ctx): void {
       ctx.catchStage = 0;
       break;
     }
-    game.move.select(payload.moveId, slot, payload.target ?? undefined);
+    // (the helper takes our field slot: slot 2 of a game of three is battler `PLAYER_3`)
+    game.move.select(payload.moveId, slot as BattlerIndex.PLAYER, payload.target ?? undefined);
     if (game.scene.currentBattle.mysteryEncounter?.skipToFightInput) {
       // The encounter opens the move menu at once (Fun and Games): the command menu `select` answers never comes
       const prompts = (game.promptHandler as unknown as { prompts: { phaseTarget: string; mode: UiMode }[] }).prompts;
@@ -970,7 +975,7 @@ export function describeWave(ctx: Ctx): WaveInfo {
     trainerType: start.trainer?.config.trainerType ?? null,
     trainerVariant: start.trainer?.variant ?? null,
     double: start.double,
-    controllers: [controllerOf(0), controllerOf(1)],
+    controllers: [0, 1, 2].slice(0, start.playerSlots).map(slot => controllerOf(slot)),
     partyOrder: ctx.game.scene.getPlayerParty().map(p => p.id),
     onField: ctx.game.scene
       .getPlayerParty()
@@ -979,6 +984,11 @@ export function describeWave(ctx: Ctx): WaveInfo {
     legalBySeat: {
       host: ctx.game.scene.getPokemonAllowedInBattle().filter(p => requireOwnerOf(p) === "host").length,
       guest: ctx.game.scene.getPokemonAllowedInBattle().filter(p => requireOwnerOf(p) === "guest").length,
+      ...(ctx.scenario.players === 3
+        ? {
+            guest2: ctx.game.scene.getPokemonAllowedInBattle().filter(p => requireOwnerOf(p) === "guest2").length,
+          }
+        : {}),
     },
     enemyParty: ctx.game.scene.getEnemyParty().length,
     enemySpecies: ctx.game.scene.getEnemyParty().map(p => p.species.speciesId),
@@ -1187,8 +1197,13 @@ export async function openCoopRun(
     build: { protocolVersion: 1, gitSha: "harness", dirtyHash: "clean", buildMode: "test", overridesHash: "0" },
     overlay: client.applyOverlay ? overlay : null,
     accountSnapshot: shared.snapshot,
-    accountIds: { host: "host-account", guest: "guest-account" },
-    ...(scenario.starterOwners === undefined ? {} : { starterOwners: scenario.starterOwners }),
+    accountIds:
+      scenario.players === 3
+        ? { host: "host-account", guest: "guest-account", guest2: "guest2-account" }
+        : { host: "host-account", guest: "guest-account" },
+    players: scenario.players ?? 2,
+    starterOwners:
+      scenario.starterOwners ?? (scenario.players === 3 ? defaultStarterOwners(2, 3) : defaultStarterOwners()),
   });
 
   session.onCheckpoint = checkpoint => {

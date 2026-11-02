@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { isLinked } from "#coop/bridge";
 import { allMoves } from "#data/data-lists";
-import type { BattlerIndex } from "#enums/battler-index";
+import { type BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import { UiMode } from "#enums/ui-mode";
 import { PokemonPhase } from "#phases/pokemon-phase";
@@ -16,7 +16,7 @@ export class SelectTargetPhase extends PokemonPhase {
   start() {
     super.start();
 
-    const turnCommand = globalScene.currentBattle.turnCommands[this.fieldIndex];
+    const turnCommand = globalScene.currentBattle.turnCommands[this.battlerIndex];
     const moveId = turnCommand?.move?.move;
     if (!moveId) {
       this.end();
@@ -27,8 +27,9 @@ export class SelectTargetPhase extends PokemonPhase {
     const move = allMoves[moveId];
     const fieldSide = globalScene.getField();
 
-    const user = fieldSide[this.fieldIndex];
-    const ally = user.getAlly();
+    const user = this.getPokemon();
+    // (the first ally in field order that has not fainted, in a battle of three of ours: co-op D40)
+    const ally = user.getAllies().find(other => !other.isFainted());
     const shouldDefaultToAlly =
       globalScene.currentBattle.double // formatting
       && move.allyTargetDefault
@@ -55,13 +56,13 @@ export class SelectTargetPhase extends PokemonPhase {
         }
 
         if (targets.length === 0) {
-          globalScene.currentBattle.turnCommands[this.fieldIndex] = null;
+          globalScene.currentBattle.turnCommands[this.battlerIndex] = null;
           globalScene.phaseManager.unshiftNew("CommandPhase", this.fieldIndex);
         } else {
           turnCommand.targets = targets;
         }
         if (turnCommand.command === Command.BALL && this.fieldIndex && !isLinked()) {
-          globalScene.currentBattle.turnCommands[this.fieldIndex - 1]!.skip = true;
+          globalScene.currentBattle.turnCommands[playerBattlerOf(this.fieldIndex - 1)]!.skip = true;
         }
         this.end();
       },

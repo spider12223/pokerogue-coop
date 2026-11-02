@@ -25,10 +25,19 @@ import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/signature-moves";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
 import { isLinked, reportBridgeError } from "#coop/bridge";
 import { coopSwitchFilter, giveOwnerOf, isAllowedSwitch, mayAddBeside, switchTargets } from "#coop/control";
+import { coopEnemyStat } from "#coop/enemy-buff";
 import { drawUniquePokemonId } from "#coop/pokemon-id";
 import { getCoopSession, isCoop } from "#coop/session";
 import { ownerSeat, simAccount, writesForPokemon } from "#coop/sim-account";
 import { coopDecideSwitch } from "#coop/switch-bridge";
+import {
+  hideTeammateBar,
+  inBattleOfThree,
+  placeEnemyBoxForThree,
+  showsOwnBox,
+  showTeammateBar,
+  updateTeammateBar,
+} from "#coop/three-field";
 import type { SuppressAbilitiesTag } from "#data/arena-tag";
 import { NoCritTag, WeakenMoveScreenTag } from "#data/arena-tag";
 import {
@@ -80,7 +89,7 @@ import { AbilityId } from "#enums/ability-id";
 import { AiType } from "#enums/ai-type";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import { ArenaTagType } from "#enums/arena-tag-type";
-import { BattlerIndex } from "#enums/battler-index";
+import { BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { BattlerTagLapseType } from "#enums/battler-tag-lapse-type";
 import { BattlerTagType } from "#enums/battler-tag-type";
 import type { BerryType } from "#enums/berry-type";
@@ -203,6 +212,13 @@ import type { LevelMoveContext } from "../@types/level-moves";
 import { getBaseLearnableMoveSource, getLevelMoves } from "./learnsets";
 
 type LearnableLevelMoves = [level: number | null, move: MoveId, source: LearnableMoveSource][];
+
+/** Co-op (D40): the offsets of our three Pokémon of a battle of three, from the field's player position (Spike 0.2) */
+const THREE_SLOT_OFFSETS: Readonly<Record<FieldPosition, [number, number]>> = {
+  [FieldPosition.LEFT]: [-48, -24],
+  [FieldPosition.CENTER]: [0, -12],
+  [FieldPosition.RIGHT]: [48, -16],
+};
 
 export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
@@ -1266,6 +1282,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   getFieldPositionOffset(): [number, number] {
+    if (this.isPlayer() && globalScene.currentBattle?.playerSlots === 3) {
+      // Co-op (D40): three of ours side by side, on the zoomed-out field
+      return THREE_SLOT_OFFSETS[this.fieldPosition];
+    }
     switch (this.fieldPosition) {
       case FieldPosition.CENTER:
         return [0, 0];
@@ -1325,8 +1345,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
       this.fieldPosition = fieldPosition;
 
-      this.battleInfo.setMini(fieldPosition !== FieldPosition.CENTER);
-      this.battleInfo.setOffset(fieldPosition === FieldPosition.RIGHT);
+      // Co-op (D40): in a battle of three of ours the box of one's own Pokémon is the full one, where a single battle has it
+      const three = inBattleOfThree(this);
+      this.battleInfo.setMini(!three && fieldPosition !== FieldPosition.CENTER);
+      this.battleInfo.setOffset(!three && fieldPosition === FieldPosition.RIGHT);
 
       const newOffset = this.getFieldPositionOffset();
 
@@ -1525,8 +1547,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       });
     }
 
-    const ally = this.getAlly();
-    if (ally != null) {
+    // Each ally's: two in a battle of three of ours (co-op, D40)
+    for (const ally of this.getAllies()) {
       applyAbAttrs("AllyStatMultiplierAbAttr", {
         pokemon: ally,
         stat,
@@ -1610,6 +1632,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       if (s === Stat.HP) {
         statHolder.value = statHolder.value + this.level + 10;
         globalScene.applyModifier(PokemonIncrementingStatModifier, this.isPlayer(), this, s, statHolder);
+        // Co-op (D40): enemies of a game of three are tougher
+        statHolder.value = coopEnemyStat(!this.isPlayer(), s, statHolder.value);
         if (this.hasAbility(AbilityId.WONDER_GUARD, false, true)) {
           statHolder.value = 1;
         }
@@ -1632,6 +1656,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
           );
         }
         globalScene.applyModifier(PokemonIncrementingStatModifier, this.isPlayer(), this, s, statHolder);
+        statHolder.value = coopEnemyStat(!this.isPlayer(), s, statHolder.value);
       }
 
       statHolder.value = Phaser.Math.Clamp(statHolder.value, 1, Number.MAX_SAFE_INTEGER);
@@ -2653,9 +2678,13 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     return (
       this.getTag(BattlerTagType.FRENZY) == null
       && !this.isTrapped()
-      && !(this.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField()).some(p =>
-        p.getTag(BattlerTagType.COMMANDED),
-      )
+      && !(this.isPlayer() && globalScene.currentBattle.playerSlots === 3
+        ? // In a battle of three of ours (co-op, D40) only the Dondozo and its Tatsugiri are held
+          this.getTag(BattlerTagType.COMMANDED) != null
+          || globalScene.getPlayerField().some(p => p.getTag(BattlerTagType.COMMANDED)?.getSourcePokemon() === this)
+        : (this.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField()).some(p =>
+            p.getTag(BattlerTagType.COMMANDED),
+          ))
     );
   }
 
@@ -3366,6 +3395,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   /** Show this Pokémon's info panel */
   showInfo(): void {
+    // Co-op (D40): a teammate's Pokémon in a battle of three has a small bar over it on this client, no box
+    if (inBattleOfThree(this) && !showsOwnBox(this)) {
+      showTeammateBar(this);
+      return;
+    }
+    placeEnemyBoxForThree(this);
     if (!this.battleInfo.visible) {
       const otherBattleInfo = globalScene.fieldUI
         .getAll()
@@ -3394,6 +3429,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   /** Hide this Pokémon's info panel */
   async hideInfo(): Promise<void> {
+    hideTeammateBar(this);
     return new Promise(resolve => {
       if (this.battleInfo?.visible) {
         globalScene.tweens.add({
@@ -3418,6 +3454,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   }
 
   updateInfo(instant?: boolean): Promise<void> {
+    updateTeammateBar(this);
     return this.battleInfo.updateInfo(this, instant);
   }
 
@@ -3476,6 +3513,23 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   getAlly(): Pokemon | undefined {
     return (this.isPlayer() ? globalScene.getPlayerField() : globalScene.getEnemyField())[this.getFieldIndex() ? 0 : 1];
+  }
+
+  /**
+   * The allies of this Pokémon: {@linkcode getAlly} as a list, or, in a battle of three of ours (co-op, D40), the other two
+   * Pokémon of our field. As with `getAlly`, a fainted or empty-handed ally is included: the caller checks `isActive`.
+   */
+  getAllies(): Pokemon[] {
+    if (this.isPlayer() && globalScene.currentBattle?.playerSlots === 3) {
+      return globalScene.getPlayerField().filter(pokemon => pokemon !== this);
+    }
+    const ally = this.getAlly();
+    return ally == null ? [] : [ally];
+  }
+
+  /** @returns Whether `other` is one of {@linkcode getAllies}: `getAlly() === other`, for each ally of a battle of three */
+  isAllyOf(other: Pokemon | null | undefined): boolean {
+    return other != null && this.getAllies().includes(other);
   }
 
   /**
@@ -3607,8 +3661,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       move: sourceMove,
     });
 
-    const ally = this.getAlly();
-    if (ally != null) {
+    // Each ally's: two in a battle of three of ours (co-op, D40)
+    for (const ally of this.getAllies()) {
       const ignore =
         this.hasAbilityWithAttr("MoveAbilityBypassAbAttr") || sourceMove.hasFlag(MoveFlags.IGNORE_ABILITIES);
       applyAbAttrs("AllyStatMultiplierAbAttr", {
@@ -4012,10 +4066,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (!ignoreAbility) {
       applyAbAttrs("ReceivedMoveDamageMultiplierAbAttr", abAttrParams);
 
-      const ally = this.getAlly();
-      // Additionally apply friend guard damage reduction if ally has it.
-      if (globalScene.currentBattle.double && ally?.isActive(true)) {
-        applyAbAttrs("AlliedFieldDamageReductionAbAttr", { ...abAttrParams, pokemon: ally });
+      // Additionally apply friend guard damage reduction if ally has it (each ally's: two in a battle of three of ours,
+      // co-op D40)
+      for (const ally of this.getAllies()) {
+        if (globalScene.currentBattle.double && ally.isActive(true)) {
+          applyAbAttrs("AlliedFieldDamageReductionAbAttr", { ...abAttrParams, pokemon: ally });
+        }
       }
     }
 
@@ -5363,7 +5419,7 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
     if (
       this.hasAbilityWithAttr("CommanderAbAttr")
       && globalScene.currentBattle.double
-      && this.getAlly()?.species.speciesId === SpeciesId.DONDOZO
+      && this.getAllies().some(ally => ally.species.speciesId === SpeciesId.DONDOZO)
     ) {
       this.setVisible(false);
     }
@@ -6100,7 +6156,8 @@ export class PlayerPokemon extends Pokemon {
   }
 
   getBattlerIndex(): BattlerIndex {
-    return this.getFieldIndex();
+    // Co-op (D40): the third slot of a game of three is `PLAYER_3`
+    return playerBattlerOf(this.getFieldIndex());
   }
 
   /**
@@ -6215,7 +6272,7 @@ export class PlayerPokemon extends Pokemon {
         this.getFieldIndex(),
         (slotIndex: number, _option: PartyOption) => {
           if (
-            slotIndex >= globalScene.currentBattle.getBattlerCount()
+            slotIndex >= globalScene.currentBattle.getPlayerBattlerCount()
             && slotIndex < 6
             && (!isCoop() || isAllowedSwitch(this.getFieldIndex(), slotIndex, "voluntary"))
           ) {
@@ -6994,7 +7051,7 @@ export class EnemyPokemon extends Pokemon {
                     move,
                     ignoreAbility: !p.waveData.abilityRevealed,
                     ignoreSourceAbility: false,
-                    ignoreAllyAbility: !p.getAlly()?.waveData.abilityRevealed,
+                    ignoreAllyAbility: !p.getAllies().some(ally => ally.waveData.abilityRevealed),
                     ignoreSourceAllyAbility: false,
                     isCritical,
                     simulated: true,
@@ -7035,7 +7092,7 @@ export class EnemyPokemon extends Pokemon {
               let targetScore =
                 move.getUserBenefitScore(this, target, move)
                 + move.getTargetBenefitScore(this, target, move)
-                  * (mt < BattlerIndex.ENEMY === this.isPlayer() ? 1 : -1);
+                  * ((mt < BattlerIndex.ENEMY || mt === BattlerIndex.PLAYER_3) === this.isPlayer() ? 1 : -1);
               if (Number.isNaN(targetScore)) {
                 console.error(`Move ${move.name} returned score of NaN`);
                 targetScore = 0;

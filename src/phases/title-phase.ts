@@ -427,6 +427,10 @@ export class TitlePhase extends Phase {
       if (globalScene.currentBattle.double && availablePartyMembers > 1) {
         globalScene.phaseManager.pushNew("SummonPhase", 1, true, true);
       }
+      // Co-op (D40): the third of ours, in a game of three
+      if (globalScene.currentBattle.playerSlots === 3 && availablePartyMembers > 2) {
+        globalScene.phaseManager.pushNew("SummonPhase", 2, true, true);
+      }
 
       if (
         globalScene.currentBattle.battleType !== BattleType.TRAINER

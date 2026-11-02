@@ -731,8 +731,8 @@ export class PostDefendStatStageChangeAbAttr extends PostDefendAbAttr {
     }
 
     if (this.allOthers) {
-      const ally = pokemon.getAlly();
-      const otherPokemon = ally == null ? pokemon.getOpponents() : pokemon.getOpponents().concat([ally]);
+      // (each ally: two in a battle of three, co-op D40)
+      const otherPokemon = pokemon.getOpponents().concat(pokemon.getAllies());
       for (const other of otherPokemon) {
         globalScene.phaseManager.unshiftNew("StatStageChangePhase", {
           battlerIndex: other.getBattlerIndex(),
@@ -2484,12 +2484,15 @@ export class PostSummonAllyHealAbAttr extends PostSummonAbAttr {
   }
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return pokemon.getAlly()?.isActive(true) ?? false;
+    return pokemon.getAllies().some(ally => ally.isActive(true));
   }
 
   override apply({ pokemon, simulated }: AbAttrBaseParams): void {
-    const target = pokemon.getAlly();
-    if (!simulated && target != null) {
+    if (simulated) {
+      return;
+    }
+    // Each ally: two in a battle of three (co-op, D40)
+    for (const target of pokemon.getAllies().filter(ally => ally.isActive(true))) {
       globalScene.phaseManager.unshiftNew(
         "PokemonHealPhase",
         target.getBattlerIndex(),
@@ -2512,12 +2515,15 @@ export class PostSummonAllyHealAbAttr extends PostSummonAbAttr {
  */
 export class PostSummonClearAllyStatStagesAbAttr extends PostSummonAbAttr {
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
-    return pokemon.getAlly()?.isActive(true) ?? false;
+    return pokemon.getAllies().some(ally => ally.isActive(true));
   }
 
   override apply({ pokemon, simulated }: AbAttrBaseParams): void {
-    const target = pokemon.getAlly();
-    if (!simulated && target != null) {
+    if (simulated) {
+      return;
+    }
+    // Each ally: two in a battle of three (co-op, D40)
+    for (const target of pokemon.getAllies().filter(ally => ally.isActive(true))) {
       for (const s of BATTLE_STATS) {
         target.setStatStage(s, 0);
       }
@@ -2777,8 +2783,9 @@ export class PostSummonCopyAllyStatsAbAttr extends PostSummonAbAttr {
       return false;
     }
 
-    const ally = pokemon.getAlly();
-    if (!ally?.isActive(true)) {
+    // The first active ally in field order, in a battle of three (co-op, D40)
+    const ally = pokemon.getAllies().find(other => other.isActive(true));
+    if (ally === undefined) {
       return false;
     }
     this.ally = ally;
@@ -2916,6 +2923,22 @@ export class PostSummonFormChangeByWeatherAbAttr extends PostSummonAbAttr {
  * into the Dondozo's mouth", sharply boosting the Dondozo's stats, cancelling the source's moves, and
  * causing attacks that target the source to always miss.
  */
+/**
+ * The Dondozo a Tatsugiri commands: its ally, if that is an active Dondozo not commanded yet; in a battle of three (co-op,
+ * D40) the first such ally in field order
+ */
+export function commanderDondozo(pokemon: Pokemon): Pokemon | undefined {
+  // TODO: Should this work with X + Dondozo fusions?
+  return pokemon
+    .getAllies()
+    .find(
+      ally =>
+        ally.isActive(true)
+        && ally.species.speciesId === SpeciesId.DONDOZO
+        && !(ally.isFainted() || ally.getTag(BattlerTagType.COMMANDED)),
+    );
+}
+
 export class CommanderAbAttr extends AbAttr {
   constructor() {
     super(true);
@@ -2925,14 +2948,7 @@ export class CommanderAbAttr extends AbAttr {
     // If the ally Dondozo is fainted or was previously "commanded" by
     // another Pokemon, this effect cannot apply.
     // TODO: Should this work with X + Dondozo fusions?
-    const ally = pokemon.getAlly();
-    return (
-      globalScene.currentBattle?.double
-      && ally != null
-      && ally.isActive(true)
-      && ally.species.speciesId === SpeciesId.DONDOZO
-      && !(ally.isFainted() || ally.getTag(BattlerTagType.COMMANDED))
-    );
+    return globalScene.currentBattle?.double && commanderDondozo(pokemon) !== undefined;
   }
 
   override apply({ pokemon, simulated }: AbAttrBaseParams): void {
@@ -2942,7 +2958,7 @@ export class CommanderAbAttr extends AbAttr {
       // Play an animation of the source jumping into the ally Dondozo's mouth
       globalScene.triggerPokemonBattleAnim(pokemon, PokemonAnimType.COMMANDER_APPLY);
       // Apply boosts from this effect to the ally Dondozo
-      pokemon.getAlly()?.addTag(BattlerTagType.COMMANDED, 0, MoveId.NONE, pokemon.id);
+      commanderDondozo(pokemon)?.addTag(BattlerTagType.COMMANDED, 0, MoveId.NONE, pokemon.id);
       // Cancel the source Pokemon's next move (if a move is queued)
       globalScene.phaseManager.tryRemovePhase("MovePhase", phase => phase.pokemon === pokemon);
     }
@@ -4136,7 +4152,9 @@ export class PostTurnResetStatusAbAttr extends PostTurnAbAttr {
 
   override canApply({ pokemon }: AbAttrBaseParams): boolean {
     if (this.allyTarget) {
-      this.target = pokemon.getAlly();
+      // In a battle of three (co-op, D40), the first ally in field order that has a status to cure
+      const allies = pokemon.getAllies();
+      this.target = allies.find(ally => ally.status != null && ally.status.effect !== StatusEffect.FAINT) ?? allies[0];
     } else {
       this.target = pokemon;
     }
@@ -4594,7 +4612,8 @@ export class PostDancingMoveAbAttr extends PostMoveUsedAbAttr {
     // Attempt to redirect to the prior target's partner if fainted and not our own ally.
     // TODO: There should _really_ be a helper for this...
     const firstTarget = globalScene.getField()[targets[0]];
-    const ally = firstTarget.getAlly();
+    // (the first active ally in field order, in a battle of three: co-op, D40)
+    const ally = firstTarget.getAllies().find(other => other.isActive());
     if (
       globalScene.currentBattle.double
       && firstTarget.isFainted()
@@ -5006,7 +5025,7 @@ export class PostFaintContactDamageAbAttr extends PostFaintAbAttr {
 export class PostFaintHPDamageAbAttr extends PostFaintAbAttr {
   override apply({ simulated, pokemon, move, attacker }: PostFaintAbAttrParams): void {
     // return early if the user died to indirect damage, target has magic guard or was KO'd by an ally
-    if (!move || !attacker || simulated || attacker.getAlly() === pokemon) {
+    if (!move || !attacker || simulated || attacker.isAllyOf(pokemon)) {
       return;
     }
 

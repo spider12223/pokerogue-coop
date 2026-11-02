@@ -539,6 +539,14 @@ export class MysteryEncounterBattlePhase extends Phase {
         if (!availablePartyMembers[1].isOnField()) {
           globalScene.phaseManager.pushNew("SummonPhase", 1);
         }
+        // Co-op (D40): the third of ours, in a game of three
+        if (
+          globalScene.currentBattle.playerSlots === 3
+          && availablePartyMembers.length > 2
+          && !availablePartyMembers[2].isOnField()
+        ) {
+          globalScene.phaseManager.pushNew("SummonPhase", 2);
+        }
       }
     } else {
       if (availablePartyMembers.length > 1 && availablePartyMembers[1].isOnField()) {

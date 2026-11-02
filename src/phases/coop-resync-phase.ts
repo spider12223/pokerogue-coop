@@ -126,6 +126,10 @@ export class CoopResyncPhase extends Phase {
     if (currentBattle.double && available > 1) {
       phaseManager.pushNew("SummonPhase", 1, true, true);
     }
+    // The third of ours, in a game of three (D40)
+    if (currentBattle.playerSlots === 3 && available > 2) {
+      phaseManager.pushNew("SummonPhase", 2, true, true);
+    }
     if (currentBattle.battleType !== BattleType.TRAINER && currentBattle.waveIndex > 1) {
       const minPartySize = currentBattle.double ? 2 : 1;
       if (available > minPartySize) {

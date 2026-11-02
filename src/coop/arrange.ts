@@ -8,6 +8,8 @@ import { globalScene } from "#app/global-scene";
 import { arrangeOrder } from "#coop/arrange-plan";
 import { requireOwnerOf } from "#coop/control";
 import { coopLog } from "#coop/coop-log";
+import { seatsFor } from "#coop/protocol";
+import { requireCoopSession } from "#coop/session";
 import type { PhaseString } from "#types/phase-types";
 
 /**
@@ -76,6 +78,7 @@ export function arrangeCoopParty(): ArrangeResult {
   const before = party.map(pokemon => pokemon.id);
   const order = arrangeOrder(
     party.map(pokemon => ({ id: pokemon.id, legal: pokemon.isAllowedInBattle(), owner: requireOwnerOf(pokemon) })),
+    seatsFor(requireCoopSession().players),
   );
   const changed = order.some((id, index) => id !== before[index]);
   if (changed) {

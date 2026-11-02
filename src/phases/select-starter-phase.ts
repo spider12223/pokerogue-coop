@@ -81,10 +81,16 @@ export class SelectStarterPhase extends Phase {
   /** Both players are ready: build the party they picked, in the same order on both clients. */
   private startCoopRun(start: StartPayload): void {
     const session = requireCoopSession();
-    const { starters, owners } = interleaveStarters(start.starters.host, start.starters.guest);
+    // A game of three goes round the three seats (D40)
+    const { starters, owners } = interleaveStarters(
+      start.starters.host,
+      start.starters.guest,
+      session.players === 3 ? (start.starters.guest2 ?? []) : undefined,
+    );
     coopLog().info("session", "the run starts", {
       host: start.starters.host.map(starter => starter.speciesId),
       guest: start.starters.guest.map(starter => starter.speciesId),
+      ...(session.players === 3 ? { guest2: (start.starters.guest2 ?? []).map(starter => starter.speciesId) } : {}),
     });
     session.setRunSeed(start.runSeed);
     session.setAccountSnapshot(start.snapshots);

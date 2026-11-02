@@ -98,18 +98,21 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
   }
   const block = value as Record<string, unknown>;
   const ids = block["accountIds"] as Record<string, unknown> | null;
+  // A game of three has a third account (D40)
+  const three = typeof ids === "object" && ids !== null && ids["guest2"] !== undefined;
   return (
     block["version"] === COOP_SAVE_VERSION
     && typeof ids === "object"
     && ids !== null
     && typeof ids["host"] === "string"
     && typeof ids["guest"] === "string"
+    && (!three || typeof ids["guest2"] === "string")
     && isOwnerRecord(block["owners"])
     && Number.isInteger(block["rewardPickCount"])
     && (block["rewardPickCount"] as number) >= 0
     && Number.isInteger(block["trades"])
     && (block["trades"] as number) >= 0
-    && isCoopAccountSnapshot(block["accounts"])
+    && isCoopAccountSnapshot(block["accounts"], three ? ["host", "guest", "guest2"] : ["host", "guest"])
     && (block["events"] === undefined || isTimedEventNames(block["events"]))
     && (block["trainers"] === undefined || isTrainerTypeList(block["trainers"]))
     && (block["resumeAt"] === undefined || isRewardResume(block["resumeAt"]))
@@ -142,7 +145,9 @@ export function checkSaveBlock(block: unknown, session: { accountIds: SeatRecord
   }
   if (
     session.accountIds !== null
-    && (block.accountIds.host !== session.accountIds.host || block.accountIds.guest !== session.accountIds.guest)
+    && (block.accountIds.host !== session.accountIds.host
+      || block.accountIds.guest !== session.accountIds.guest
+      || block.accountIds.guest2 !== session.accountIds.guest2)
   ) {
     throw new CoopSaveRefusedError("different-accounts", "This co-op run belongs to two other players.");
   }

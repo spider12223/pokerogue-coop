@@ -40,6 +40,7 @@ import {
 } from "#coop/turn-commands";
 import { clearWaitingLine } from "#coop/waiting-line";
 import { getPokeballName } from "#data/pokeball";
+import { type BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";
 import type { PokeballType } from "#enums/pokeball";
 import { UiMode } from "#enums/ui-mode";
@@ -47,7 +48,8 @@ import type { PlayerPokemon } from "#field/pokemon";
 import type { OptionSelectItem } from "#types/ui-types";
 
 /** A Pokémon of the player's side whose commands this phase decides */
-type Participant = { pokemon: PlayerPokemon; slot: number; controller: Seat; key: DecisionKey };
+/** A Pokémon of ours that chooses this turn: its field slot, and its battler (its key in the turn's commands; D40) */
+type Participant = { pokemon: PlayerPokemon; slot: number; battler: BattlerIndex; controller: Seat; key: DecisionKey };
 
 /**
  * The turn's commands, as sequenced decisions (DECISIONS D2, D8). It runs after the `CommandPhase`s and before the enemies
@@ -109,7 +111,7 @@ export class CoopTurnSyncPhase extends Phase {
 
     const participants = globalScene
       .getPlayerField()
-      .map((pokemon, slot) => ({ pokemon, slot }))
+      .map((pokemon, slot) => ({ pokemon, slot, battler: playerBattlerOf(slot) }))
       .filter(({ pokemon }) => pokemon.isActive() && (this.onlyPokemonId === null || pokemon.id === this.onlyPokemonId))
       .map(entry => {
         const controller = requireOwnerOf(entry.pokemon);
@@ -135,8 +137,8 @@ export class CoopTurnSyncPhase extends Phase {
     for (const part of participants) {
       if (part.controller === me) {
         const payload: TurnCommandsPayload = {
-          command: commandToWire(battle.turnCommands[part.slot]),
-          pre: commandToWire(battle.preTurnCommands[part.slot]),
+          command: commandToWire(battle.turnCommands[part.battler]),
+          pre: commandToWire(battle.preTurnCommands[part.battler]),
         };
         // (unless the partner took over for this Pokémon while its player was away, D17)
         const late = sequencer.hasDecision(part.key);
@@ -146,7 +148,7 @@ export class CoopTurnSyncPhase extends Phase {
           continue;
         }
         // The partner sees a check mark on this Pokémon, with what it was told to do (D8, D16)
-        const chosen = battle.turnCommands[part.slot];
+        const chosen = battle.turnCommands[part.battler];
         sendIntent(
           part.pokemon.id,
           chosen?.move?.move ?? null,
@@ -172,8 +174,8 @@ export class CoopTurnSyncPhase extends Phase {
       }
       // Not the commands this client's player chose: the partner's, or the ones the partner chose in this player's place (D17)
       if (part.controller !== me || decisions[index].author !== me) {
-        battle.turnCommands[part.slot] = payload.command === null ? null : commandFromWire(payload.command);
-        battle.preTurnCommands[part.slot] = payload.pre === null ? null : commandFromWire(payload.pre);
+        battle.turnCommands[part.battler] = payload.command === null ? null : commandFromWire(payload.command);
+        battle.preTurnCommands[part.battler] = payload.pre === null ? null : commandFromWire(payload.pre);
       }
       if (part.controller === me && decisions[index].author !== me) {
         // The command this player may have picked meanwhile is not the one that runs: say whose it is
@@ -197,10 +199,13 @@ export class CoopTurnSyncPhase extends Phase {
    * the same on both.
    * @param seqs - The `seq` of each participant's decision, in the order of the participants
    */
-  private enforceTeraRule(participants: { slot: number; controller: Seat }[], seqs: number[]): void {
+  private enforceTeraRule(
+    participants: { slot: number; battler: BattlerIndex; controller: Seat }[],
+    seqs: number[],
+  ): void {
     const battle = globalScene.currentBattle;
     const isTera = (slot: number): boolean => {
-      const pre = battle.preTurnCommands[slot];
+      const pre = battle.preTurnCommands[playerBattlerOf(slot)];
       return pre?.command === Command.TERA && !pre.skip;
     };
     // A Tera kept from an earlier round of this turn (the partner chose again after a declined Ball or Run) came first
@@ -210,12 +215,12 @@ export class CoopTurnSyncPhase extends Phase {
     const users = participants
       .map((part, index) => ({ part, seq: seqs[index] }))
       .filter(({ part }) => {
-        const pre = battle.preTurnCommands[part.slot];
+        const pre = battle.preTurnCommands[part.battler];
         return pre?.command === Command.TERA && !pre.skip;
       })
       .sort((a, b) => a.seq - b.seq);
     for (const { part } of users.slice(keptBefore ? 0 : 1)) {
-      battle.preTurnCommands[part.slot] = { command: Command.FIGHT, targets: [part.slot], skip: true };
+      battle.preTurnCommands[part.battler] = { command: Command.FIGHT, targets: [part.battler], skip: true };
       if (part.controller === mySeat()) {
         this.notice = coopText("partnerTeraFirst", "{{partner}} Terastallized first: no Tera for you this turn.", {
           partner: requireCoopSession().partnerName,
@@ -229,7 +234,7 @@ export class CoopTurnSyncPhase extends Phase {
    * after the other. If the partner's own arrive in the meantime, the menu closes (the watcher stops) and theirs count.
    */
   private async takeOverCommands(
-    participants: { pokemon: PlayerPokemon; slot: number; controller: Seat; key: DecisionKey }[],
+    participants: Participant[],
     arrivedKeys: ReadonlySet<string>,
     watcher: AfkWatcher,
   ): Promise<void> {
@@ -306,23 +311,27 @@ export class CoopTurnSyncPhase extends Phase {
    */
   private async settleSideAction(participants: Participant[]): Promise<void> {
     const battle = globalScene.currentBattle;
-    const actors = participants.filter(part => isSideAction(battle.turnCommands[part.slot]));
+    const actors = participants.filter(part => isSideAction(battle.turnCommands[part.battler]));
     if (actors.length === 0) {
       return;
     }
     const both = actors.some(part => part.controller !== actors[0].controller);
     // Two Runs are the same Run: only a Ball makes the two differ
-    const differ = both && actors.some(part => battle.turnCommands[part.slot]!.command === Command.BALL);
+    const differ = both && actors.some(part => battle.turnCommands[part.battler]!.command === Command.BALL);
     const proposer = differ ? await this.pickSideAction(actors) : actors[0];
-    const command = battle.turnCommands[proposer.slot]!;
+    const command = battle.turnCommands[proposer.battler]!;
     const allies = globalScene
       .getPlayerField()
       .map((pokemon, slot) => ({ pokemon, slot }))
       .filter(({ pokemon, slot }) => slot !== proposer.slot && pokemon.isActive());
 
     // The partner has a Pokémon in the other slot: it has to accept, unless it chose a Ball or a Run too. Otherwise
-    // nobody else is affected.
-    const partnerInvolved = !both && allies.some(({ pokemon }) => requireOwnerOf(pokemon) !== proposer.controller);
+    // nobody else is affected. In a game of three the host decides: a guest's Ball or Run is the host's to accept, the
+    // host's own needs nobody's (D40)
+    const partnerInvolved =
+      requireCoopSession().players === 3
+        ? !both && proposer.controller !== "host"
+        : !both && allies.some(({ pokemon }) => requireOwnerOf(pokemon) !== proposer.controller);
     let accepted = true;
     if (partnerInvolved) {
       const { waveIndex: wave, turn } = battle;
@@ -343,8 +352,8 @@ export class CoopTurnSyncPhase extends Phase {
     if (accepted) {
       // Upstream: the ally's command is skipped. Slot 1 throwing the ball skips slot 0's; slot 0's skips slot 1's.
       for (const { slot } of allies) {
-        const existing = battle.turnCommands[slot];
-        battle.turnCommands[slot] =
+        const existing = battle.turnCommands[playerBattlerOf(slot)];
+        battle.turnCommands[playerBattlerOf(slot)] =
           slot > proposer.slot || existing == null
             ? { command: command.command, skip: true }
             : { ...existing, skip: true };
@@ -358,8 +367,8 @@ export class CoopTurnSyncPhase extends Phase {
         partner: requireCoopSession().partnerName,
       });
     }
-    battle.turnCommands[proposer.slot] = null;
-    battle.preTurnCommands[proposer.slot] = null;
+    battle.turnCommands[proposer.battler] = null;
+    battle.preTurnCommands[proposer.battler] = null;
     const attempt = (proposer.pokemon.id === this.onlyPokemonId ? this.attempt : 0) + 1;
     globalScene.phaseManager.unshiftNew("CommandPhase", proposer.slot);
     globalScene.phaseManager.unshiftNew("CoopTurnSyncPhase", proposer.pokemon.id, attempt);
@@ -373,7 +382,7 @@ export class CoopTurnSyncPhase extends Phase {
     const battle = globalScene.currentBattle;
     const session = requireCoopSession();
     const partner = session.partnerName;
-    const balls = actors.every(part => battle.turnCommands[part.slot]!.command === Command.BALL);
+    const balls = actors.every(part => battle.turnCommands[part.battler]!.command === Command.BALL);
     session.sidePick = actors.map(part => part.pokemon.id);
     try {
       const decision = await coopDecide<SidePickPayload>({
@@ -417,7 +426,7 @@ export class CoopTurnSyncPhase extends Phase {
     const partner = requireCoopSession().partnerName;
     return new Promise(resolve => {
       const options: OptionSelectItem[] = actors.map(part => {
-        const command = battle.turnCommands[part.slot]!;
+        const command = battle.turnCommands[part.battler]!;
         const who = part.controller === mySeat() ? coopText("sidePickMe", "Me") : partner;
         const what =
           command.command === Command.BALL
