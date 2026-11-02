@@ -190,6 +190,7 @@ export function gameLegalityView(): LegalityView {
     moveCount: id => pokemonById(id)?.getMoveset().length ?? null,
     biomeChoices: () => session?.biomeChoices ?? null,
     ownership: () => session?.ownership,
+    players: () => session?.players ?? 2,
     partyMembers: () => party().map(pokemon => partyMemberView(pokemon)),
     meQuestion: () => session?.meQuestion ?? null,
     sidePick: () => session?.sidePick ?? null,

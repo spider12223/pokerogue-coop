@@ -50,10 +50,13 @@ export function accountIdOf(account: AccountSnapshot): string {
 }
 
 /**
- * Who picks on the reward screen with this index (D9): the host on screens `0, 2, 4, ...`, the guest on the others.
- * The index counts reward screens, not waves: every tenth wave has none.
+ * Who picks on the reward screen with this index (D9): the host on screens `0, 2, 4, ...`, the guest on the others; in a
+ * game of three (D40) host, guest, guest2 in turn. The index counts reward screens, not waves: every tenth wave has none.
  */
 export function rewardPickerOf(rewardPickCount: number): Seat {
+  if (activeSession?.players === 3) {
+    return (["host", "guest", "guest2"] as const)[rewardPickCount % 3];
+  }
   return rewardPickCount % 2 === 0 ? "host" : "guest";
 }
 
@@ -209,12 +212,15 @@ export class CoopSession {
   public readonly challenges: readonly CoopChallenge[];
   /** The decision keys the simulation is waiting for right now (the decision window, D2); for the debug API */
   public openWindow: readonly DecisionKey[] = [];
-  /** The partner's checkpoints that arrived before this client reached them, by index */
-  public readonly remoteCheckpoints = new Map<number, Checkpoint>();
+  /**
+   * The partners' checkpoints that arrived before this client reached them, by who sent them, then by index: the host of
+   * a game of three hears each guest apart (D40)
+   */
+  private readonly remoteBySeat = new Map<Seat, Map<number, Checkpoint>>();
   /** Why the clients can no longer be trusted to agree (a desync or a failed decision); `null` while all is well */
   public desyncMessage: string | null = null;
   /** The first checkpoint on which the two clients differ, if any (D13) */
-  public checkpointMismatch: { local: Checkpoint | null; remote: Checkpoint } | null = null;
+  public checkpointMismatch: { local: Checkpoint | null; remote: Checkpoint; seat?: Seat } | null = null;
   public readonly waits: WaitStats = { turns: 0, waitedMs: 0, maxWaitedMs: 0, instant: 0, samples: [] };
   private ended = false;
   /** The timed events of the run (D33) */
@@ -399,7 +405,7 @@ export class CoopSession {
       this.checkpointHistory.push({ epoch: oldEpoch, entries: [...this.checkpoints.entries] });
     }
     this.checkpoints.clear();
-    this.remoteCheckpoints.clear();
+    this.remoteBySeat.clear();
     this.pace.reset();
     this.bridgeFailed = false;
     this.awaitingReload = false;
@@ -431,6 +437,26 @@ export class CoopSession {
     return this.explicitAccountIds ?? (this.snapshot === null ? null : this.accountIds);
   }
 
+  /** The partner's checkpoints that wait for this client's (the first guest's, on the host of a game of three) */
+  public get remoteCheckpoints(): Map<number, Checkpoint> {
+    return this.remoteCheckpointsOf(this.seat === "host" ? "guest" : "host");
+  }
+
+  /** The checkpoints of the partner in `seat` that wait for this client's own */
+  public remoteCheckpointsOf(seat: Seat): Map<number, Checkpoint> {
+    let checkpoints = this.remoteBySeat.get(seat);
+    if (checkpoints === undefined) {
+      checkpoints = new Map();
+      this.remoteBySeat.set(seat, checkpoints);
+    }
+    return checkpoints;
+  }
+
+  /** The seats whose checkpoints this client has heard */
+  public get remoteCheckpointSeats(): Seat[] {
+    return [...this.remoteBySeat.keys()];
+  }
+
   public get isHost(): boolean {
     return this.seat === "host";
   }
@@ -452,6 +478,17 @@ export class CoopSession {
   /** What to call the partner in texts (D1); `"Your partner"` in a session without a network */
   public get partnerName(): string {
     return this.link?.partnerName ?? "Your partner";
+  }
+
+  /**
+   * What to call the player in `seat` in texts: the partner's name in a game of two (as {@linkcode partnerName}), that
+   * player's own in a game of three (D40)
+   */
+  public nameOf(seat: Seat): string {
+    if (this.players !== 3) {
+      return seat === this.seat ? (this.link?.name ?? "You") : this.partnerName;
+    }
+    return this.names[seat] ?? this.partnerName;
   }
 
   public get hasEnded(): boolean {

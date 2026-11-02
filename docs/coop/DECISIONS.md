@@ -1078,7 +1078,11 @@ count from the host's `HELLO`.
   order (host, guest, guest2, then the host again) that has one, at the wave start and after a faint: that teammate
   commands it. Ball and Run are the host's decision: a guest's needs the host's accept, the host's needs nobody's. The
   catch cap, a gift's cap and Shedinja's are 2 per player.
-- **Between waves:** the reward picker rotates host, guest, guest2; a trade names its counterpart.
+- **Between waves:** the reward picker rotates host, guest, guest2, and the waiting players are told who picks. A trade
+  names who it is with (`TradeProposePayload.to`): the owner of the Pokémon asked for, or, for a gift, the player chosen on
+  the screen ("Give to …"); only that player answers, and the third watches until it is settled. The trade screen ends when
+  all three are done. In a one-Pokémon Mystery Encounter the host can send any of the three. A guest's checkpoints are
+  compared with the host's each on their own (D13).
 - **Absent players:** after the AFK timer either waiting player may take over. A disconnected player's Pokémon are
   commanded by take-over until they rejoin, its prompts are answered by the host, and nothing is written to its account.
   A player who rejoins comes in at the next wave start; the other two are not reloaded. The host dropping pauses everyone.

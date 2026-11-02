@@ -23,6 +23,8 @@ describe("an encounter choice", () => {
     { k: "optionPokemon", index: null, pokemonId: null },
     { k: "confirm", yes: false },
     { k: "who", seat: "guest" },
+    // the second guest of a game of three (D40)
+    { k: "who", seat: "guest2" },
     { k: "who", seat: null },
   ])("reads %o", choice => {
     expect(isMeChoice(choice)).toBe(true);

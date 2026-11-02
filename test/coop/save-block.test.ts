@@ -226,6 +226,18 @@ describe("the session and its save block", () => {
     expect(() => checkSessionSaveBlock(undefined)).toThrow("solo run");
   });
 
+  it("in a game of three the picker of the reward screens goes round host, guest, guest2 (D40)", () => {
+    startCoopSession({ seat: "host", runSeed: "s", build, players: 3 });
+    expect([0, 1, 2, 3, 4, 5].map(index => rewardPickerOf(index))).toEqual([
+      "host",
+      "guest",
+      "guest2",
+      "host",
+      "guest",
+      "guest2",
+    ]);
+  });
+
   it("the picker of the reward screens alternates, host first, and a reroll is not a new screen", () => {
     expect([0, 1, 2, 3, 4].map(rewardPickerOf)).toEqual(["host", "guest", "host", "guest", "host"]);
 

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { DecisionKey, Seat } from "#coop/protocol";
+import { type DecisionKey, isSeat, type Seat } from "#coop/protocol";
 
 /**
  * The choices of a Mystery Encounter as sequenced decisions (DECISIONS D29). The chooser (the host, or the player who goes
@@ -75,7 +75,7 @@ export function isMeChoice(value: unknown): value is MeChoice {
     case "confirm":
       return typeof choice["yes"] === "boolean";
     case "who":
-      return choice["seat"] === null || choice["seat"] === "host" || choice["seat"] === "guest";
+      return choice["seat"] === null || isSeat(choice["seat"]);
     default:
       return false;
   }

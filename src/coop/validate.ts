@@ -42,7 +42,7 @@ export function validateProposal(key: DecisionKey, payload: unknown, author: Sea
       return (
         ownership !== undefined
         && isTradeProposePayload(payload)
-        && checkTradeProposal(author, payload, ownership) === null
+        && checkTradeProposal(author, payload, ownership, getCoopSession()?.players ?? 2) === null
       );
     case "TRADE_DONE":
       return isTradeDonePayload(payload);

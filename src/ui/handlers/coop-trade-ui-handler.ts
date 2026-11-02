@@ -7,6 +7,8 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { drawPixels, MARK_COLORS, MARK_ICONS } from "#coop/cosmetic-tag";
+import { playerColorHex } from "#coop/player-colors";
+import type { Seat } from "#coop/protocol";
 import { coopText } from "#coop/text";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
@@ -43,16 +45,24 @@ export interface TradeScreenModel {
   partnerDone: boolean;
   /** A line for the player: why something was refused, what the partner answered */
   notice: string | null;
+  /** A game of three (D40): who owns each of `theirs` */
+  theirOwners?: Seat[];
+  /** A game of three: who a gift can go to */
+  giveTo?: { seat: Seat; name: string }[];
+  /** A game of three: the two others trade, this player waits (what the status says) */
+  watching?: string | null;
 }
 
 export interface TradeScreenActions {
-  propose(give: number, want: number | null): boolean;
+  /** @param to - Who a gift goes to, in a game of three (D40) */
+  propose(give: number, want: number | null, to?: Seat): boolean;
   answer(accept: boolean): void;
   cancel(): void;
   done(done: boolean): void;
 }
 
-export type TradeScreenMode = "compose" | "answer" | "wait";
+/** `watch`: a game of three, where the two others trade (D40) */
+export type TradeScreenMode = "compose" | "answer" | "wait" | "watch";
 
 const TEXT_COLOR = "#f8f8f8";
 const DIM_COLOR = "#9aa0a8";
@@ -256,6 +266,9 @@ export class CoopTradeUiHandler extends UiHandler {
     if (pending === null) {
       return "compose";
     }
+    if (this.model?.watching != null) {
+      return "watch";
+    }
     return pending.byMe ? "wait" : "answer";
   }
 
@@ -273,7 +286,26 @@ export class CoopTradeUiHandler extends UiHandler {
         ];
       case "wait":
         return [{ label: coopText("tradeWithdraw", "Withdraw"), run: () => actions.cancel() }];
+      case "watch":
+        return [];
       default:
+        if (model.giveTo !== undefined && this.give !== null && this.want === null) {
+          // A game of three (D40): a gift names who gets it
+          return [
+            ...model.giveTo.map(({ seat, name }) => ({
+              label: coopText("tradeGiveTo", "Give to {{name}}", { name }),
+              run: () => {
+                if (this.give === null || !actions.propose(this.give, null, seat)) {
+                  this.getUi().playError();
+                }
+              },
+            })),
+            {
+              label: model.iAmDone ? coopText("tradeNotDone", "Not done") : coopText("tradeDone", "Done"),
+              run: () => actions.done(!model.iAmDone),
+            },
+          ];
+        }
         return [
           {
             // with nothing of the partner's picked, the offer is a gift
@@ -331,7 +363,11 @@ export class CoopTradeUiHandler extends UiHandler {
 
     // The two lists, with a "Done" mark on the header of whoever is done
     this.headers[0].setText(coopText("tradeYours", "Your Pokémon"));
-    this.headers[1].setText(coopText("tradeTheirs", "{{partner}}'s Pokémon", { partner: model.partnerName }));
+    this.headers[1].setText(
+      model.theirOwners === undefined
+        ? coopText("tradeTheirs", "{{partner}}'s Pokémon", { partner: model.partnerName })
+        : coopText("tradeTheirsThree", "Their Pokémon"),
+    );
     this.headers[1].setColor(GET_TEXT);
     for (const [side, done] of [model.iAmDone, model.partnerDone].entries()) {
       if (done) {
@@ -365,6 +401,8 @@ export class CoopTradeUiHandler extends UiHandler {
       status.length > STATUS_MAX_CHARS ? `${status.slice(0, STATUS_MAX_CHARS - 1).trimEnd()}…` : status,
     );
     this.placeArrow();
+    // (nothing to do while the two others trade, in a game of three: D40)
+    this.arrow.setVisible(this.mode() !== "watch");
     // the cursor stays on top of what was drawn again
     this.container.bringToTop(this.arrow);
   }
@@ -418,7 +456,8 @@ export class CoopTradeUiHandler extends UiHandler {
     const textX = left + (compact ? 18 : 28);
     this.keep(
       addTextObject(textX, top + 1, compact ? `${name} ${level}` : name, TextStyle.WINDOW, {
-        color: fainted ? DIM_COLOR : TEXT_COLOR,
+        // in a game of three, theirs in their owner's colour (D40)
+        color: fainted ? DIM_COLOR : side === 1 && this.ownerAt(index) !== null ? this.ownerAt(index)! : TEXT_COLOR,
       }),
     );
     if (!compact) {
@@ -535,10 +574,19 @@ export class CoopTradeUiHandler extends UiHandler {
     }
   }
 
+  /** The colour of the owner of row `index` of theirs, in a game of three (D40); `null` in a game of two */
+  private ownerAt(index: number): string | null {
+    const owner = this.model?.theirOwners?.[index];
+    return owner === undefined ? null : playerColorHex(owner);
+  }
+
   /** What the status window says: a notice first, then where the screen is waiting, then the help or the open proposal */
   private statusMessage(model: TradeScreenModel): string {
     if (model.notice !== null) {
       return model.notice;
+    }
+    if (model.watching != null) {
+      return model.watching;
     }
     if (model.pending === null) {
       const partner = model.partnerName;

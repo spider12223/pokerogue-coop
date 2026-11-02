@@ -9,7 +9,7 @@ import { globalScene } from "#app/global-scene";
 import { coopDecide, coopText, mySeat } from "#coop/bridge";
 import { notYourPokemonText } from "#coop/control";
 import { isMeChoiceOf, type MeChoice, type MeChoiceKind, type MeQuestion, meChoiceKey } from "#coop/me-choice";
-import { type Seat, startersPerSeat } from "#coop/protocol";
+import { type Seat, seatsFor, startersPerSeat } from "#coop/protocol";
 import { getCoopSession, isCoop, requireCoopSession } from "#coop/session";
 import { MysteryEncounterOptionMode } from "#enums/mystery-encounter-option-mode";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
@@ -141,7 +141,8 @@ export function queueLoneEnemyBoost(): void {
  * under the options there), elsewhere in the message box
  */
 export function showChooserWaiting(what: "option" | "pokemon" = "option"): void {
-  const partner = requireCoopSession().partnerName;
+  const session = requireCoopSession();
+  const partner = session.nameOf(session.meChooser);
   const text =
     what === "pokemon"
       ? coopText("meChoosingPokemon", "{{partner}} is choosing a Pokémon…", { partner })
@@ -493,20 +494,20 @@ function fightersOf(seat: Seat): PlayerPokemon[] {
  */
 export async function askWhoGoes(type: MysteryEncounterType): Promise<Seat | null> {
   const needed = ONE_POKEMON_ENCOUNTERS.get(type) ?? 1;
-  const seats = (["host", "guest"] as const).filter(seat => fightersOf(seat).length >= needed);
+  // (each of the three, in a game of three: D40)
+  const seats = seatsFor(requireCoopSession().players).filter(seat => fightersOf(seat).length >= needed);
   const session = requireCoopSession();
   const choice = await meDecide(
     { k: "who", seats },
     () =>
       new Promise<ChoiceOf<"who">>(resolve => {
-        const partner = session.partnerName;
         const options: OptionSelectItem[] = [];
         for (const seat of seats) {
           options.push({
             label:
               seat === mySeat()
                 ? coopText("meIGo", "I'll go")
-                : coopText("mePartnerGoes", "{{partner}} goes", { partner }),
+                : coopText("mePartnerGoes", "{{partner}} goes", { partner: session.nameOf(seat) }),
             handler: () => {
               resolve({ k: "who", seat });
               return true;

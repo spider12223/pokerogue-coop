@@ -15,7 +15,9 @@ import {
   openClient,
   openCoopMenu,
   pickAndReady,
+  playToRewardScreen,
   press,
+  pressIf,
   shotsDir,
   ui,
   useRelay,
@@ -24,7 +26,8 @@ import {
 
 /**
  * Three players (DECISIONS D40): the host asks for 3 players, two guests join by the code, each is told who is in, and all
- * three pick on one starter select; the host's START reaches both guests.
+ * three pick on one starter select; the host's START reaches both guests, and the three play the first wave, 3 of theirs
+ * against 2, each commanding their own.
  */
 
 const SHOTS = shotsDir("three");
@@ -115,5 +118,46 @@ test("three players link up, pick on one starter select, and the host starts the
         message: `${client.label}: the run did not start`,
       })
       .toBeNull();
+  }
+
+  // Wave 1: three of ours, left to right the host's, the guest's, the second guest's; each is asked for their own
+  for (const client of [host, guest, guest2]) {
+    await expect
+      .poll(() => ui(client), { timeout: 120_000, message: `${client.label}: no command menu in wave 1` })
+      .toBe("COMMAND");
+  }
+  const fieldOf = (client: Client) =>
+    client.page.evaluate(async path => {
+      const { globalScene } = await import(path);
+      return globalScene
+        .getPlayerField()
+        .map((p: any) => ({ battler: p.getBattlerIndex(), position: p.fieldPosition }));
+    }, "/src/globals/global-scene.ts");
+  for (const client of [host, guest, guest2]) {
+    expect(
+      (await fieldOf(client)).map(p => p.battler),
+      client.label,
+    ).toEqual([0, 1, 4]);
+  }
+  await host.page.waitForTimeout(1200);
+  await shot("06-battle", host, guest, guest2);
+
+  // The party screen with three of ours on the field (the host's, opened from the command menu and closed again)
+  await pressIf(host, "DOWN", "COMMAND");
+  await host.page.waitForTimeout(200);
+  await pressIf(host, "ACTION", "COMMAND");
+  await expect.poll(() => ui(host), { timeout: 10_000 }).toBe("PARTY");
+  await host.page.waitForTimeout(600);
+  await shot("07-party", host);
+  await pressIf(host, "CANCEL", "PARTY");
+  await expect.poll(() => ui(host), { timeout: 10_000 }).toBe("COMMAND");
+  await pressIf(host, "UP", "COMMAND");
+
+  // The three play the wave to its reward screen, each with their own Pokémon
+  await Promise.all([host, guest, guest2].map(client => playToRewardScreen(client, 0)));
+  await host.page.waitForTimeout(800);
+  await shot("08-rewards", host, guest, guest2);
+  for (const client of [host, guest, guest2]) {
+    expect(await coop<string | null>(client, "desync"), client.label).toBeNull();
   }
 });

@@ -6,7 +6,7 @@
 
 import { attachCheckpointExchange, CHECKPOINT_LOOKAHEAD } from "#coop/checkpoint-exchange";
 import type { CoopLink } from "#coop/link";
-import type { BuildIdentity, CheckpointMessage } from "#coop/protocol";
+import type { BuildIdentity, CheckpointMessage, Seat } from "#coop/protocol";
 import { CoopSession } from "#coop/session";
 import { describe, expect, it } from "vitest";
 
@@ -76,5 +76,54 @@ describe("the partner's checkpoints that wait for this client", () => {
       pass(round);
     }
     expect(session.checkpointMismatch).toBeNull();
+  });
+});
+
+describe("the checkpoints of two guests (D40)", () => {
+  function setupOfThree() {
+    const session = new CoopSession({ seat: "host", runSeed: "x", build, players: 3 });
+    let deliver: ((message: CheckpointMessage, from: Seat) => void) | null = null;
+    const link = {
+      sendCheckpoint: () => undefined,
+      onCheckpoint: (listener: (message: CheckpointMessage, from: Seat) => void) => {
+        deliver = listener;
+        return () => undefined;
+      },
+    } as unknown as CoopLink;
+    attachCheckpointExchange(session, link);
+    const from = (seat: Seat, index: number, hash = HASH): void =>
+      deliver!({ index, kind: "turn", wave: 1, turn: index, phaseName: "TurnInitPhase", hash }, seat);
+    const pass = (turn: number): void => {
+      const checkpoint = session.checkpoints.append({
+        kind: "turn",
+        wave: 1,
+        turn,
+        phaseName: "TurnInitPhase",
+        hash: HASH,
+      });
+      session.onCheckpoint?.(checkpoint);
+    };
+    return { session, from, pass };
+  }
+
+  it("keeps each guest's apart: the same index from both is two checkpoints to compare", () => {
+    const { session, from, pass } = setupOfThree();
+    from("guest", 0);
+    from("guest2", 0);
+    expect(session.remoteCheckpointsOf("guest").size).toBe(1);
+    expect(session.remoteCheckpointsOf("guest2").size).toBe(1);
+    pass(0);
+    expect(session.remoteCheckpointsOf("guest").size).toBe(0);
+    expect(session.remoteCheckpointsOf("guest2").size).toBe(0);
+    expect(session.checkpointMismatch).toBeNull();
+  });
+
+  it("finds the guest whose state differs, even when the other agrees", () => {
+    const { session, from, pass } = setupOfThree();
+    from("guest", 0);
+    from("guest2", 0, "ffffffffffffff");
+    pass(0);
+    expect(session.checkpointMismatch).not.toBeNull();
+    expect(session.checkpointMismatch?.seat).toBe("guest2");
   });
 });

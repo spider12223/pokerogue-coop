@@ -14,7 +14,7 @@ import {
   isEvolutionPausePayload,
   isLearnMovePayload,
 } from "#coop/prompt-payloads";
-import type { DecisionKey, Seat } from "#coop/protocol";
+import type { DecisionKey, PlayerCount, Seat } from "#coop/protocol";
 import { isRetryPayload } from "#coop/retry";
 import { isRewardAction, isRewardKind, kindOfAction, type RewardAction } from "#coop/reward-actions";
 import { checkTradeProposal, isTradeDonePayload, isTradeProposePayload } from "#coop/trade";
@@ -135,6 +135,8 @@ export interface LegalityView {
   biomeChoices(): readonly number[] | null;
   /** Who owns what, for the trade rules */
   ownership(): OwnerMap | undefined;
+  /** How many players the game has (D40): a trade of three names who it is with */
+  players?(): PlayerCount;
   /** The party in order, as a party edit is checked against it (D28) */
   partyMembers(): readonly PartyMemberView[];
   /** The choice an encounter asks now, if one does (D29) */
@@ -539,7 +541,7 @@ export function checkDecisionLegal(
       if (!isTradeProposePayload(payload) || ownership === undefined) {
         return reasonOf("a trade that cannot be read");
       }
-      const problem = checkTradeProposal(author, payload, ownership);
+      const problem = checkTradeProposal(author, payload, ownership, view.players?.() ?? 2);
       return problem === null ? null : reasonOf(`a trade that breaks the rules (${problem})`);
     }
     case "TRADE_DONE":

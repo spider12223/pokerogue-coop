@@ -144,7 +144,7 @@ export class CoopLink {
   /** What to call the partner of a game of two (D1) */
   private readonly partnerOfTwo: string;
   private readonly startListeners = new Set<(payload: StartPayload) => void>();
-  private readonly checkpointListeners = new Set<(checkpoint: CheckpointMessage) => void>();
+  private readonly checkpointListeners = new Set<(checkpoint: CheckpointMessage, from: Seat) => void>();
   private readonly resyncListeners = new Set<(message: ResyncMessage) => void>();
   private readonly resyncRequestListeners = new Set<(request: ResyncRequestPayload) => void>();
   private readonly reportListeners = new Set<(report: ReportPayload) => void>();
@@ -398,7 +398,8 @@ export class CoopLink {
     this.send({ key: null, author: this.seat, kind: "CHECKPOINT", payload: checkpoint });
   }
 
-  onCheckpoint(listener: (checkpoint: CheckpointMessage) => void): Unsubscribe {
+  /** @param listener - Called with each partner checkpoint and who sent it (on the host of three, each guest; D40) */
+  onCheckpoint(listener: (checkpoint: CheckpointMessage, from: Seat) => void): Unsubscribe {
     this.checkpointListeners.add(listener);
     return () => {
       this.checkpointListeners.delete(listener);
@@ -605,8 +606,11 @@ export class CoopLink {
         break;
       case "CHECKPOINT":
         if (isCheckpointMessage(message.payload) && message.author !== this.seat) {
+          // The host of three knows each guest's channel (`from`, set by the hub, never by the wire); a game of two has one
+          // partner
+          const from = this.players === 3 ? (message.from ?? message.author) : message.author;
           for (const listener of [...this.checkpointListeners]) {
-            listener(message.payload);
+            listener(message.payload, from);
           }
         }
         break;

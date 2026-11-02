@@ -165,7 +165,7 @@ export type CoopDecision =
   | { kind: "BIOME" }
   | { kind: "CATCH_RELEASE"; fieldIndex: number }
   | { kind: "TRADE_PROPOSE"; proposer: Seat }
-  | { kind: "TRADE_ACCEPT"; proposer: Seat }
+  | { kind: "TRADE_ACCEPT"; proposer: Seat; to?: Seat }
   | { kind: "TRADE_CANCEL" };
 
 /**
@@ -214,7 +214,8 @@ export function deciderOf(decision: CoopDecision): Seat | "either" | null {
     case "TRADE_PROPOSE":
       return decision.proposer;
     case "TRADE_ACCEPT":
-      return otherSeat(decision.proposer);
+      // the player the trade is with (D40), the partner in a game of two
+      return decision.to ?? otherSeat(decision.proposer);
     case "TRADE_CANCEL":
       return "either";
   }

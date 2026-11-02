@@ -14,9 +14,10 @@ the background runs slowly.
 ## Starting a game
 
 1. **Both:** on the title screen choose **Co-op**, then **Your name** and type the name your friend will see.
-2. **One of you hosts:** **Host a game**, then **2 players**, then **Classic**, **Endless** or **Challenge** (pick the
-   challenges, then Start). A six-character code appears; **Copy code** puts
-   it in the clipboard. Send it to your friend.
+2. **One of you hosts:** **Host a game**, then **Classic**, **Endless** or **Challenge** (pick the challenges, then
+   Start). A six-character code appears; **Copy code** puts it in the clipboard. Send it to your friend. (With
+   **3-Player Co-op (Beta)** on in the settings, Host a game first asks **2 players** or **3 players (Beta)**: see
+   [Three players](#three-players-beta).)
 3. **The other joins:** **Join a game** and paste the code. You play the kind of run your friend chose; the starter select
    says "Endless" when it is one.
 
@@ -55,6 +56,23 @@ The host's Pokémon fight on the left, the guest's on the right.
   friend's, then **Propose**; your friend accepts or declines. Pick only one of yours to **Give** it away for free (you always
   keep at least one). Both press **Done** to go on.
 - **DNA Splicers** fuse two of your own Pokémon only.
+
+## Three players (Beta)
+
+Three friends can play one run together. It is a Beta: turn it on with **Settings → General → 3-Player Co-op (Beta)**
+(only the host needs it; joining a game of three works with the setting off).
+
+- **Starting:** **Host a game → 3 players (Beta)**, then the kind of run. Send the code to both friends; each joins with
+  **Join a game**. The starter select opens when all three are in: you share **20 points** and pick up to **two** starters
+  each. Each friend's picks show in a window of their own, with their name in their colour (P1 yellow, P2 blue, P3 green).
+- **Battles:** three of yours against two. Left to right: the host's Pokémon, the first guest's, the second guest's. Your
+  own Pokémon has the full HP box; each friend's has a small bar over it with their name. Enemies are tougher (more HP and
+  attack) to make up for the third Pokémon. Every Pokémon can target any enemy or either ally.
+- **Balls and running away** are the host's call: a guest's Ball or Run waits for the host to accept; the host's needs
+  nobody's.
+- **Fainted Pokémon:** the owner sends in their other one. With none left, the next player in order (host, guest, second
+  guest, then the host again) sends one of theirs and commands it.
+- **Catching:** each player holds up to two Pokémon; with two already, you release one or let the catch go.
 
 ## Mystery Encounters
 

@@ -5,7 +5,15 @@
  */
 
 import type { OwnerMap } from "#coop/ownership";
-import { type DecisionKey, ofSeat, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
+import {
+  type DecisionKey,
+  isSeat,
+  ofSeat,
+  otherSeat,
+  type PlayerCount,
+  type Seat,
+  type SeatRecord,
+} from "#coop/protocol";
 import type { WindowEntry } from "#coop/sequencer";
 
 /**
@@ -23,10 +31,14 @@ import type { WindowEntry } from "#coop/sequencer";
  * @module
  */
 
-/** `TRADE_PROPOSE`: the proposer's Pokémon to give, and optionally the partner's they want (`pokemon.id`s) */
+/**
+ * `TRADE_PROPOSE`: the proposer's Pokémon to give, and optionally the partner's they want (`pokemon.id`s). In a game of
+ * three it names the player it is with (`to`, D40); a game of two leaves it out: it is with the partner.
+ */
 export interface TradeProposePayload {
   give: number;
   want: number | null;
+  to?: Seat;
 }
 
 /** `TRADE_DONE`: whether this player is done trading */
@@ -43,7 +55,19 @@ export function isTradeProposePayload(value: unknown): value is TradeProposePayl
     Number.isInteger(payload["give"])
     && (payload["give"] as number) >= 0
     && (payload["want"] === null || (Number.isInteger(payload["want"]) && (payload["want"] as number) >= 0))
+    && (payload["to"] === undefined || isSeat(payload["to"]))
   );
+}
+
+/**
+ * Who a proposal is with: the player it names, or the partner in a game of two
+ * @returns The counterpart, or `null` if there is none (a game of three that names nobody, or the proposer itself)
+ */
+export function counterpartOf(proposer: Seat, proposal: TradeProposePayload, players: PlayerCount = 2): Seat | null {
+  if (proposal.to !== undefined) {
+    return proposal.to === proposer ? null : proposal.to;
+  }
+  return players === 3 || proposer === "guest2" ? null : otherSeat(proposer);
 }
 
 export function isTradeDonePayload(value: unknown): value is TradeDonePayload {
@@ -59,10 +83,18 @@ export type TradeRefusal = "notYours" | "notTheirs" | "lastOne";
  * @param owners - Who owns what
  * @returns Why the proposal is not allowed, or `null` if it is
  */
-export function checkTradeProposal(author: Seat, proposal: TradeProposePayload, owners: OwnerMap): TradeRefusal | null {
-  const other = otherSeat(author);
+export function checkTradeProposal(
+  author: Seat,
+  proposal: TradeProposePayload,
+  owners: OwnerMap,
+  players: PlayerCount = 2,
+): TradeRefusal | null {
   if (owners.get(proposal.give) !== author) {
     return "notYours";
+  }
+  const other = counterpartOf(author, proposal, players);
+  if (other === null) {
+    return "notTheirs";
   }
   if (proposal.want !== null) {
     return owners.get(proposal.want) === other ? null : "notTheirs";
@@ -77,7 +109,11 @@ export function checkTradeProposal(author: Seat, proposal: TradeProposePayload, 
  * @param proposer - Who proposed it
  */
 export function applyTrade(owners: OwnerMap, proposer: Seat, proposal: TradeProposePayload): void {
-  owners.set(proposal.give, otherSeat(proposer));
+  const other = counterpartOf(proposer, proposal);
+  if (other === null) {
+    return;
+  }
+  owners.set(proposal.give, other);
   if (proposal.want !== null) {
     owners.set(proposal.want, proposer);
   }
@@ -105,20 +141,28 @@ export class TradeState {
   /** How many decisions of the phase were sequenced so far; part of every key's `ref` */
   public step = 0;
   public pending: PendingTrade | null = null;
-  public readonly done: SeatRecord<boolean> = { host: false, guest: false };
+  public readonly done: SeatRecord<boolean>;
   /** The trades that were accepted, in order */
   public readonly accepted: PendingTrade[] = [];
 
-  /** @returns Whether both players are done: the phase ends */
+  /** @param seats - The game's seats (three in a game of three, D40) */
+  constructor(private readonly seats: readonly Seat[] = ["host", "guest"]) {
+    this.done = { host: false, guest: false };
+    for (const seat of seats) {
+      this.done[seat] = false;
+    }
+  }
+
+  /** @returns Whether every player is done: the phase ends */
   public get finished(): boolean {
-    return this.done.host && this.done.guest;
+    return this.seats.every(seat => this.done[seat] === true);
   }
 
   /** @returns The keys of the open step and who may propose each (see {@linkcode tradeKey}) */
   public window(wave: number): WindowEntry[] {
     const { step } = this;
     if (this.pending !== null) {
-      const answerer = otherSeat(this.pending.proposer);
+      const answerer = counterpartOf(this.pending.proposer, this.pending, this.seats.length === 3 ? 3 : 2) ?? "host";
       return [
         { key: tradeKey(wave, "TRADE_ACCEPT", step), authors: [answerer] },
         { key: tradeKey(wave, "TRADE_DECLINE", step), authors: [answerer] },
@@ -127,8 +171,7 @@ export class TradeState {
     }
     return [
       { key: tradeKey(wave, "TRADE_PROPOSE", step) },
-      { key: tradeDoneKey(wave, step, "host"), authors: ["host"] },
-      { key: tradeDoneKey(wave, step, "guest"), authors: ["guest"] },
+      ...this.seats.map(seat => ({ key: tradeDoneKey(wave, step, seat), authors: [seat] })),
     ];
   }
 
@@ -143,9 +186,10 @@ export class TradeState {
         if (!isTradeProposePayload(decision.payload)) {
           return { t: "none" };
         }
-        // a new proposal clears both players' "done"
-        this.done.host = false;
-        this.done.guest = false;
+        // a new proposal clears every player's "done"
+        for (const seat of this.seats) {
+          this.done[seat] = false;
+        }
         this.pending = { ...decision.payload, proposer: decision.author };
         return { t: "proposed", trade: this.pending };
       }
@@ -167,7 +211,7 @@ export class TradeState {
         const done = isTradeDonePayload(decision.payload) ? decision.payload.done : false;
         // Whose "done" it is: the seat in the key, which is the absent player's when the partner took over for them (D17)
         const named = String(decision.key.ref).split(":")[1];
-        const seat: Seat = named === "host" || named === "guest" ? named : decision.author;
+        const seat: Seat = isSeat(named) ? named : decision.author;
         this.done[seat] = done;
         return { t: "done", seat, done };
       }

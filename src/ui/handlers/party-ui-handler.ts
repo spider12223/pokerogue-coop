@@ -48,6 +48,34 @@ const DISCARD_BUTTON_X = 60;
 const DISCARD_BUTTON_X_DOUBLES = 64;
 const DISCARD_BUTTON_Y = -73;
 const DISCARD_BUTTON_Y_DOUBLES = -58;
+/** Co-op (D40): with three of ours on the field the button stands where the fourth bench slot would be */
+const DISCARD_BUTTON_X_THREE = 160;
+const DISCARD_BUTTON_Y_THREE = -46;
+
+/**
+ * Co-op (D40): with three of ours on the field the party screen has the background of a double battle's item screen (short
+ * active slots); its fourth bench slot is covered with plain grid taken from between the first two bench slots, 16 and 8
+ * rows (multiples of the grid's 8, so the lines meet), as two frames of that background
+ */
+const THREE_BG = "party_bg_double_manage";
+const THREE_COVERS: readonly { frame: string; y: number; rows: number }[] = [
+  { frame: "coop_bench_cover_16", y: 125, rows: 16 },
+  { frame: "coop_bench_cover_8", y: 141, rows: 8 },
+];
+
+/** The frames of the cover, added to the background's texture once */
+function threeCoverFrames(): boolean {
+  if (!globalScene.textures.exists(THREE_BG)) {
+    return false;
+  }
+  const texture = globalScene.textures.get(THREE_BG);
+  for (const { frame, rows } of THREE_COVERS) {
+    if (!texture.has(frame)) {
+      texture.add(frame, 0, 144, 37, 176, rows);
+    }
+  }
+  return true;
+}
 
 /** Co-op (D7): the name of the partner's Pokémon on the party screen is drawn in this colour, with a darker shadow */
 const PARTNER_NAME_COLOR = "#8fd3ff";
@@ -101,6 +129,8 @@ export class PartyUiHandler extends MessageUiHandler {
   private fieldIndex: number;
 
   private partyBg: Phaser.GameObjects.Image;
+  /** Co-op (D40): what covers the background's fourth bench slot with three of ours on the field */
+  private threeCovers: Phaser.GameObjects.Image[] = [];
   private partyContainer: Phaser.GameObjects.Container;
   private partySlotsContainer: Phaser.GameObjects.Container;
   private partySlots: PartySlot[];
@@ -314,7 +344,11 @@ export class PartyUiHandler extends MessageUiHandler {
     this.modifierItemId = args.length > 7 ? (args[7] as EvolutionItem | FormChangeItem | undefined) : undefined;
 
     this.partyContainer.setVisible(true);
-    if (this.isItemManageMode()) {
+    const three = globalScene.currentBattle?.playerSlots === 3;
+    this.showThreeCovers(three);
+    if (three) {
+      this.partyBg.setTexture(THREE_BG);
+    } else if (this.isItemManageMode()) {
       this.partyBg.setTexture(`party_bg${globalScene.currentBattle.double ? "_double_manage" : ""}`);
     } else {
       this.partyBg.setTexture(`party_bg${globalScene.currentBattle.double ? "_double" : ""}`);
@@ -1205,6 +1239,21 @@ export class PartyUiHandler extends MessageUiHandler {
     return true;
   }
 
+  /** Co-op (D40): cover the fourth bench slot of the background, or not */
+  private showThreeCovers(show: boolean): void {
+    if (show && this.threeCovers.length === 0 && threeCoverFrames()) {
+      // the background's bottom left is at the container's origin
+      this.threeCovers = THREE_COVERS.map(({ frame, y }) =>
+        globalScene.add.image(144, y - 180, THREE_BG, frame).setOrigin(0, 0),
+      );
+      const at = this.partyContainer.getIndex(this.partyBg) + 1;
+      this.threeCovers.forEach((cover, index) => this.partyContainer.addAt(cover, at + index));
+    }
+    for (const cover of this.threeCovers) {
+      cover.setVisible(show);
+    }
+  }
+
   private processPartyDirectionalInput(button: Button.UP | Button.DOWN | Button.LEFT | Button.RIGHT): boolean {
     const ui = this.getUi();
     const slotCount = this.partySlots.length;
@@ -1218,6 +1267,20 @@ export class PartyUiHandler extends MessageUiHandler {
     }
 
     let success = false;
+    // Co-op (D40): with three of ours on the field the item screen's button is under the bench, before Cancel
+    if (
+      this.isItemManageMode()
+      && globalScene.currentBattle.playerSlots === 3
+      && (button === Button.UP || button === Button.DOWN)
+    ) {
+      const order = [...Array.from({ length: slotCount }, (_, index) => index), 7, 6];
+      const at = Math.max(0, order.indexOf(this.cursor));
+      success = this.setCursor(order[(at + (button === Button.DOWN ? 1 : order.length - 1)) % order.length]);
+      if (success) {
+        ui.playSelect();
+      }
+      return success;
+    }
     switch (button) {
       // Item manage mode adds an extra 8th "toggle mode" button to the UI, located *below* both active party members.
       // The following logic serves to ensure its menu behaviour matches its in-game position,
@@ -2218,6 +2281,7 @@ class PartySlot extends Phaser.GameObjects.Container {
   ) {
     const isBenched = slotIndex >= globalScene.currentBattle.getPlayerBattlerCount();
     const isDoubleBattle = globalScene.currentBattle.double;
+    const isThree = globalScene.currentBattle.playerSlots === 3;
     const isItemManageMode = partyUiMode === PartyUiMode.MODIFIER_TRANSFER || partyUiMode === PartyUiMode.DISCARD;
 
     /*
@@ -2239,6 +2303,10 @@ class PartySlot extends Phaser.GameObjects.Container {
       }
       slotPositionY += (isItemManageMode ? (isDoubleBattle ? 47 : 55) : 64) * slotIndex;
     }
+    if (isThree) {
+      // Co-op (D40): three short active slots on the left, the bench in the first three rows on the right
+      slotPositionY = isBenched ? -236 + 36 * (slotIndex - 1) : -168.5 + 47 * slotIndex;
+    }
 
     super(globalScene, slotPositionX, slotPositionY);
 
@@ -2259,7 +2327,7 @@ class PartySlot extends Phaser.GameObjects.Container {
 
     this.slotBgKey = this.isBenched
       ? "party_slot"
-      : isItemManageMode && globalScene.currentBattle.double
+      : (isItemManageMode && globalScene.currentBattle.double) || globalScene.currentBattle.playerSlots === 3
         ? "party_slot_main_short"
         : "party_slot_main";
     const fullSlotBgKey = this.pokemon.hp ? this.slotBgKey : `${this.slotBgKey}${"_fnt"}`;
@@ -2299,7 +2367,10 @@ class PartySlot extends Phaser.GameObjects.Container {
     let descriptionLabelPosition = { x: 32, y: 46 };
 
     // If in item management mode, the active slots are shorter
-    if (isItemManageMode && globalScene.currentBattle.double && !this.isBenched) {
+    if (
+      ((isItemManageMode && globalScene.currentBattle.double) || globalScene.currentBattle.playerSlots === 3)
+      && !this.isBenched
+    ) {
       namePosition.y -= 8;
       levelLabelPosition.y -= 8;
       hpBarPosition.y -= 8;
@@ -2682,9 +2753,10 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
         this.discardIcon.displayWidth = this.textBox.text.length * 9 + 3;
         break;
     }
+    const three = globalScene.currentBattle.playerSlots === 3;
     this.setPosition(
-      globalScene.currentBattle.double ? DISCARD_BUTTON_X_DOUBLES : DISCARD_BUTTON_X,
-      globalScene.currentBattle.double ? DISCARD_BUTTON_Y_DOUBLES : DISCARD_BUTTON_Y,
+      three ? DISCARD_BUTTON_X_THREE : globalScene.currentBattle.double ? DISCARD_BUTTON_X_DOUBLES : DISCARD_BUTTON_X,
+      three ? DISCARD_BUTTON_Y_THREE : globalScene.currentBattle.double ? DISCARD_BUTTON_Y_DOUBLES : DISCARD_BUTTON_Y,
     );
   }
 

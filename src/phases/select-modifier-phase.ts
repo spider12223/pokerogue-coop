@@ -553,7 +553,7 @@ export class SelectModifierPhase extends BattlePhase {
     const label =
       this.picker === mySeat() || this.takingOver
         ? undefined
-        : coopText("pickerChoosing", "{{partner}} is choosing…", { partner: session.partnerName });
+        : coopText("pickerChoosing", "{{partner}} is choosing…", { partner: session.nameOf(this.picker) });
     this.screenSwitches++;
     this.screenReady = Promise.all([
       this.screenReady,
@@ -589,7 +589,7 @@ export class SelectModifierPhase extends BattlePhase {
     }
     // A new step: the hint of the last one ("still choosing", "away") is over
     this.rewardHandler()?.setCoopLabel(
-      coopText("pickerChoosing", "{{partner}} is choosing…", { partner: requireCoopSession().partnerName }),
+      coopText("pickerChoosing", "{{partner}} is choosing…", { partner: requireCoopSession().nameOf(this.picker) }),
     );
     this.watcher = new AfkWatcher({
       offerOver: [UiMode.MODIFIER_SELECT, UiMode.MESSAGE],
@@ -775,7 +775,7 @@ export class SelectModifierPhase extends BattlePhase {
   private denyNotPicker(): boolean {
     globalScene.ui.showText(
       coopText("notYourPick", "{{partner}} picks this time. You can still buy from the shop.", {
-        partner: requireCoopSession().partnerName,
+        partner: requireCoopSession().nameOf(this.picker),
       }),
     );
     return this.deny();

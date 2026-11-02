@@ -245,6 +245,64 @@ describe("the trade window", () => {
   });
 });
 
+describe("a trade of three (D40)", () => {
+  const WAVE = 7;
+  /** Two each: host 1, 2; guest 3, 4; guest2 5, 6 */
+  const THREE = { 1: "host", 2: "host", 3: "guest", 4: "guest", 5: "guest2", 6: "guest2" } as const;
+
+  it("names who it is with: the counterpart owns what is wanted, and gets the gift", () => {
+    expect(checkTradeProposal("host", { give: 1, want: 5, to: "guest2" }, owners(THREE))).toBeNull();
+    expect(checkTradeProposal("host", { give: 1, want: 3, to: "guest2" }, owners(THREE))).toBe("notTheirs");
+    expect(checkTradeProposal("guest2", { give: 5, want: null, to: "guest" }, owners(THREE))).toBeNull();
+    // with no counterpart named, a game of three has nobody to trade with
+    expect(checkTradeProposal("host", { give: 1, want: 5 }, owners(THREE), 3)).toBe("notTheirs");
+    expect(checkTradeProposal("host", { give: 1, want: 1, to: "host" }, owners(THREE))).toBe("notTheirs");
+  });
+
+  it("swaps between the two it names; the third keeps theirs", () => {
+    const owned = owners(THREE);
+    applyTrade(owned, "guest", { give: 3, want: 5, to: "guest2" });
+    expect(owned.toJSON()).toEqual({ 1: "host", 2: "host", 3: "guest2", 4: "guest", 5: "guest", 6: "guest2" });
+    applyTrade(owned, "host", { give: 1, want: null, to: "guest" });
+    expect(owned.get(1)).toBe("guest");
+  });
+
+  it("takes the counterpart in the payload, and only a seat", () => {
+    expect(isTradeProposePayload({ give: 1, want: 5, to: "guest2" })).toBe(true);
+    expect(isTradeProposePayload({ give: 1, want: 5, to: "guest3" })).toBe(false);
+  });
+
+  it("the window: each seat's done, the counterpart answers, the third waits; over when all three are done", () => {
+    const state = new TradeState(["host", "guest", "guest2"]);
+    expect(state.window(WAVE).map(entry => `${entry.key.kind}:${entry.key.ref}:${entry.authors ?? "all"}`)).toEqual([
+      "TRADE_PROPOSE:0:all",
+      "TRADE_DONE:0:host:host",
+      "TRADE_DONE:0:guest:guest",
+      "TRADE_DONE:0:guest2:guest2",
+    ]);
+    state.apply({
+      key: tradeKey(WAVE, "TRADE_PROPOSE", 0),
+      author: "host",
+      payload: { give: 1, want: 5, to: "guest2" },
+    });
+    expect(state.window(WAVE).map(entry => `${entry.key.kind}:${entry.authors}`)).toEqual([
+      "TRADE_ACCEPT:guest2",
+      "TRADE_DECLINE:guest2",
+      "TRADE_CANCEL:host",
+    ]);
+    state.apply({ key: tradeKey(WAVE, "TRADE_DECLINE", 1), author: "guest2", payload: null });
+    for (const [step, seat] of [
+      [2, "host"],
+      [3, "guest"],
+    ] as const) {
+      state.apply({ key: tradeDoneKey(WAVE, step, seat), author: seat, payload: { done: true } });
+    }
+    expect(state.finished).toBe(false);
+    state.apply({ key: tradeDoneKey(WAVE, 4, "guest2"), author: "guest2", payload: { done: true } });
+    expect(state.finished).toBe(true);
+  });
+});
+
 describe("the save block after a trade", () => {
   afterEach(() => {
     endCoopSession();

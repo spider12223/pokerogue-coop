@@ -9,12 +9,13 @@ import { Phase } from "#app/phase";
 import { AfkWatcher } from "#coop/afk";
 import { dropLeftoverFaintReplacements, INDEX_BAKED_PHASES } from "#coop/arrange";
 import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
-import { type DecisionKey, ofSeat, otherSeat, type Seat } from "#coop/protocol";
+import { type DecisionKey, otherSeat, type Seat, seatsFor } from "#coop/protocol";
 import { type Decision, ProposalRejectedError } from "#coop/sequencer";
 import { requireCoopSession } from "#coop/session";
 import {
   applyTrade,
   checkTradeProposal,
+  counterpartOf,
   type PendingTrade,
   type TradeEffect,
   type TradeProposePayload,
@@ -42,7 +43,8 @@ import type { CoopTradeUiHandler, TradeScreenActions, TradeScreenModel } from "#
 export class CoopTradePhase extends Phase {
   public readonly phaseName = "CoopTradePhase";
 
-  private readonly state = new TradeState();
+  /** (every seat of the game: three in a game of three, D40) */
+  private readonly state = new TradeState(seatsFor(requireCoopSession().players));
   /** This player's action was proposed and has not come back yet */
   private awaiting = false;
   private notice: string | null = null;
@@ -117,17 +119,23 @@ export class CoopTradePhase extends Phase {
   private actions(): TradeScreenActions {
     const me = mySeat();
     return {
-      propose: (give, want) => {
+      propose: (give, want, to) => {
         if (this.awaiting || this.state.pending !== null) {
           return false;
         }
-        const refusal = checkTradeProposal(me, { give, want }, requireCoopSession().ownership);
+        const session = requireCoopSession();
+        // In a game of three a trade names who it is with (D40): whose Pokémon is wanted, or who gets the gift
+        const counterpart =
+          session.players === 3 ? (to ?? (want === null ? undefined : session.ownership.get(want))) : undefined;
+        const proposal: TradeProposePayload =
+          counterpart === undefined ? { give, want } : { give, want, to: counterpart };
+        const refusal = checkTradeProposal(me, proposal, session.ownership, session.players);
         if (refusal !== null) {
           this.notice = this.describeRefusal(refusal);
           this.refresh();
           return false;
         }
-        const payload: TradeProposePayload = { give, want };
+        const payload: TradeProposePayload = proposal;
         this.send(tradeKey(this.wave(), "TRADE_PROPOSE", this.state.step), payload);
         return true;
       },
@@ -245,17 +253,47 @@ export class CoopTradePhase extends Phase {
     const byId = (id: number): PlayerPokemon | undefined => party.find(pokemon => pokemon.id === id);
     const pending = this.state.pending;
     const give = pending === null ? undefined : byId(pending.give);
+    const three = session.players === 3;
+    const others = seatsFor(session.players).filter(seat => seat !== me);
+    const counterpart = pending === null ? null : counterpartOf(pending.proposer, pending, session.players);
+    // Who the texts name: the other side of the open trade; with none, the partner (both, in a game of three)
+    const partnerName =
+      pending !== null && counterpart !== null && three
+        ? session.nameOf(pending.proposer === me ? counterpart : pending.proposer)
+        : session.partnerName;
+    const theirs = party.filter(pokemon => {
+      const owner = session.ownership.get(pokemon.id);
+      return owner !== undefined && owner !== me;
+    });
+    const watching =
+      three && pending !== null && counterpart !== null && pending.proposer !== me && counterpart !== me
+        ? coopText("tradeOthersTrading", "{{a}} and {{b}} are trading…", {
+            a: session.nameOf(pending.proposer),
+            b: session.nameOf(counterpart),
+          })
+        : null;
+    const notDone = others.filter(seat => this.state.done[seat] !== true);
     return {
       mine: party.filter(pokemon => session.ownership.get(pokemon.id) === me),
-      theirs: party.filter(pokemon => session.ownership.get(pokemon.id) === otherSeat(me)),
-      partnerName: session.partnerName,
+      theirs,
+      partnerName:
+        pending === null && three && notDone.length === 1 && this.state.done[me] === true
+          ? session.nameOf(notDone[0])
+          : partnerName,
       pending:
         pending === null || give === undefined
           ? null
           : { byMe: pending.proposer === me, give, want: pending.want === null ? null : (byId(pending.want) ?? null) },
-      iAmDone: ofSeat(this.state.done, me),
-      partnerDone: ofSeat(this.state.done, otherSeat(me)),
+      iAmDone: this.state.done[me] === true,
+      partnerDone: notDone.length === 0,
       notice: this.notice,
+      ...(three
+        ? {
+            theirOwners: theirs.map(pokemon => session.ownership.get(pokemon.id)!),
+            giveTo: others.map(seat => ({ seat, name: session.nameOf(seat) })),
+            watching,
+          }
+        : {}),
     };
   }
 
@@ -273,8 +311,15 @@ export class CoopTradePhase extends Phase {
   /** Watch the partner while this player waits for them: for an answer to a proposal, or for them to be done */
   private watchPartner(): void {
     const me = mySeat();
-    const partner: Seat = otherSeat(me);
+    const session = requireCoopSession();
     const pending = this.state.pending;
+    // Who this player waits for: the other side of its own proposal, or the first who is not done (D40: one of two)
+    const partner: Seat =
+      session.players === 3
+        ? pending !== null && pending.proposer === me
+          ? (counterpartOf(me, pending, 3) ?? otherSeat(me))
+          : (seatsFor(3).find(seat => seat !== me && this.state.done[seat] !== true) ?? "host")
+        : otherSeat(me);
     const waitingForAnswer = pending !== null && pending.proposer === me;
     const waitingForDone = pending === null && this.state.done[me] && !this.state.done[partner];
     if (!waitingForAnswer && !waitingForDone) {

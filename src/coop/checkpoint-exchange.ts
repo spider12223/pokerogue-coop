@@ -12,6 +12,7 @@ import {
 } from "#coop/checkpoint-log";
 import { coopLog } from "#coop/coop-log";
 import type { CoopLink } from "#coop/link";
+import type { Seat } from "#coop/protocol";
 import type { CoopSession } from "#coop/session";
 
 /**
@@ -34,19 +35,21 @@ const FIELDS = ["kind", "wave", "turn", "phaseName", "hash"] as const;
  */
 export const CHECKPOINT_LOOKAHEAD = 64;
 
-function compare(session: CoopSession, index: number): void {
+/** Compare this client's checkpoint `index` with the one of the partner in `seat`, once both are there */
+function compare(session: CoopSession, index: number, seat: Seat): void {
+  const remotes = session.remoteCheckpointsOf(seat);
   const local = session.checkpoints.entries[index];
-  const remote = session.remoteCheckpoints.get(index);
+  const remote = remotes.get(index);
   if (local === undefined || remote === undefined) {
     return;
   }
-  session.remoteCheckpoints.delete(index);
+  remotes.delete(index);
   if (session.checkpointMismatch !== null) {
     return;
   }
   const fields = FIELDS.filter(field => local[field] !== remote[field]);
   if (fields.length > 0) {
-    session.checkpointMismatch = { local, remote };
+    session.checkpointMismatch = { local, remote, seat };
     session.desyncMessage ??= describeCheckpointMismatch({ index, local, remote, fields });
     console.error("co-op: ", session.desyncMessage);
     coopLog().warn("checkpoint", session.desyncMessage, { local, remote, fields });
@@ -61,23 +64,27 @@ function compare(session: CoopSession, index: number): void {
 export function attachCheckpointExchange(session: CoopSession, link: CoopLink): () => void {
   session.onCheckpoint = checkpoint => {
     link.sendCheckpoint({ ...checkpoint });
-    compare(session, checkpoint.index);
+    for (const seat of session.remoteCheckpointSeats) {
+      compare(session, checkpoint.index, seat);
+    }
   };
-  const stop = link.onCheckpoint(message => {
+  // Each partner's apart: the host of a game of three hears both guests (D40)
+  const stop = link.onCheckpoint((message, sender?: Seat) => {
     if (!(CHECKPOINT_KINDS as readonly string[]).includes(message.kind)) {
       return;
     }
+    // (a game of two has one partner)
+    const from = sender ?? (session.seat === "host" ? "guest" : "host");
+    const remotes = session.remoteCheckpointsOf(from);
     const local = session.checkpoints.entries.length;
     if (
       message.index > local + CHECKPOINT_LOOKAHEAD
-      || (message.index >= local
-        && !session.remoteCheckpoints.has(message.index)
-        && session.remoteCheckpoints.size > CHECKPOINT_LOOKAHEAD)
+      || (message.index >= local && !remotes.has(message.index) && remotes.size > CHECKPOINT_LOOKAHEAD)
     ) {
       return;
     }
-    session.remoteCheckpoints.set(message.index, { ...message, kind: message.kind as CheckpointKind } as Checkpoint);
-    compare(session, message.index);
+    remotes.set(message.index, { ...message, kind: message.kind as CheckpointKind } as Checkpoint);
+    compare(session, message.index, from);
   });
   return () => {
     stop();
