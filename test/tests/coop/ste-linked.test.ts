@@ -5,7 +5,7 @@
  */
 
 import { controllerOf, deciderOf, ownerOf } from "#coop/control";
-import { type CheckpointMessage, type DecisionKey, keyId, otherSeat, type Seat } from "#coop/protocol";
+import { type CheckpointMessage, type DecisionKey, keyId, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
 import type { RewardAction } from "#coop/reward-actions";
 import type { Decision } from "#coop/sequencer";
 import { commandTargetPick } from "#coop/sim-rng";
@@ -193,7 +193,7 @@ async function playLinkedSte(phaserGame: Phaser.Game, me: Seat): Promise<LinkedS
   } = { host: "smart", guest: "smart", target: null, ballAccepted: true };
   /** The biomes the Map offered at the last choice */
   let offered: number[] = [];
-  const capAnswers: Record<Seat, number> = { host: 0, guest: 0 };
+  const capAnswers: SeatRecord<number> = { host: 0, guest: 0 };
   let guestBallDeclined = false;
 
   /** The first field slot a seat controls: the plan of the turn is for it, a second one fights (D7) */

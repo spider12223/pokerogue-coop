@@ -39,7 +39,7 @@ export interface CoopLogEntry {
 /** Who and where, sent with every batch */
 export interface CoopLogContext {
   room: string | null;
-  seat: "host" | "guest" | null;
+  seat: "host" | "guest" | "guest2" | null;
   name: string | null;
   /** The build identity, short (`<sha>+<dirty>`) */
   build: string;

@@ -9,7 +9,7 @@ import { Phase } from "#app/phase";
 import { AfkWatcher } from "#coop/afk";
 import { dropLeftoverFaintReplacements, INDEX_BAKED_PHASES } from "#coop/arrange";
 import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
-import { type DecisionKey, otherSeat, type Seat } from "#coop/protocol";
+import { type DecisionKey, ofSeat, otherSeat, type Seat } from "#coop/protocol";
 import { type Decision, ProposalRejectedError } from "#coop/sequencer";
 import { requireCoopSession } from "#coop/session";
 import {
@@ -253,8 +253,8 @@ export class CoopTradePhase extends Phase {
         pending === null || give === undefined
           ? null
           : { byMe: pending.proposer === me, give, want: pending.want === null ? null : (byId(pending.want) ?? null) },
-      iAmDone: this.state.done[me],
-      partnerDone: this.state.done[otherSeat(me)],
+      iAmDone: ofSeat(this.state.done, me),
+      partnerDone: ofSeat(this.state.done, otherSeat(me)),
       notice: this.notice,
     };
   }

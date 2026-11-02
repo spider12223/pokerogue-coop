@@ -22,10 +22,12 @@ import {
   CODE_ALPHABET,
   CODE_LENGTH,
   MATCH_BUILD,
+  parseRouted,
   RELAY_PATH,
   RELAY_PREFIX,
   type RelayControlMessage,
   type RelayErrorReason,
+  routedFrame,
   type Seat,
 } from "./relay-protocol.ts";
 import { otherSeat, RoomRegistry } from "./room-registry.ts";
@@ -127,7 +129,7 @@ function isControlFrame(text: string): boolean {
 }
 
 function isSeat(value: string | null): value is Seat {
-  return value === "host" || value === "guest";
+  return value === "host" || value === "guest" || value === "guest2";
 }
 
 /** Refuse an upgrade before it becomes a WebSocket */
@@ -266,7 +268,48 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
 
   // #region WebSocket: rooms
 
-  const peerOf = (code: string, seat: Seat): WebSocket | undefined => sockets.get(code)?.[otherSeat(seat)];
+  /** Whether the room has three seats (D40): its frames are routed, and its notices name the seat */
+  const isRoomOfThree = (code: string): boolean => registry.sizeOf(code) === 3;
+
+  /** The other seats of a room that are connected right now, in seat order */
+  const peersOf = (code: string, seat: Seat): WebSocket[] => {
+    const room = sockets.get(code);
+    return registry
+      .seatsOf(code)
+      .filter(other => other !== seat)
+      .map(other => room?.[other])
+      .filter((socket): socket is WebSocket => socket !== undefined);
+  };
+
+  /** A notice about a seat to everyone else in its room; a room of three says which seat (D40) */
+  const tellPeers = (
+    code: string,
+    seat: Seat,
+    message: { t: "relay:peerLeft"; holdMs: number | null } | { t: "relay:peerBack" } | { t: "relay:peerGone" },
+  ): void => {
+    const notice = isRoomOfThree(code) ? { ...message, seat } : message;
+    for (const peer of peersOf(code, seat)) {
+      send(peer, notice);
+    }
+  };
+
+  /**
+   * Where a frame goes and what it says: in a room of two, to the other seat as it is; in a room of three, a host frame to the
+   * guest it names, without the name, and a guest frame to the host, with the guest's seat in front (D40)
+   */
+  const routeOf = (code: string, seat: Seat, text: string): { to: Seat; text: string } | null => {
+    if (!isRoomOfThree(code)) {
+      return { to: otherSeat(seat), text };
+    }
+    if (seat !== "host") {
+      return { to: "host", text: routedFrame(seat, text) };
+    }
+    const routed = parseRouted(text);
+    if (routed === null || routed.seat === "host") {
+      return null;
+    }
+    return { to: routed.seat, text: routed.payload };
+  };
 
   const attach = (socket: WebSocket, code: string, seat: Seat, ip: string): void => {
     alive.add(socket);
@@ -291,12 +334,17 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         }
         return;
       }
-      const peer = peerOf(code, seat);
-      if (isBinary || !peer || peer.readyState !== OPEN) {
+      if (isBinary) {
         return;
       }
-      const text = data.toString();
-      if (isControlFrame(text)) {
+      const route = routeOf(code, seat, data.toString());
+      const peer = route === null ? undefined : sockets.get(code)?.[route.to];
+      if (route === null || !peer || peer.readyState !== OPEN) {
+        return;
+      }
+      const text = route.text;
+      // A frame that looks like a relay notice is never forwarded (the frame itself, or what a host frame carries)
+      if (isControlFrame(seat === "host" ? text : data.toString())) {
         return;
       }
       registry.touch(code);
@@ -306,7 +354,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         const inARow = (stalled.get(peer) ?? 0) + 1;
         stalled.set(peer, inARow);
         if (inARow === limits.maxDropsPerSocket) {
-          log(`coop relay: ${code} ${otherSeat(seat)} does not read what it is sent: cutting it`);
+          log(`coop relay: ${code} ${route.to} does not read what it is sent: cutting it`);
           peer.terminate();
         }
         return;
@@ -321,12 +369,20 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         return; // replaced by a newer connection, or the room is gone
       }
       if (closeCode === CLOSE_CODE_LEAVE) {
-        // "End session" (D20): the room is over for both
+        if (isRoomOfThree(code) && seat !== "host") {
+          // A guest ended its session (D40): its seat is free, and the other two go on
+          log(`coop relay: ${seat} ended its seat in ${code}`);
+          delete current[seat];
+          registry.leaveSeat(code, seat);
+          tellPeers(code, seat, { t: "relay:peerGone" });
+          return;
+        }
+        // "End session" (D20): the room is over for everyone
         log(`coop relay: ${seat} ended ${code}`);
-        const partner = current[otherSeat(seat)];
+        const others = peersOf(code, seat);
         sockets.delete(code);
         registry.leave(code);
-        if (partner) {
+        for (const partner of others) {
           send(partner, { t: "relay:closed", reason: "partnerLeft" });
           partner.close(CLOSE_CODE_ROOM_CLOSED, "partnerLeft");
         }
@@ -335,8 +391,8 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
       log(`coop relay: ${seat} left ${code} (close ${closeCode})`);
       delete current[seat];
       registry.disconnect(code, seat);
-      // The partner stays: this seat is kept as long as they do (D20)
-      send(current[otherSeat(seat)], { t: "relay:peerLeft", holdMs: null });
+      // The others stay: this seat is kept as long as they do (D20)
+      tellPeers(code, seat, { t: "relay:peerLeft", holdMs: null });
     });
   };
 
@@ -346,11 +402,16 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     socket.close(CLOSE_CODE_REJECTED, reason);
   };
 
-  /** Tell both players the room is complete (again). */
+  /** Tell everyone the room is complete (again), once every seat is connected */
   const announcePaired = (code: string): void => {
     const room = sockets.get(code);
-    send(room?.host, { t: "relay:paired" });
-    send(room?.guest, { t: "relay:paired" });
+    const seats = registry.seatsOf(code);
+    if (!seats.every(seat => room?.[seat] !== undefined)) {
+      return;
+    }
+    for (const seat of seats) {
+      send(room?.[seat], { t: "relay:paired" });
+    }
   };
 
   /** A socket that completed its handshake at the relay's path, with the query of its URL */
@@ -398,7 +459,7 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
         reject(socket, "rateLimited", null, ip);
         return;
       }
-      const created = registry.createRoom();
+      const created = registry.createRoom(params.get("seats") === "3" ? 3 : 2);
       attach(socket, created.code, "host", ip);
       send(socket, { t: "relay:created", code: created.code, seat: "host", token: created.token });
       log(`coop relay: room ${created.code} created`);
@@ -423,14 +484,20 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
       }
       log(`coop relay: ${seatParam} rejoined ${code}`);
       attach(socket, code, seatParam, ip);
-      const peer = peerOf(code, seatParam);
-      send(socket, { t: "relay:rejoined", code, seat: seatParam, peerPresent: peer !== undefined });
-      if (peer) {
-        send(peer, { t: "relay:peerBack" });
-        announcePaired(code);
-      } else if (registry.isReserved(code, otherSeat(seatParam))) {
-        // The partner is away too; this player is here, so their seat is kept as long as this player stays (D20)
-        send(socket, { t: "relay:peerLeft", holdMs: null });
+      const present = peersOf(code, seatParam);
+      send(socket, { t: "relay:rejoined", code, seat: seatParam, peerPresent: present.length > 0 });
+      tellPeers(code, seatParam, { t: "relay:peerBack" });
+      announcePaired(code);
+      for (const other of registry.seatsOf(code)) {
+        if (other !== seatParam && registry.isReserved(code, other)) {
+          // Another player is away too; this one is here, so their seat is kept as long as this one stays (D20)
+          send(
+            socket,
+            isRoomOfThree(code)
+              ? { t: "relay:peerLeft", holdMs: null, seat: other }
+              : { t: "relay:peerLeft", holdMs: null },
+          );
+        }
       }
       return;
     }
@@ -441,13 +508,17 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
       reject(socket, joined, code, ip);
       return;
     }
-    log(`coop relay: guest joined ${code}`);
-    attach(socket, code, "guest", ip);
-    send(socket, { t: "relay:joined", code, seat: "guest", token: joined.token });
-    if (peerOf(code, "guest")) {
-      announcePaired(code);
-    } else if (registry.isReserved(code, "host")) {
-      send(socket, { t: "relay:peerLeft", holdMs: null });
+    log(`coop relay: ${joined.seat} joined ${code}`);
+    attach(socket, code, joined.seat, ip);
+    send(socket, { t: "relay:joined", code, seat: joined.seat, token: joined.token });
+    announcePaired(code);
+    if (registry.isReserved(code, "host")) {
+      send(
+        socket,
+        isRoomOfThree(code)
+          ? { t: "relay:peerLeft", holdMs: null, seat: "host" }
+          : { t: "relay:peerLeft", holdMs: null },
+      );
     }
   };
 
@@ -488,12 +559,12 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     for (const event of registry.sweep()) {
       if (event.type === "seatExpired") {
         log(`coop relay: ${event.seat} seat of ${event.code} expired`);
-        send(peerOf(event.code, event.seat), { t: "relay:peerGone" });
+        tellPeers(event.code, event.seat, { t: "relay:peerGone" });
       } else {
         log(`coop relay: room ${event.code} closed (${event.reason})`);
         const room = sockets.get(event.code);
         sockets.delete(event.code);
-        for (const socket of [room?.host, room?.guest]) {
+        for (const socket of [room?.host, room?.guest, room?.guest2]) {
           if (socket) {
             send(socket, { t: "relay:closed", reason: event.reason });
             socket.close(CLOSE_CODE_ROOM_CLOSED, event.reason);

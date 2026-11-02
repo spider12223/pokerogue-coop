@@ -35,7 +35,15 @@ import {
 } from "#coop/link";
 import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
-import { COOP_STARTER_POINTS, type CoopRunMode, hashCanonical, keyId, otherSeat, type Seat } from "#coop/protocol";
+import {
+  COOP_STARTER_POINTS,
+  type CoopRunMode,
+  hashCanonical,
+  keyId,
+  otherSeat,
+  type Seat,
+  type SeatRecord,
+} from "#coop/protocol";
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
 import { askAndReport, setReportButtonVisible } from "#coop/report-button";
@@ -550,7 +558,7 @@ export function beginSession(
   link: CoopLink,
   seat: Seat,
   overlay: ReturnType<typeof createSettingsOverlayPort>,
-  init: { runSeed?: string; accountIds?: Record<Seat, string>; runMode?: CoopRunMode } = {},
+  init: { runSeed?: string; accountIds?: SeatRecord<string>; runMode?: CoopRunMode } = {},
 ): CoopSession {
   const session = startCoopSession({
     seat,

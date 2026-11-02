@@ -8,7 +8,7 @@
  */
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
-import { CODE_ALPHABET, CODE_LENGTH, DEFAULT_HOLD_MS, type Seat } from "./relay-protocol.ts";
+import { CODE_ALPHABET, CODE_LENGTH, DEFAULT_HOLD_MS, type RoomSeats, roomSeats, type Seat } from "./relay-protocol.ts";
 
 interface SeatState {
   /** Secret that proves ownership of the seat; `null` while the seat is free. */
@@ -19,12 +19,14 @@ interface SeatState {
 }
 
 interface Room {
-  seats: Record<Seat, SeatState>;
+  /** 2, or 3 with a second guest (D40) */
+  size: RoomSeats;
+  seats: Partial<Record<Seat, SeatState>>;
   /** When something last happened in the room: a connection, a seat change, a game frame (D23: idle rooms are closed) */
   lastActivity: number;
 }
 
-export type JoinResult = { seat: "guest"; token: string } | "notFound" | "full";
+export type JoinResult = { seat: "guest" | "guest2"; token: string } | "notFound" | "full";
 export type RejoinResult = { seat: Seat; wasConnected: boolean } | "notFound" | "badToken";
 
 /** What a {@linkcode RoomRegistry.sweep} did, for the relay to act on. */
@@ -87,21 +89,31 @@ export class RoomRegistry {
     return this.rooms.size;
   }
 
-  /** Create a room with the host already in it. */
-  createRoom(): { code: string; token: string } {
+  /** Create a room with the host already in it: of two seats, or of three (D40) */
+  createRoom(size: RoomSeats = 2): { code: string; token: string } {
     let code: string;
     do {
       code = this.generateCode();
     } while (this.rooms.has(code));
     const token = newToken();
-    this.rooms.set(code, {
-      seats: {
-        host: { token, connected: true, heldUntil: null },
-        guest: { token: null, connected: false, heldUntil: null },
-      },
-      lastActivity: this.now(),
-    });
+    const seats: Partial<Record<Seat, SeatState>> = {};
+    for (const seat of roomSeats(size)) {
+      seats[seat] = { token: null, connected: false, heldUntil: null };
+    }
+    seats.host = { token, connected: true, heldUntil: null };
+    this.rooms.set(code, { size, seats, lastActivity: this.now() });
     return { code, token };
+  }
+
+  /** The seats of a room, host first; none if there is no such room */
+  seatsOf(code: string): readonly Seat[] {
+    const room = this.rooms.get(code);
+    return room === undefined ? [] : roomSeats(room.size);
+  }
+
+  /** How many seats a room has */
+  sizeOf(code: string): RoomSeats | undefined {
+    return this.rooms.get(code)?.size;
   }
 
   /** Something happened in the room (a game frame went through): it is not idle */
@@ -112,14 +124,15 @@ export class RoomRegistry {
     }
   }
 
-  /** Take the free guest seat of a room. The host seat can only be taken back with its token. */
+  /** Take the first free guest seat of a room. The host seat can only be taken back with its token. */
   join(code: string): JoinResult {
     const room = this.rooms.get(code);
     if (!room) {
       return "notFound";
     }
-    const guest = room.seats.guest;
-    if (guest.token !== null) {
+    const seat = roomSeats(room.size).find(candidate => candidate !== "host" && room.seats[candidate]?.token === null);
+    const guest = seat === undefined ? undefined : room.seats[seat];
+    if (seat === undefined || seat === "host" || guest === undefined) {
       return "full";
     }
     const token = newToken();
@@ -127,7 +140,7 @@ export class RoomRegistry {
     guest.connected = true;
     guest.heldUntil = null;
     room.lastActivity = this.now();
-    return { seat: "guest", token };
+    return { seat, token };
   }
 
   /**
@@ -140,15 +153,17 @@ export class RoomRegistry {
       return "notFound";
     }
     const state = room.seats[seat];
-    if (state.token === null || !tokensMatch(state.token, token)) {
+    if (state === undefined || state.token === null || !tokensMatch(state.token, token)) {
       return "badToken";
     }
     const wasConnected = state.connected;
     state.connected = true;
     state.heldUntil = null;
     room.lastActivity = this.now();
-    // This player is here again: the seat of a partner who is still away is kept for as long as they stay (D20)
-    room.seats[otherSeat(seat)].heldUntil = null;
+    // This player is here again: the seats of the others who are still away are kept for as long as they stay (D20)
+    for (const other of Object.values(room.seats)) {
+      other.heldUntil = null;
+    }
     return { seat, wasConnected };
   }
 
@@ -164,21 +179,39 @@ export class RoomRegistry {
     }
     state.connected = false;
     room.lastActivity = this.now();
-    const other = room.seats[otherSeat(seat)];
-    if (other.connected) {
+    const seats = Object.values(room.seats);
+    if (seats.some(other => other.connected)) {
       state.heldUntil = null;
       return;
     }
     const until = this.now() + this.holdMs;
-    state.heldUntil = until;
-    if (other.token !== null) {
-      other.heldUntil = until;
+    for (const other of seats) {
+      if (other.token !== null) {
+        other.heldUntil = until;
+      }
     }
   }
 
   /** A player ended the session for good: the room goes at once and its tokens stop working. */
   leave(code: string): void {
     this.rooms.delete(code);
+  }
+
+  /**
+   * A player ended the session for good. The host's leaving, and anyone's in a room of two, ends the room; a guest's frees
+   * its seat in a room of three, whose other two go on (D40)
+   */
+  leaveSeat(code: string, seat: Seat): void {
+    const room = this.rooms.get(code);
+    const state = room?.seats[seat];
+    if (room === undefined || state === undefined || seat === "host" || room.size === 2) {
+      this.rooms.delete(code);
+      return;
+    }
+    state.token = null;
+    state.connected = false;
+    state.heldUntil = null;
+    room.lastActivity = this.now();
   }
 
   /** Whether the seat belongs to a player who is away right now (with or without a clock running) */
@@ -188,17 +221,17 @@ export class RoomRegistry {
   }
 
   isConnected(code: string, seat: Seat): boolean {
-    return this.rooms.get(code)?.seats[seat].connected ?? false;
+    return this.rooms.get(code)?.seats[seat]?.connected ?? false;
   }
 
   /** Whether the seat is reserved for a player who is currently away, with a clock running */
   isHeld(code: string, seat: Seat): boolean {
-    return this.rooms.get(code)?.seats[seat].heldUntil != null;
+    return this.rooms.get(code)?.seats[seat]?.heldUntil != null;
   }
 
   /** Milliseconds left on a seat's hold, or `null` if it is not held or has no limit now. */
   holdRemaining(code: string, seat: Seat): number | null {
-    const until = this.rooms.get(code)?.seats[seat].heldUntil;
+    const until = this.rooms.get(code)?.seats[seat]?.heldUntil;
     return until == null ? null : Math.max(0, until - this.now());
   }
 
@@ -207,16 +240,16 @@ export class RoomRegistry {
     const now = this.now();
     const events: SweepEvent[] = [];
     for (const [code, room] of this.rooms) {
-      for (const seat of ["host", "guest"] as const) {
+      for (const seat of roomSeats(room.size)) {
         const state = room.seats[seat];
-        if (state.heldUntil !== null && now >= state.heldUntil) {
+        if (state !== undefined && state.heldUntil !== null && now >= state.heldUntil) {
           state.token = null;
           state.connected = false;
           state.heldUntil = null;
           events.push({ type: "seatExpired", code, seat });
         }
       }
-      if (room.seats.host.token === null) {
+      if (room.seats.host?.token == null) {
         this.rooms.delete(code);
         events.push({ type: "roomClosed", code, reason: "hostGone" });
       } else if (now - room.lastActivity >= this.idleMs) {

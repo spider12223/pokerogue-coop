@@ -6,7 +6,7 @@
 
 import type { Checkpoint } from "#coop/checkpoint-log";
 import type { PhaseTraceEntry } from "#coop/phase-trace";
-import type { BuildIdentity, Seat } from "#coop/protocol";
+import type { BuildIdentity, Seat, SeatRecord } from "#coop/protocol";
 
 /**
  * Resync (DECISIONS D13, D18, D20, D21): the messages, the strike count and the report. No game imports.
@@ -228,13 +228,13 @@ export interface CoopReport {
   epoch: number;
   wave: number;
   build: BuildIdentity;
-  names: Record<Seat, string>;
+  names: SeatRecord<string>;
   /** The first checkpoint on which the clients differ, as this client saw it */
   mismatch: MismatchInfo | null;
   /** The last phases each client started; `null` if the partner's did not arrive */
-  traces: Record<Seat, PhaseTraceEntry[] | null>;
+  traces: SeatRecord<PhaseTraceEntry[] | null>;
   /** The checkpoints of the current epoch of each client, last ones; `null` if the partner's did not arrive */
-  checkpoints: Record<Seat, Checkpoint[] | null>;
+  checkpoints: SeatRecord<Checkpoint[] | null>;
   /** The mismatch as the partner saw it, if it told */
   partnerMismatch: MismatchInfo | null;
 }
@@ -245,7 +245,7 @@ export function buildReport(input: {
   epoch: number;
   wave: number;
   build: BuildIdentity;
-  names: Record<Seat, string>;
+  names: SeatRecord<string>;
   mismatch: MismatchInfo | null;
   trace: readonly PhaseTraceEntry[];
   checkpoints: readonly Checkpoint[];
@@ -256,7 +256,7 @@ export function buildReport(input: {
   const myCheckpoints = input.checkpoints.slice(-REPORT_CHECKPOINT_LENGTH);
   const partnerSeat: Seat = input.seat === "host" ? "guest" : "host";
   const theirs = input.partner?.trace ?? input.partnerTrace ?? null;
-  const traces = { [input.seat]: mine, [partnerSeat]: theirs } as Record<Seat, PhaseTraceEntry[] | null>;
+  const traces = { [input.seat]: mine, [partnerSeat]: theirs } as SeatRecord<PhaseTraceEntry[] | null>;
   const checkpoints = { [input.seat]: myCheckpoints, [partnerSeat]: input.partner?.checkpoints ?? null } as Record<
     Seat,
     Checkpoint[] | null

@@ -7,7 +7,7 @@
  * `src/coop/relay-websocket-transport.ts` (AGPL-3.0-only); the seat-token rejoin flow is new.
  */
 
-import type { Seat } from "#coop/protocol";
+import type { PlayerCount, Seat } from "#coop/protocol";
 import type { CloseInfo, RawTransport, Unsubscribe } from "#coop/transport/transport";
 
 /**
@@ -16,24 +16,26 @@ import type { CloseInfo, RawTransport, Unsubscribe } from "#coop/transport/trans
  */
 export type RelayErrorReason = "notFound" | "full" | "badRequest" | "badToken" | "busy" | "rateLimited";
 
+/** In a room of three the notices about a player name the seat they are about (D40) */
 export type RelayEvent =
   | { t: "relay:paired" }
   /** `holdMs`: how long the partner's seat is kept once this player is gone too; `null`: for as long as this player stays */
-  | { t: "relay:peerLeft"; holdMs: number | null }
-  | { t: "relay:peerBack" }
-  | { t: "relay:peerGone" }
+  | { t: "relay:peerLeft"; holdMs: number | null; seat?: Seat }
+  | { t: "relay:peerBack"; seat?: Seat }
+  | { t: "relay:peerGone"; seat?: Seat }
   | { t: "relay:closed"; reason: "hostGone" | "partnerLeft" | "idle" };
 
 type RelayControlMessage =
   | { t: "relay:created"; code: string; seat: "host"; token: string }
-  | { t: "relay:joined"; code: string; seat: "guest"; token: string }
+  | { t: "relay:joined"; code: string; seat: "guest" | "guest2"; token: string }
   | { t: "relay:rejoined"; code: string; seat: Seat; peerPresent: boolean }
   | { t: "relay:error"; reason: RelayErrorReason }
   | RelayEvent;
 
 /** How to enter the relay: create a room as host, join one by code as guest, or take a seat back with its token. */
 export type RelayConnectRequest =
-  | { mode: "create" }
+  /** `seats: 3` makes a room of three (D40) */
+  | { mode: "create"; seats?: PlayerCount }
   | { mode: "join"; code: string }
   | { mode: "rejoin"; code: string; seat: Seat; token: string };
 
@@ -80,6 +82,9 @@ function buildUrl(baseUrl: string, request: RelayConnectRequest): string {
   const params = new URLSearchParams();
   if (request.mode === "create") {
     params.set("role", "host");
+    if (request.seats === 3) {
+      params.set("seats", "3");
+    }
   } else {
     params.set("code", request.code);
     if (request.mode === "rejoin") {

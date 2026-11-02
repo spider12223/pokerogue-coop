@@ -14,6 +14,52 @@ function registry(holdMs = 1000) {
   return { rooms, clock };
 }
 
+describe("RoomRegistry: rooms of three (D40)", () => {
+  it("fills guest then guest2, then refuses", () => {
+    const { rooms } = registry();
+    const { code } = rooms.createRoom(3);
+    expect(rooms.seatsOf(code)).toEqual(["host", "guest", "guest2"]);
+    expect(rooms.join(code)).toMatchObject({ seat: "guest" });
+    expect(rooms.join(code)).toMatchObject({ seat: "guest2" });
+    expect(rooms.join(code)).toBe("full");
+  });
+
+  it("frees the seat of a guest who leaves, and closes the room when the host leaves", () => {
+    const { rooms } = registry();
+    const { code } = rooms.createRoom(3);
+    const guest = rooms.join(code) as { token: string };
+    rooms.join(code);
+    rooms.leaveSeat(code, "guest");
+    expect(rooms.has(code)).toBe(true);
+    expect(rooms.rejoin(code, "guest", guest.token)).toBe("badToken");
+    expect(rooms.join(code)).toMatchObject({ seat: "guest" });
+    rooms.leaveSeat(code, "host");
+    expect(rooms.has(code)).toBe(false);
+  });
+
+  it("holds a dropped seat without a limit while anyone stays, and runs the clock once all are gone", () => {
+    const { rooms, clock } = registry(1000);
+    const { code } = rooms.createRoom(3);
+    rooms.join(code);
+    rooms.join(code);
+    rooms.disconnect(code, "guest");
+    rooms.disconnect(code, "host");
+    expect(rooms.isHeld(code, "guest")).toBe(false);
+    rooms.disconnect(code, "guest2");
+    expect(rooms.isHeld(code, "host")).toBe(true);
+    expect(rooms.isHeld(code, "guest")).toBe(true);
+    clock.now = 1000;
+    const events = rooms.sweep();
+    expect(events).toContainEqual({ type: "roomClosed", code, reason: "hostGone" });
+  });
+
+  it("makes a room of two by default", () => {
+    const { rooms } = registry();
+    const { code } = rooms.createRoom();
+    expect(rooms.seatsOf(code)).toEqual(["host", "guest"]);
+  });
+});
+
 describe("RoomRegistry: rooms and seats", () => {
   it("creates rooms with 6-character codes from the unambiguous alphabet", () => {
     const { rooms } = registry();

@@ -6,7 +6,7 @@
 
 import { type CoopAccountSnapshot, isCoopAccountSnapshot } from "#coop/account-snapshot";
 import { isOwnerRecord } from "#coop/ownership";
-import { isTimedEventNames, type Seat } from "#coop/protocol";
+import { isTimedEventNames, type Seat, type SeatRecord } from "#coop/protocol";
 
 /**
  * The `coop` block of a session save (DECISIONS D4, D7, D9, D13). A save with this block is a co-op run: it can only be
@@ -24,7 +24,7 @@ export const COOP_SAVE_VERSION = 2;
 export interface CoopSaveBlock {
   version: typeof COOP_SAVE_VERSION;
   /** Who the two players are; a saved run can be rejoined only with the same two accounts (D4) */
-  accountIds: Record<Seat, string>;
+  accountIds: SeatRecord<string>;
   /** `pokemon.id -> seat` for the party (D7) */
   owners: Record<string, Seat>;
   /** Reward screens started so far; the picker alternates with it (D9) */
@@ -93,7 +93,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
  * @throws {@linkcode CoopSaveRefusedError} A co-op save in solo play, a solo save in a co-op session, a malformed
  * block, or a block of another pair of accounts
  */
-export function checkSaveBlock(block: unknown, session: { accountIds: Record<Seat, string> | null } | null): void {
+export function checkSaveBlock(block: unknown, session: { accountIds: SeatRecord<string> | null } | null): void {
   if (block === undefined || block === null) {
     if (session !== null) {
       throw new CoopSaveRefusedError("solo-save-in-coop", "This is a solo run. It can't be continued in a co-op room.");

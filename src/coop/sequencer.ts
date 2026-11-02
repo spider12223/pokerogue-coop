@@ -99,6 +99,11 @@ export class ProposalRejectedError extends Error {
 export interface SequencerOptions {
   role: Seat;
   transport: MessageTransport;
+  /**
+   * The seats of the game (D40); default the two of a game of two. With three, the host's transport is a fan-out that
+   * stamps each guest's envelopes with `from`, and a guest's proposal must be authored by the guest who sent it
+   */
+  seats?: readonly Seat[];
   /** Host only: the seats that may author a decision with this key. Default: both. */
   allowedAuthors?: (key: DecisionKey) => readonly Seat[];
   /** The first `seq`. Both clients must agree on it (for example after a resume). Default 1. */
@@ -179,6 +184,13 @@ const CONSUMED_WINDOW = 4096;
 
 const BOTH_SEATS: readonly Seat[] = ["host", "guest"];
 
+/** A transport that can send to one guest only (the host's fan-out in a game of three, D40) */
+function canSendTo(
+  transport: MessageTransport,
+): transport is MessageTransport & { sendTo(seat: Seat, message: Envelope): void } {
+  return typeof (transport as { sendTo?: unknown }).sendTo === "function";
+}
+
 /** @returns Whether two values that came from JSON are the same JSON */
 function sameJson(a: unknown, b: unknown): boolean {
   if (a === b) {
@@ -229,6 +241,8 @@ export class Sequencer {
 
   private readonly transport: MessageTransport;
   private readonly unsubscribe: Unsubscribe;
+  /** The seats of the game (D40) */
+  private readonly seats: readonly Seat[];
   private readonly allowedAuthors: (key: DecisionKey) => readonly Seat[];
   private readonly maxParked: number;
   private readonly maxEarly: number;
@@ -279,7 +293,9 @@ export class Sequencer {
   constructor(options: SequencerOptions) {
     this.role = options.role;
     this.transport = options.transport;
-    this.allowedAuthors = options.allowedAuthors ?? (() => BOTH_SEATS);
+    this.seats = options.seats ?? BOTH_SEATS;
+    const seats = this.seats;
+    this.allowedAuthors = options.allowedAuthors ?? (() => seats);
     this.maxParked = options.maxParked ?? 1024;
     this.maxEarly = options.maxEarly ?? 1024;
     this.validatePayload = options.validatePayload;
@@ -436,7 +452,7 @@ export class Sequencer {
       payload,
       ...(options.takeover === true ? { takeover: true as const } : {}),
     };
-    if (this.role === "guest") {
+    if (this.role !== "host") {
       this.transport.send(envelope);
       return;
     }
@@ -615,7 +631,7 @@ export class Sequencer {
     }
     switch (message.kind) {
       case "SEQUENCED":
-        if (this.role === "guest" && message.seq !== undefined && message.key !== null) {
+        if (this.role !== "host" && message.seq !== undefined && message.key !== null) {
           this.receiveSequenced({
             seq: message.seq,
             key: message.key,
@@ -629,13 +645,18 @@ export class Sequencer {
         if (this.role === "host") {
           const rejection = this.hostHandleProposal(message, true);
           if (rejection && message.key) {
-            this.transport.send({ key: message.key, author: "host", kind: "REJECT", payload: { reason: rejection } });
+            this.rejectTo(this.senderOf(message), {
+              key: message.key,
+              author: "host",
+              kind: "REJECT",
+              payload: { reason: rejection },
+            });
             this.emitRejected(message.key, rejection);
           }
         }
         break;
       case "REJECT":
-        if (this.role === "guest" && message.key) {
+        if (this.role !== "host" && message.key) {
           const reason = (message.payload as { reason?: RejectReason } | null)?.reason ?? "badKey";
           this.emitRejected(message.key, reason);
         }
@@ -713,7 +734,7 @@ export class Sequencer {
       return "badKey";
     }
     const author = envelope.author;
-    if (author !== (remote ? "guest" : "host")) {
+    if (author !== (remote ? this.senderOf(envelope) : "host")) {
       return "authorMismatch";
     }
     const takeover = envelope.takeover === true;
@@ -734,7 +755,7 @@ export class Sequencer {
     }
     const twin = this.parked.find(parked => parked.key !== null && keyId(parked.key) === id);
     // The host's player answers while the guest's take over of that decision waits for its time: the answer wins (D17)
-    const supersedes = twin !== undefined && !remote && !takeover && twin.takeover === true && twin.author === "guest";
+    const supersedes = twin !== undefined && !remote && !takeover && twin.takeover === true && twin.author !== "host";
     if (twin !== undefined && !supersedes) {
       return "duplicate";
     }
@@ -763,7 +784,7 @@ export class Sequencer {
     if (supersedes) {
       // Only the guest is told: the host's own screens listen for refusals, and this answer of the host's is not one
       this.parked = this.parked.filter(parked => parked !== twin);
-      this.transport.send({ key, author: "host", kind: "REJECT", payload: { reason: "duplicate" } });
+      this.rejectTo(twin.author, { key, author: "host", kind: "REJECT", payload: { reason: "duplicate" } });
     }
     if (!remote && !takeover) {
       // The host's player is there: a take over of theirs waits again (D17)
@@ -801,10 +822,10 @@ export class Sequencer {
         this.parked.push(envelope);
       } else if (envelope.takeover !== true && this.authorsFor(awaiter, key)?.includes(envelope.author) === false) {
         this.rejectParked(envelope, key, "authorNotAllowed");
-      } else if (envelope.takeover === true && envelope.author === "guest" && !this.takeoverRipe(awaiter)) {
+      } else if (envelope.takeover === true && envelope.author !== "host" && !this.takeoverRipe(awaiter)) {
         this.parked.push(envelope);
         due = Math.min(due, awaiter.openedAt + this.takeoverAfterMs());
-      } else if (envelope.author === "guest" && this.isIllegal(key, envelope)) {
+      } else if (envelope.author !== "host" && this.isIllegal(key, envelope)) {
         this.rejectParked(envelope, key, "invalid");
       } else {
         this.sequence(envelope, key);
@@ -813,6 +834,25 @@ export class Sequencer {
     if (due !== Number.POSITIVE_INFINITY) {
       this.scheduleTakeoverCheck(due);
     }
+  }
+
+  /**
+   * Who sent an envelope that came over the transport: in a game of three the fan-out's stamp, which no guest can write; in a
+   * game of two the guest, whatever the envelope says (nothing overwrites `from` there)
+   */
+  private senderOf(envelope: Envelope): Seat | null {
+    return this.seats.length > 2 ? (envelope.from ?? null) : "guest";
+  }
+
+  /** A `REJECT` for one guest: only to that guest when the transport can address one (D40), else on the channel as before */
+  private rejectTo(seat: Seat | null, envelope: Envelope): void {
+    if (this.seats.length > 2 && canSendTo(this.transport)) {
+      if (seat !== null && seat !== "host") {
+        this.transport.sendTo(seat, envelope);
+      }
+      return;
+    }
+    this.transport.send(envelope);
   }
 
   private awaiterFor(key: DecisionKey): Awaiter | undefined {
@@ -896,8 +936,8 @@ export class Sequencer {
   }
 
   private rejectParked(envelope: Envelope, key: DecisionKey, reason: RejectReason): void {
-    if (envelope.author === "guest") {
-      this.transport.send({ key, author: "host", kind: "REJECT", payload: { reason } });
+    if (envelope.author !== "host") {
+      this.rejectTo(envelope.author, { key, author: "host", kind: "REJECT", payload: { reason } });
     }
     this.emitRejected(key, reason);
   }
@@ -905,7 +945,7 @@ export class Sequencer {
   private sequence(envelope: Envelope, key: DecisionKey): void {
     const seq = this.nextAssign++;
     this.sequencedKeys.add(keyId(key));
-    if (envelope.takeover === true && envelope.author === "guest") {
+    if (envelope.takeover === true && envelope.author !== "host") {
       this.takeoverStreak = true;
     }
     const takeover = envelope.takeover === true ? { takeover: true as const } : {};

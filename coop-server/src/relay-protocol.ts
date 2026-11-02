@@ -17,8 +17,39 @@
 
 export const RELAY_PREFIX = "relay:";
 
-/** The two seats of a room. The host is the sequencer. */
-export type Seat = "host" | "guest";
+/** The seats of a room. The host is the sequencer; a room of three has a second guest (D40). */
+export type Seat = "host" | "guest" | "guest2";
+
+/** How many seats a room has: `?role=host&seats=3` creates a room of three (D40), anything else a room of two */
+export type RoomSeats = 2 | 3;
+
+/** The seats of a room of this size, host first; joins fill the guest seats in this order */
+export function roomSeats(size: RoomSeats): readonly Seat[] {
+  return size === 3 ? ["host", "guest", "guest2"] : ["host", "guest"];
+}
+
+/**
+ * In a room of three the host's frames name the guest they are for, and the frames the host gets name the guest who sent
+ * them: `<seat>` + {@linkcode ROUTE_SEPARATOR} + the frame (D40). A room of two forwards frames as they are.
+ */
+export const ROUTE_SEPARATOR = "\n";
+
+export function routedFrame(seat: Seat, payload: string): string {
+  return seat + ROUTE_SEPARATOR + payload;
+}
+
+/** @returns The seat and the frame of a routed frame, or `null` if it names no seat */
+export function parseRouted(frame: string): { seat: Seat; payload: string } | null {
+  const at = frame.indexOf(ROUTE_SEPARATOR);
+  if (at <= 0) {
+    return null;
+  }
+  const seat = frame.slice(0, at);
+  if (seat !== "host" && seat !== "guest" && seat !== "guest2") {
+    return null;
+  }
+  return { seat, payload: frame.slice(at + ROUTE_SEPARATOR.length) };
+}
 
 export type RelayErrorReason = "notFound" | "full" | "badRequest" | "badToken" | "busy" | "rateLimited";
 
@@ -31,8 +62,8 @@ export type RelayClosedReason = "hostGone" | "partnerLeft" | "idle";
 export type RelayControlMessage =
   /** A room was created for the host. `token` proves seat ownership for {@linkcode RelayRejoinRequest}. */
   | { t: "relay:created"; code: string; seat: "host"; token: string }
-  /** The guest took the free seat of an existing room. */
-  | { t: "relay:joined"; code: string; seat: "guest"; token: string }
+  /** A guest took a free seat of an existing room: `guest`, or `guest2` in a room of three (D40) */
+  | { t: "relay:joined"; code: string; seat: "guest" | "guest2"; token: string }
   /** A seat was taken back with its token. `peerPresent` tells whether the partner is connected right now. */
   | { t: "relay:rejoined"; code: string; seat: Seat; peerPresent: boolean }
   /** Both seats are connected. Sent to both players each time that becomes true again. */
@@ -41,11 +72,14 @@ export type RelayControlMessage =
    * The partner's connection dropped. Their seat is kept for as long as this player stays; `holdMs` is how long it is kept
    * once this player is gone too, so a client can say when the room closes ("D20"). `null`: there is no limit now.
    */
-  | { t: "relay:peerLeft"; holdMs: number | null }
+  | { t: "relay:peerLeft"; holdMs: number | null; seat?: Seat }
   /** The partner took their seat back. */
-  | { t: "relay:peerBack" }
-  /** The partner's seat hold expired: they can no longer rejoin. */
-  | { t: "relay:peerGone" }
+  | { t: "relay:peerBack"; seat?: Seat }
+  /**
+   * The partner's seat hold expired, or (in a room of three) a guest ended its session: they can no longer rejoin. In a room
+   * of three these notices name the seat (D40).
+   */
+  | { t: "relay:peerGone"; seat?: Seat }
   /** The room is closed and the connection is about to be closed. */
   | { t: "relay:closed"; reason: RelayClosedReason }
   | { t: "relay:error"; reason: RelayErrorReason }

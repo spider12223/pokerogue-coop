@@ -7,7 +7,7 @@
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { AccountSnapshot } from "#coop/account-snapshot";
-import type { Seat } from "#coop/protocol";
+import { ofSeat, type Seat, type SeatRecord } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import type { SpeciesId } from "#enums/species-id";
 import { Unlockables } from "#enums/unlockables";
@@ -73,7 +73,7 @@ class LiveAccountData implements SimAccountData {
 
 /** Co-op: the snapshot of run start; never the live data. */
 class SnapshotAccountData implements SimAccountData {
-  constructor(private readonly accounts: Record<Seat, AccountSnapshot>) {}
+  constructor(private readonly accounts: SeatRecord<AccountSnapshot>) {}
 
   public getTrainerAndSecretId(): readonly [number, number] {
     const { trainerId, secretId } = this.accounts.host;
@@ -102,11 +102,11 @@ class SnapshotAccountData implements SimAccountData {
   }
 
   public getCaughtAttr(species: SpeciesId, owner: Seat): bigint {
-    return BigInt(this.accounts[owner].caught[species] ?? "0");
+    return BigInt(ofSeat(this.accounts, owner).caught[species] ?? "0");
   }
 
   public getEggMoves(rootSpecies: SpeciesId, owner: Seat): number {
-    return this.accounts[owner].eggMoves[rootSpecies] ?? 0;
+    return ofSeat(this.accounts, owner).eggMoves[rootSpecies] ?? 0;
   }
 }
 

@@ -49,9 +49,10 @@ Connect with a WebSocket to `/coop?<query>` (the path of the relay, DECISIONS D2
 
 | Query | Meaning |
 |---|---|
-| `role=host` | create a room; the host seat is yours |
+| `role=host` | create a room of two; the host seat is yours |
+| `role=host&seats=3` | create a room of three (DECISIONS D40); see below |
 | `code=ABC234` | join that room as guest (first free guest seat) |
-| `code=ABC234&seat=host\|guest&token=<hex>` | take your seat back after a dropped connection |
+| `code=ABC234&seat=host\|guest\|guest2&token=<hex>` | take your seat back after a dropped connection |
 | `match=<build>` | wait in the matchmaking queue of that build (Find a partner, DECISIONS D37); see below |
 
 The relay answers with JSON control frames (`{"t":"relay:..."}`, declared in `src/relay-protocol.ts`):
@@ -59,9 +60,9 @@ The relay answers with JSON control frames (`{"t":"relay:..."}`, declared in `sr
 | Frame | When |
 |---|---|
 | `relay:created {code, seat:"host", token}` | room created |
-| `relay:joined {code, seat:"guest", token}` | guest joined |
+| `relay:joined {code, seat, token}` | guest joined: `guest`, or `guest2` in a room of three |
 | `relay:rejoined {code, seat, peerPresent}` | seat taken back |
-| `relay:paired` | both seats connected (sent to both, every time it becomes true) |
+| `relay:paired` | every seat connected (sent to all, every time it becomes true) |
 | `relay:peerLeft {holdMs}` | partner's connection dropped; their seat is held for `holdMs` |
 | `relay:peerBack` | partner took their seat back |
 | `relay:peerGone` | partner's hold expired; they cannot come back |
@@ -71,6 +72,15 @@ The relay answers with JSON control frames (`{"t":"relay:..."}`, declared in `sr
 Everything else a client sends is forwarded verbatim to the partner. Not forwarded: binary frames, frames while the
 partner is away (the clients' reliable layer resends), and any frame whose `t` starts with `relay:` (clients cannot forge
 control frames). Frames over 1 MiB close the connection (1009).
+
+### Rooms of three
+
+A room of three (`seats=3`) has a second guest seat, `guest2`, filled by the second join. Its frames are routed: the
+host's frames start with the guest they are for and a newline (`guest2\n{...}`), and the relay forwards the rest to that
+guest only; a guest's frames go to the host with the guest's seat and a newline in front (`guest\n{...}`). Guests never
+receive each other's frames. A host frame without a guest seat in front is dropped. `relay:peerLeft`, `relay:peerBack` and
+`relay:peerGone` carry the `seat` they are about. A guest's End session (4003) frees its seat and the other two get
+`relay:peerGone {seat}`; the host's closes the room for both guests. A room of two works exactly as above.
 
 ### Matchmaking
 
