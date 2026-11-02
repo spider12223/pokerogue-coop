@@ -23,10 +23,39 @@ export class FanoutTransport implements EpochInner {
   /** Guests nothing is sent to any more: their connection dropped or they left */
   private readonly gone = new Set<Seat>();
 
-  constructor(private readonly channels: ReadonlyMap<Seat, ReliableTransport>) {
-    for (const [seat, channel] of channels) {
+  private readonly channels: Map<Seat, ReliableTransport>;
+
+  constructor(channels: ReadonlyMap<Seat, ReliableTransport>) {
+    this.channels = new Map(channels);
+    for (const [seat, channel] of this.channels) {
       channel.onMessage(message => this.deliver({ ...message, from: seat }));
     }
+  }
+
+  /**
+   * A guest who came back (D40): its new channel, once its handshake is through, takes the old one's place. Sending to it
+   * starts again with {@linkcode resume}, from the reload it joins with: what it missed before that comes with the reload.
+   */
+  replace(seat: Seat, channel: ReliableTransport): void {
+    const old = this.channels.get(seat);
+    if (old === undefined) {
+      throw new RangeError(`${seat} is not a guest of this hub`);
+    }
+    if (old !== channel) {
+      old.close();
+      this.channels.set(seat, channel);
+      channel.onMessage(message => this.deliver({ ...message, from: seat }));
+    }
+  }
+
+  /** Send to a guest again (one that came back, from the reload it joins with) */
+  resume(seat: Seat): void {
+    this.gone.delete(seat);
+  }
+
+  /** Whether nothing is sent to this guest now */
+  isStopped(seat: Seat): boolean {
+    return this.gone.has(seat);
   }
 
   /** The guest seats it sends to */

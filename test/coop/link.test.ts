@@ -6,6 +6,7 @@
 
 import type { AccountSnapshot } from "#coop/account-snapshot";
 import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
+import { guestHandshake } from "#coop/handshake";
 import { CoopLink, createRoom, establishGuest, establishHost, HandshakeRefusedError, joinRoom } from "#coop/link";
 import {
   type BuildIdentity,
@@ -127,6 +128,45 @@ function linksOfThree() {
 describe("CoopLink of three (D40)", () => {
   const settle = () => new Promise(resolve => setTimeout(resolve, 30));
 
+  it("shakes hands again with a guest who came back; they come in with the next reload, sent to them again", async () => {
+    const room = createLoopbackRoom(3);
+    const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+    const fanout = new FanoutTransport(
+      new Map([
+        ["guest", new ReliableTransport(hub.channel("guest"))],
+        ["guest2", new ReliableTransport(hub.channel("guest2"))],
+      ] as const),
+    );
+    const relay = new FakeRelay();
+    const host = new CoopLink({
+      seat: "host",
+      fanout,
+      hub,
+      players: 3,
+      relay: relay as unknown as RelayWsTransport,
+      context: { build, pinned },
+    });
+    relay.emit({ t: "relay:peerBack", seat: "guest" });
+    relay.emit({ t: "relay:peerBack", seat: "guest2" });
+    await settle();
+    // the second guest drops: it is away, and nothing is sent to it
+    relay.emit({ t: "relay:peerLeft", seat: "guest2", holdMs: 60_000 });
+    expect(host.present("guest2")).toBe(false);
+    expect(host.needsResync).toBe(false);
+    // it takes its seat back and shakes hands on a new channel
+    relay.emit({ t: "relay:peerBack", seat: "guest2" });
+    const result = await guestHandshake(new ReliableTransport(room.guests.get("guest2")!), build, guestOverlay, {
+      name: "Kim",
+    });
+    expect(result.ok).toBe(true);
+    await until(() => host.present("guest2"), "the returned guest is present");
+    expect(host.needsResync).toBe(true);
+    expect(host.reloadWaitsForWaveStart).toBe(true);
+    // the reload lets them in: nothing waits any more
+    host.sendResync({ epoch: 1, seq: 0, wave: 2, reason: "rejoin", save: "{}" });
+    expect(host.needsResync).toBe(false);
+  });
+
   it("refuses a forged proposal to the guest who sent it only", async () => {
     const { host, guest, guest2, guestReliable } = linksOfThree();
     const atGuest: string[] = [];
@@ -218,12 +258,17 @@ describe("CoopLink over the relay", () => {
   });
 
   describe("three players (D40)", () => {
-    it("ends a guest's link when its own connection drops: a link of three does not reconnect yet", async () => {
-      const { guest } = await connectThree();
+    it("a guest whose connection drops takes its seat back; the host shakes hands again and lets it in with a reload", async () => {
+      const { host, guest } = await connectThree();
       const ends: string[] = [];
       guest.onEnd(end => ends.push(end));
       (guest as unknown as { relay: { close(): void } }).relay.close();
-      await waitFor(() => ends.includes("closed"));
+      await waitFor(() => !host.present("guest"));
+      // the guest's link reconnects with its seat's token, and the two shake hands again
+      await waitFor(() => host.present("guest") && host.needsResync, 15_000);
+      expect(host.reloadWaitsForWaveStart).toBe(true);
+      expect(ends).not.toContain("closed");
+      expect(guest.needsResync).toBe(true);
     });
 
     async function connectThree() {

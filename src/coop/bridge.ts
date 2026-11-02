@@ -130,8 +130,17 @@ function watchForTakeover<P>(
     const payload = plan.mode === "payload" ? plan.payload : await ask();
     proposeUnlessLate(link, key, payload, { takeover: true });
   };
+  const session = requireCoopSession();
+  const decider = request.decider;
   const watcher = new AfkWatcher({
     ...request.watcher,
+    ...(decider === "either"
+      ? {}
+      : {
+          waitingFor: () => [decider],
+          // The host of three takes over at once for a guest who left (D40)
+          absent: () => session.players === 3 && session.isHost && !link.present(decider),
+        }),
     onTakeOver: () => void runTakeover().catch(error => reportBridgeError(error)),
   });
   watcher.start();

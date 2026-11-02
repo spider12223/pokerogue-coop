@@ -159,11 +159,25 @@ export class CoopTurnSyncPhase extends Phase {
       }
     }
 
+    // Whose commands are not there yet (named in a game of three, D40)
+    const missing = (): Seat[] => [
+      ...new Set(
+        participants
+          .filter(part => part.controller !== me && !arrivedKeys.has(keyId(part.key)))
+          .map(part => part.controller),
+      ),
+    ];
     const decisions = await this.collect(
       waits,
       () => arrived === participants.length,
-      () => participants.some(part => part.controller !== me && !arrivedKeys.has(keyId(part.key))),
+      () => missing().length > 0,
       watcher => void this.takeOverCommands(participants, arrivedKeys, watcher).catch(reportBridgeError),
+      {
+        waitingFor: missing,
+        // The host of three takes over at once for a guest who left (D40)
+        absent: () =>
+          session.players === 3 && session.isHost && missing().every(seat => session.link?.present(seat) === false),
+      },
     );
     session.openWindow = session.openWindow.filter(open => !participants.some(part => part.key === open));
 
@@ -273,6 +287,7 @@ export class CoopTurnSyncPhase extends Phase {
     allArrived: () => boolean,
     partnerMissing: () => boolean,
     onTakeOver: (watcher: AfkWatcher) => void,
+    who: { waitingFor: () => readonly Seat[]; absent: () => boolean },
   ): Promise<T[]> {
     const session = requireCoopSession();
     // The local proposals were sequenced at once if this client is the host: give those a moment to resolve first
@@ -282,7 +297,7 @@ export class CoopTurnSyncPhase extends Phase {
     let watcher: AfkWatcher | null = null;
     if (!instant && partnerMissing()) {
       showWaitingForPartner();
-      const afk: AfkWatcher = new AfkWatcher({ onTakeOver: () => onTakeOver(afk) });
+      const afk: AfkWatcher = new AfkWatcher({ ...who, onTakeOver: () => onTakeOver(afk) });
       afk.start();
       watcher = afk;
     }

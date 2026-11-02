@@ -62,6 +62,38 @@ describe("Sequencer: three seats (D40)", () => {
   }
   const settleThree = () => new Promise(resolve => setTimeout(resolve, 30));
 
+  it("a guest's own answer wins over the other guest's take-over that waits for its time (D40)", async () => {
+    const room = createLoopbackRoom(3);
+    const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+    const fanout = new FanoutTransport(
+      new Map<Seat, ReliableTransport>([
+        ["guest", new ReliableTransport(hub.channel("guest"))],
+        ["guest2", new ReliableTransport(hub.channel("guest2"))],
+      ]),
+    );
+    // the host's simulation has not waited long enough for a take-over yet
+    const host = new Sequencer({ role: "host", transport: fanout, seats: seatsFor(3), takeoverAfterMs: () => 60_000 });
+    const guest = new Sequencer({
+      role: "guest",
+      transport: new ReliableTransport(room.guests.get("guest")!),
+      seats: seatsFor(3),
+    });
+    const guest2 = new Sequencer({
+      role: "guest2",
+      transport: new ReliableTransport(room.guests.get("guest2")!),
+      seats: seatsFor(3),
+    });
+    const key = k(3, 9);
+    const decided = host.awaitDecision(key, { authors: ["guest"] });
+    // the second guest takes over the first's decision: it waits for its time
+    guest2.propose(key, "taken over", { takeover: true });
+    await settleThree();
+    // the first guest answers after all: its answer is the decision
+    guest.propose(key, "own answer");
+    const decision = await decided;
+    expect([decision.author, decision.payload, decision.takeover ?? false]).toEqual(["guest", "own answer", false]);
+  });
+
   it("sequences both guests' proposals, and all three apply them in one order", async () => {
     const { host, guest, guest2 } = setupThree();
     const keys = [k(1, 1), k(1, 2)];

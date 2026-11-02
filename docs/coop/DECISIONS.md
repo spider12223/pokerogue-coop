@@ -1083,9 +1083,13 @@ count from the host's `HELLO`.
   the screen ("Give to …"); only that player answers, and the third watches until it is settled. The trade screen ends when
   all three are done. In a one-Pokémon Mystery Encounter the host can send any of the three. A guest's checkpoints are
   compared with the host's each on their own (D13).
-- **Absent players:** after the AFK timer either waiting player may take over. A disconnected player's Pokémon are
-  commanded by take-over until they rejoin, its prompts are answered by the host, and nothing is written to its account.
-  A player who rejoins comes in at the next wave start; the other two are not reloaded. The host dropping pauses everyone.
+- **Absent players:** after the AFK timer either waiting player may take over; the texts name who is waited for. A
+  player's own answer that comes late still wins over another's take-over that waits for its time. A guest who left (their
+  connection dropped, or they ended their session) is not waited for: the host is offered to take over their decisions at
+  once (commands, prompts), and nothing is written to their account. A guest who comes back (their connection, or the page
+  reloaded with its seat) shakes hands with the host again on a new channel and waits ("You join the others at the start of
+  the next wave"); the reload that lets them in waits for that wave start, so the other two lose nothing of the wave they
+  are in. The host dropping pauses both guests until the host is back.
 - **Saves:** the save of a game of three holds the third account; only the same three accounts load it. The host
   chooses 2 or 3 players at **Continue** of a 3-player run. With 2 it plays as a game of two (2v2, no
   buff), the absent player's two Pokémon commanded one by each present player; with 3 everything goes back. A run started

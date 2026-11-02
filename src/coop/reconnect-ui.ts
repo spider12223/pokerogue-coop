@@ -27,6 +27,8 @@ export interface ReconnectScreen {
   code: string;
   /** The partner is back and the reload is on its way */
   back: boolean;
+  /** A guest of three who came back: the others play on, and the reload that lets them in comes at a wave start (D40) */
+  joining?: boolean;
   /** The player chose to end the session */
   onEnd(): void;
   /** Dev and test builds can shorten the wait */
@@ -42,6 +44,9 @@ interface Shown {
 let shown: Shown | null = null;
 
 function textOf(screen: ReconnectScreen): string {
+  if (screen.joining === true) {
+    return coopText("joinNextWave", "You're back in. You join the others at the start of the next wave…");
+  }
   return screen.back
     ? coopText("partnerBack", "{{partner}} is back. Getting the game ready…", { partner: screen.partner })
     : coopText("waitingForReconnect", "Waiting for {{partner}} to reconnect…\nRoom code: {{code}}", {

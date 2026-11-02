@@ -437,6 +437,9 @@ export class CoopSession {
     return this.explicitAccountIds ?? (this.snapshot === null ? null : this.accountIds);
   }
 
+  /** Host of three: the wave a guest came back in; the reload that lets them in waits for the next one's start (D40) */
+  public rejoinAfterWave: number | null = null;
+
   /** The partner's checkpoints that wait for this client's (the first guest's, on the host of a game of three) */
   public get remoteCheckpoints(): Map<number, Checkpoint> {
     return this.remoteCheckpointsOf(this.seat === "host" ? "guest" : "host");

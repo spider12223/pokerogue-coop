@@ -160,6 +160,16 @@ function step(session: CoopSession, link: CoopLink): boolean {
       // its state again; once the first wave is saved, its start is what the partner reloads
       return false;
     }
+    if (session.resyncWanted === null && link.reloadWaitsForWaveStart) {
+      // A guest of three came back (D40): it comes in at the next wave start, which is reloaded as it begins, so the other
+      // two lose nothing of the wave they are in
+      const wave = session.waveSave?.wave ?? 0;
+      session.rejoinAfterWave ??= wave;
+      if (wave <= session.rejoinAfterWave) {
+        return false;
+      }
+    }
+    session.rejoinAfterWave = null;
     issueResync(session, session.resyncWanted?.reason ?? "rejoin");
     return true;
   }
@@ -341,6 +351,8 @@ async function gate(session: CoopSession): Promise<void> {
         partner: session.partnerName,
         code: link.code,
         back: link.partnerPresent,
+        // a guest of three who came back waits for the next wave start (D40)
+        joining: link.players === 3 && !session.isHost && link.partnerPresent,
         onEnd: () => endSession(session),
         ...(session.reconnectEndMs === null ? {} : { endAfterMs: session.reconnectEndMs }),
       });

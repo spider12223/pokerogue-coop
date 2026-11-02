@@ -7,6 +7,7 @@
 import { globalScene } from "#app/global-scene";
 import { pingKeyName } from "#coop/hotkey-names";
 import { showOverlayMenu } from "#coop/overlay";
+import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { AfkClock, DEFAULT_AFK_TIMERS } from "#coop/takeover";
 import { coopText, pingHint } from "#coop/text";
@@ -36,6 +37,10 @@ export interface AfkWatcherOptions {
   offerOver?: readonly UiMode[];
   /** The hint names no key to nudge with: the screen it is shown on has none (the trade screen) */
   noPingHint?: boolean;
+  /** Who is waited for, named in a game of three (D40); default: the partner */
+  waitingFor?: () => readonly Seat[];
+  /** Whoever is waited for has left the game (D40): the take-over is offered at once */
+  absent?: () => boolean;
 }
 
 /** The watchers that are running, so that changing the timers (dev and test builds) reaches the waits that are open now */
@@ -68,7 +73,11 @@ export class AfkWatcher {
   }
 
   private newClock(): AfkClock {
-    const timers = getCoopSession()?.afkTimers ?? DEFAULT_AFK_TIMERS;
+    // A player who left is not coming back to this decision: the offer comes at once (D40)
+    const timers =
+      this.options.absent?.() === true
+        ? { hintMs: 0, takeoverMs: 0 }
+        : (getCoopSession()?.afkTimers ?? DEFAULT_AFK_TIMERS);
     return new AfkClock({ onHint: () => this.hint(), onOffer: () => this.offer() }, timers);
   }
 
@@ -114,7 +123,12 @@ export class AfkWatcher {
   }
 
   private partnerName(): string {
-    return getCoopSession()?.partnerName ?? "Your partner";
+    const session = getCoopSession();
+    const waited = this.options.waitingFor?.() ?? [];
+    if (session !== null && session.players === 3 && waited.length > 0) {
+      return waited.map(seat => session.nameOf(seat)).join(coopText("andJoin", " and "));
+    }
+    return session?.partnerName ?? "Your partner";
   }
 
   private say(text: string): void {
@@ -159,7 +173,11 @@ export class AfkWatcher {
       return;
     }
     this.offerPending = false;
-    this.say(coopText("takeOverQuestion", "{{partner}} is away. Take over for them?", { partner: this.partnerName() }));
+    this.say(
+      this.options.absent?.() === true
+        ? coopText("takeOverLeft", "{{partner}} has left. Take over for them?", { partner: this.partnerName() })
+        : coopText("takeOverQuestion", "{{partner}} is away. Take over for them?", { partner: this.partnerName() }),
+    );
     this.closeMenu = showOverlayMenu([
       {
         label: coopText("takeOver", "Take over"),

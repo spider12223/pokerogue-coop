@@ -133,6 +133,12 @@ export class CoopLink {
   private readonly reliable: ReliableTransport | null;
   /** The host's channels to its two guests in a game of three (D40) */
   private readonly fanout: FanoutTransport | null;
+  /** Host of three (D40): the hub of the guests' channels, to open a returning guest's again */
+  private readonly hub: RoutedHub | null;
+  /** Host of three: the timings of a guest's new channel */
+  private readonly reliableOptions: ReliableOptions | undefined;
+  /** Host of three: guests who came back and shook hands again; they come in with the next reload (D40) */
+  private readonly returned = new Set<Seat>();
   /** The display name of each seat this link knows */
   private readonly seatNames: Partial<Record<Seat, string>>;
   /** Whether each other seat is connected, in a game of three (D40) */
@@ -175,6 +181,10 @@ export class CoopLink {
     reliable?: ReliableTransport;
     /** The host's channels to its two guests, in a game of three (D40) */
     fanout?: FanoutTransport;
+    /** Host of three: the hub of the guests' channels (a guest who comes back gets a new one, D40) */
+    hub?: RoutedHub;
+    /** Host of three: the timings of a returning guest's channel */
+    reliableOptions?: ReliableOptions;
     /** How many players the game has (D40); default 2 */
     players?: PlayerCount;
     /** The names of the other seats the handshakes told, in a game of three (D40) */
@@ -195,6 +205,8 @@ export class CoopLink {
     this.players = options.players ?? 2;
     this.reliable = options.reliable ?? null;
     this.fanout = options.fanout ?? null;
+    this.hub = options.hub ?? null;
+    this.reliableOptions = options.reliableOptions;
     this.relay = options.relay ?? null;
     this.code = options.code ?? "";
     this.scheduler = options.scheduler ?? systemScheduler;
@@ -280,8 +292,11 @@ export class CoopLink {
     };
   }
 
-  /** Whether the partner is connected right now (in a game of three: anyone else) */
+  /** Whether the partner is connected right now (in a game of three: the host for a guest, any guest for the host) */
   get partnerPresent(): boolean {
+    if (this.players === 3 && this.seat !== "host") {
+      return this.present("host");
+    }
     return this.anyonePresent;
   }
 
@@ -318,7 +333,15 @@ export class CoopLink {
    * old one, and a `RESYNC` has to reload it before anything else is decided (D20)
    */
   get needsResync(): boolean {
-    return this.resyncNeeded;
+    return this.resyncNeeded || this.returned.size > 0;
+  }
+
+  /**
+   * Host of three: a guest came back and comes in with the next reload, which waits for a wave start, so the other two lose
+   * nothing (D40); unless something else needs a reload at once (this host's own connection came back)
+   */
+  get reloadWaitsForWaveStart(): boolean {
+    return this.returned.size > 0 && !this.resyncNeeded;
   }
 
   /** Why the handshake after a return was refused, if it was */
@@ -430,6 +453,11 @@ export class CoopLink {
     if (this.seat !== "host") {
       throw new Error("Only the host sequences a RESYNC");
     }
+    // A guest who came back joins with this reload (D40)
+    for (const seat of this.returned) {
+      this.fanout?.resume(seat);
+    }
+    this.returned.clear();
     if (!this.closed) {
       this.channel.sendAt(message.epoch, {
         key: null,
@@ -734,14 +762,25 @@ export class CoopLink {
       case "relay:peerBack":
       case "relay:peerGone":
         if (event.seat !== undefined) {
-          this.setPresence(event.seat, event.t === "relay:peerBack");
+          if (event.t === "relay:peerBack" && this.seat === "host" && event.seat !== "host") {
+            // A guest came back (D40): shake hands with them again; they are present once that is through
+            void this.relinkGuest(event.seat);
+          } else {
+            this.setPresence(event.seat, event.t === "relay:peerBack");
+          }
           if (event.t !== "relay:peerBack") {
             this.fanout?.stopSending(event.seat);
+            this.returned.delete(event.seat);
           }
         }
-        if (event.seat === "host" && event.t !== "relay:peerBack") {
+        if (event.seat === "host") {
           this.notifyChange();
-          this.emitEnd(event.t === "relay:peerLeft" ? "peerLeft" : "peerGone");
+          if (event.t === "relay:peerBack") {
+            // The host is back: shake hands with it again, and wait for its reload (D40, as D20)
+            void this.relink();
+          } else {
+            this.emitEnd(event.t === "relay:peerLeft" ? "peerLeft" : "peerGone");
+          }
         }
         break;
       case "relay:paired":
@@ -757,6 +796,44 @@ export class CoopLink {
       default:
         break;
     }
+  }
+
+  /**
+   * Host of three: a guest took its seat back (D40). Its handshake runs on a new channel of its seat; once through, the
+   * channel replaces the old one and the guest is present again, and it comes in with the next reload (which waits for a
+   * wave start, so the other two lose nothing).
+   */
+  private async relinkGuest(seat: Seat): Promise<void> {
+    const context = this.context;
+    if (this.closed || this.hub === null || this.fanout === null || context === null) {
+      return;
+    }
+    const channel = new ReliableTransport(this.hub.reopen(seat), this.reliableOptions);
+    let result: HostHandshakeResult;
+    try {
+      result = await hostHandshake(channel, context.build, context.pinned ?? {}, {
+        name: this.name,
+        mode: "resume",
+        players: 3,
+        ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
+        ...(context.timeoutMs === undefined ? {} : { timeoutMs: context.timeoutMs }),
+        ...(context.expectedEffectiveSettingsHash === undefined
+          ? {}
+          : { expectedEffectiveSettingsHash: context.expectedEffectiveSettingsHash }),
+      });
+    } catch (error) {
+      coopLog().error("link", `the handshake with ${seat} after a return failed`, error);
+      channel.close();
+      return;
+    }
+    if (this.closed || !result.ok) {
+      channel.close();
+      return;
+    }
+    this.fanout.replace(seat, channel);
+    this.returned.add(seat);
+    this.setPresence(seat, true);
+    this.notifyChange();
   }
 
   private setPresence(seat: Seat, present: boolean): void {
@@ -907,6 +984,17 @@ export class CoopLink {
         // If the partner is there, the relay pairs the two again and `relink` takes it from there
         for (const event of early) {
           this.relayEvent(event);
+        }
+        if (this.players === 3 && this.seat !== "host") {
+          // A guest of three: the host never left, so no notice brings it back; shake hands again now (D40)
+          void this.relink();
+        } else if (this.players === 3) {
+          // The host of three: what was on its way is lost both ways; each guest shakes hands again, and the run is
+          // reloaded at once (D20)
+          this.resyncNeeded = true;
+          for (const seat of ["guest", "guest2"] as const) {
+            void this.relinkGuest(seat);
+          }
         }
         return;
       }
@@ -1198,6 +1286,24 @@ function establishHostOfThree(
         relay: room.relay,
         code: room.identity.code,
         names: { mine: hostName, theirs: guests.map(seat => through.get(seat)!.name).join(" & ") },
+        hub,
+        ...(room.reliableOptions === undefined ? {} : { reliableOptions: room.reliableOptions }),
+        // The host takes its seat back when its own connection drops (D20)
+        connection: {
+          url: room.url,
+          identity: room.identity,
+          ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
+        },
+        // What a guest who comes back shakes hands with again (D40)
+        context: {
+          build,
+          pinned,
+          ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+          ...(options.expectedEffectiveSettingsHash === undefined
+            ? {}
+            : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
+          ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+        },
         ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
         ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       });
@@ -1394,16 +1500,12 @@ export async function establishGuest(
       ...(options.accountId === undefined ? {} : { accountId: options.accountId }),
       ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     },
-    // A guest of three does not take its seat back by itself yet: its link ends when its connection drops (D40)
-    ...(result.hello.players === 3
-      ? {}
-      : {
-          connection: {
-            url: room.url,
-            identity: room.identity,
-            ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
-          },
-        }),
+    // A guest takes its seat back when its connection drops (D20; a guest of three too, D40)
+    connection: {
+      url: room.url,
+      identity: room.identity,
+      ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
+    },
     ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
     ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
   });

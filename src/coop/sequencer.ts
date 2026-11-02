@@ -280,6 +280,11 @@ export class Sequencer {
   private readonly parkedSizes = new WeakMap<Envelope, number>();
   /** Host: a take over of the guest was sequenced, and the host's player has not decided anything since (D17) */
   private takeoverStreak = false;
+  /**
+   * Host of three (D40): the players a take over was sequenced for, who have not decided anything since: a further take over
+   * of theirs need not wait
+   */
+  private readonly takenOver = new Set<Seat>();
   /** Host: when the next parked take over may be sequenced */
   private takeoverTimer: unknown = null;
   private takeoverDue = Number.POSITIVE_INFINITY;
@@ -367,6 +372,7 @@ export class Sequencer {
     this.parked = [];
     this.cancelTakeoverCheck();
     this.takeoverStreak = false;
+    this.takenOver.clear();
     this.closedKeys.clear();
     this.sequencedKeys.clear();
     this.seenKeys.clear();
@@ -761,8 +767,13 @@ export class Sequencer {
       return "duplicate";
     }
     const twin = this.parked.find(parked => parked.key !== null && keyId(parked.key) === id);
-    // The host's player answers while the guest's take over of that decision waits for its time: the answer wins (D17)
-    const supersedes = twin !== undefined && !remote && !takeover && twin.takeover === true && twin.author !== "host";
+    // The host's player answers while the guest's take over of that decision waits for its time: the answer wins (D17). In
+    // a game of three the same for any player's own answer to a take over by someone else (D40)
+    const supersedes =
+      twin !== undefined
+      && !takeover
+      && twin.takeover === true
+      && (this.seats.length > 2 ? twin.author !== author : !remote && twin.author !== "host");
     if (twin !== undefined && !supersedes) {
       return "duplicate";
     }
@@ -796,6 +807,10 @@ export class Sequencer {
     if (!remote && !takeover) {
       // The host's player is there: a take over of theirs waits again (D17)
       this.takeoverStreak = false;
+    }
+    if (!takeover) {
+      // (any player of three who decides is there again, D40)
+      this.takenOver.delete(author);
     }
     if (hold) {
       this.parkedSizes.set(envelope, size);
@@ -872,7 +887,15 @@ export class Sequencer {
    * decided anything since (the reward screen goes on step by step).
    */
   private takeoverRipe(awaiter: Awaiter): boolean {
-    return this.takeoverStreak || this.scheduler.now() - awaiter.openedAt >= this.takeoverAfterMs();
+    const waitedLongEnough = this.scheduler.now() - awaiter.openedAt >= this.takeoverAfterMs();
+    if (this.seats.length > 2) {
+      // A game of three (D40): the streak is the player's whose decision it is
+      const deciders =
+        awaiter.authors
+        ?? (awaiter.remaining[0] === undefined ? undefined : this.authorsFor(awaiter, awaiter.remaining[0]));
+      return (deciders?.length === 1 && this.takenOver.has(deciders[0])) || waitedLongEnough;
+    }
+    return this.takeoverStreak || waitedLongEnough;
   }
 
   /**
@@ -954,6 +977,14 @@ export class Sequencer {
     this.sequencedKeys.add(keyId(key));
     if (envelope.takeover === true && envelope.author !== "host") {
       this.takeoverStreak = true;
+    }
+    if (envelope.takeover === true && this.seats.length > 2) {
+      // Whose decision was taken over (D40): the one player who may decide it
+      const awaiter = this.awaiterFor(key);
+      const deciders = awaiter === undefined ? undefined : this.authorsFor(awaiter, key);
+      if (deciders?.length === 1) {
+        this.takenOver.add(deciders[0]);
+      }
     }
     const takeover = envelope.takeover === true ? { takeover: true as const } : {};
     const decision: AnyDecision = { seq, key, author: envelope.author, payload: envelope.payload, ...takeover };

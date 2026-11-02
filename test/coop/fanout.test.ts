@@ -84,4 +84,29 @@ describe("FanoutTransport (D40)", () => {
     expect(atGuest2).toEqual([5]);
     expect(seen).toEqual([6]);
   });
+
+  it("takes a returning guest's new channel: sending to them starts again, the old channel stays shut (D40)", async () => {
+    const room = createLoopbackRoom(3);
+    const hub = new RoutedHub(room.host, ["guest", "guest2"]);
+    const host = new FanoutTransport(
+      new Map<Seat, ReliableTransport>([
+        ["guest", new ReliableTransport(hub.channel("guest"))],
+        ["guest2", new ReliableTransport(hub.channel("guest2"))],
+      ]),
+    );
+    const seen: Envelope[] = [];
+    host.onMessage(m => seen.push(m));
+    host.stopSending("guest");
+    // the guest comes back on a new channel of its seat
+    const returned = new ReliableTransport(hub.reopen("guest"));
+    host.replace("guest", returned);
+    host.resume("guest");
+    const guestAgain = new ReliableTransport(room.guests.get("guest")!);
+    const atGuest = payloads(guestAgain);
+    host.send(message("host", 7));
+    guestAgain.send(message("guest", 8));
+    await settle();
+    expect(atGuest).toEqual([7]);
+    expect(seen.map(m => [m.from, m.payload])).toEqual([["guest", 8]]);
+  });
 });
