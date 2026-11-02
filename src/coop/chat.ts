@@ -6,6 +6,7 @@
 
 import { globalScene } from "#app/global-scene";
 import { CHAT_MAX, cleanChat, filterChat } from "#coop/chat-text";
+import { type Draggable, makeDraggable } from "#coop/draggable";
 import { chatKeyName } from "#coop/hotkey-names";
 import type { CoopLink } from "#coop/link";
 import { playerColorHex } from "#coop/player-colors";
@@ -115,6 +116,7 @@ interface Chat {
 
 let parts: Parts | null = null;
 let chat: Chat | null = null;
+let drag: Draggable | null = null;
 
 function element<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -317,6 +319,10 @@ function build(): Parts {
   window.addEventListener("keydown", onChatKey, true);
   window.addEventListener("keyup", onChatKey, true);
   onClick(toggle, () => setOpen(!(chat?.open ?? false)));
+  // The player drags the box by its title bar or its button anywhere on the screen; this browser keeps the spot. It is
+  // laid out from the right: its right edge stays where it was dropped when it opens
+  head.title = coopText("chatMoveHint", "Drag to move · double-click to put it back");
+  drag = makeDraggable(root, [head, toggle], "coopChatPos", "right");
   close.addEventListener("click", () => setOpen(false));
   mute.addEventListener("click", () => {
     setMuted(!(chat?.muted ?? false));
@@ -416,6 +422,8 @@ function setOpen(open: boolean): void {
     (document.activeElement as HTMLElement).blur();
   }
   drawToggle();
+  // (open, the box is taller: it stays inside the window)
+  drag?.clamp();
 }
 
 function setMuted(muted: boolean): void {

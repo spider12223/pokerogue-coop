@@ -38,7 +38,7 @@ async function shot(client: Client, name: string): Promise<void> {
 
 useRelay();
 
-test("the host's debug menu: F8 opens it for the host only; a cheat reaches both clients (D42)", async ({
+test("the host's debug menu: F8 opens it for the host only; a cheat reaches both clients; the panel and the chat move (D42)", async ({
   browser,
 }) => {
   test.setTimeout(600_000);
@@ -107,4 +107,40 @@ test("the host's debug menu: F8 opens it for the host only; a cheat reaches both
   expect(await coop<number>(host, "debugMenu.panel.waiting")).toBe(0);
   await shot(host, "08-after");
   await shot(guest, "08-after");
+
+  // The panel and the chat box are dragged by their title bars; the browser keeps where they were dropped
+  const page = host.page;
+  const dragBy = async (selector: string, dx: number, dy: number): Promise<void> => {
+    const handle = (await page.locator(selector).boundingBox())!;
+    const x = handle.x + 40;
+    const y = handle.y + handle.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y + dy, { steps: 8 });
+    await page.mouse.up();
+  };
+  await page.keyboard.press("F8");
+  await expect.poll(() => coop<boolean>(host, "debugMenu.panel.open")).toBe(true);
+  const panelBefore = (await page.locator("#coopDebug").boundingBox())!;
+  // (not as far as where the chat box opens: a press there would be on the panel)
+  await dragBy("#coopDebug .coop-debug-head", 300, 0);
+  const panelAfter = (await page.locator("#coopDebug").boundingBox())!;
+  expect(panelAfter.x - panelBefore.x).toBeGreaterThan(250);
+  expect(await page.evaluate(() => localStorage.getItem("coopDebugPos"))).not.toBeNull();
+
+  await page.locator("#coopChat .coop-chat-toggle").click();
+  await expect.poll(() => coop<boolean>(host, "chat.open")).toBe(true);
+  const chatBefore = (await page.locator("#coopChat").boundingBox())!;
+  await dragBy("#coopChat .coop-chat-head", -700, 250);
+  const chatAfter = (await page.locator("#coopChat").boundingBox())!;
+  expect(chatBefore.x - chatAfter.x).toBeGreaterThan(500);
+  expect(await page.evaluate(() => localStorage.getItem("coopChatPos"))).not.toBeNull();
+  await page.waitForTimeout(300);
+  await shot(host, "09-moved");
+
+  // A double click on the title bar puts the panel back
+  await page.locator("#coopDebug .coop-debug-title").dblclick();
+  const panelBack = (await page.locator("#coopDebug").boundingBox())!;
+  expect(Math.abs(panelBack.x - panelBefore.x)).toBeLessThan(2);
+  expect(await page.evaluate(() => localStorage.getItem("coopDebugPos"))).toBeNull();
 });

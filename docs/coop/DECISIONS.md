@@ -1015,6 +1015,10 @@ A small chat in every linked session (the lobby, the starter select, the run and
   a saved keyboard mapping gets H if it is free) opens it with the cursor in the line; Enter sends, an empty Enter or Esc
   closes. While the line has the keyboard the game gets no key (the box stops each key event before the game's listener
   on the window). Text is written with `textContent` only. The box and what was said go with the session.
+- **Moving the box:** the player drags it by its title bar or its **Chat** button (`src/coop/draggable.ts`); a press that
+  hardly moves is still a click. The spot is measured from the window's right edge (the box opens to the left, its button
+  stays put), kept in the browser (`localStorage`, `coopChatPos`) and kept inside the window; a double click on the title
+  bar puts it back at the top right.
 
 ## D39. Endless
 
@@ -1137,8 +1141,9 @@ like any other run.
     Pokémon (species, level, shiny) to any player's share.
   - *Waves:* a plan for any later wave (the game's, wild, trainer or Mystery Encounter; the enemies' species in order,
     their level, boss bars, shiny; the trainer; the encounter), a jump to a later wave, and the biome after this wave.
-  - *Rewards:* the items of the next reward screen (on an open reward screen: at once, the screen is drawn again), free
-    shop and free rerolls, money, Poké Balls, items of the whole team.
+  - *Rewards:* up to 8 items of the next reward screen, any item of the game (on an open reward screen: at once, the
+    screen is drawn again); the screen offers at least as many options as were chosen. Free shop and free rerolls,
+    money, Poké Balls, items of the whole team.
   - *Battle:* win the wave, knock out / 1 HP / full HP / level of an enemy or all of them, stat stages, status, weather,
     terrain.
   - *Fun:* our Pokémon take no damage, our hits knock out, shiny enemies, EXP and money multipliers, a level for every
@@ -1156,6 +1161,8 @@ like any other run.
   the next reward screen's items once that screen is made; a jump and a biome once used. The build identity (D1) leaves
   out what the menu wrote, so a rejoining player still matches.
 - **Only forward:** a jump goes to a later wave only (the keys of the waves played are used).
+- **Moving it:** the panel is dragged by its title bar (`src/coop/draggable.ts`, as the chat box: D38); the spot is kept in
+  the browser (`localStorage`, `coopDebugPos`), kept inside the window, and a double click on the title bar puts it back.
 
 ## See also
 

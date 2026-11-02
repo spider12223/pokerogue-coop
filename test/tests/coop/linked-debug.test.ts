@@ -186,7 +186,9 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(await winWave(r)).toBe(true);
     const before = rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] };
     const step = r.session.rewardStep;
-    queueDebug({ t: "rewards", items: ["MASTER_BALL", "RARE_CANDY"] }, { t: "money", v: 9_999 });
+    // five: more than the screen's three, and items used at once (a ball, a candy, a potion) as well as held ones
+    const items = ["MASTER_BALL", "RARE_CANDY", "POTION", "LEFTOVERS", "MEMORY_MUSHROOM"];
+    queueDebug({ t: "rewards", items }, { t: "money", v: 9_999 });
     await vi.waitUntil(() => r.ctx.game.scene.phaseManager.getCurrentPhase() !== (before as unknown), {
       interval: 5,
       timeout: 4000,
@@ -195,7 +197,7 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(r.ctx.game.scene.money).toBe(9_999);
     await openUi(r.ctx, "SelectModifierPhase");
     const after = rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] };
-    expect(after.typeOptions.slice(0, 2).map(option => option.type.id)).toEqual(["MASTER_BALL", "RARE_CANDY"]);
+    expect(after.typeOptions.map(option => option.type.id)).toEqual(items);
     // the items were for that screen: the next is the game's again
     expect(r.session.debugState.rewards).toBeNull();
     pickerSkips(r);

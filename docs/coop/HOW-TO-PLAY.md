@@ -91,13 +91,14 @@ be changed in **Menu > Settings > Keyboard**). Only the host sees it; friends on
   held items, heal, give a Pokémon to another player, remove one, or add any Pokémon to anyone.
 - **Waves:** choose what a later wave is (wild, trainer, Mystery Encounter), which Pokémon come and at what level,
   boss bars, shiny; jump ahead to a later wave; pick the next biome.
-- **Rewards:** choose the items of the next reward screen (on a reward screen, it changes at once), free shop and
-  rerolls, money, Poké Balls.
+- **Rewards:** choose up to 8 items (any item of the game) for the next reward screen, which then offers all of them (on
+  a reward screen, it changes at once); free shop and rerolls, money, Poké Balls.
 - **Battle and fun:** win the wave, knock out or weaken enemies, stat stages, status, weather, terrain, no damage for your
   team, one-hit knockouts, EXP and money multipliers, everyone shiny, random species.
 
 A cheat happens with the next turn (or at once on a reward screen); the line at the bottom of the panel says what is
-waiting. The search box finds an option in any tab. A cheated run counts for your accounts like any other.
+waiting. The search box finds an option in any tab. Drag the panel by its title bar to put it anywhere; double-click the
+title bar to put it back. A cheated run counts for your accounts like any other.
 
 ## Mystery Encounters
 
@@ -171,7 +172,8 @@ server collects logs. It contains your display names and what you chose in the r
 The keys can be changed in **Menu > Settings > Keyboard**.
 
 **The chat** is there in every co-op game. Swear words and links are hidden, for both of you, and **Mute** in the chat
-hides your partner's messages. A message that arrives while the chat is closed shows under the Chat button for a few
+hides your partner's messages. Drag the chat by its title bar or its button to put it anywhere on the screen (your browser
+remembers the spot); double-click the title bar to put it back. A message that arrives while the chat is closed shows under the Chat button for a few
 seconds.
 
 ## Limits

@@ -79,6 +79,11 @@ export function takeDebugBiome(): number | null {
   return biome;
 }
 
+/** @returns How many items the host chose for the next reward screen (0: none): the screen offers at least that many */
+export function debugRewardCount(): number {
+  return debugState()?.rewards?.length ?? 0;
+}
+
 /** A reward screen's options were made: the items the host chose were used */
 export function consumeDebugRewards(): void {
   const state = debugState();

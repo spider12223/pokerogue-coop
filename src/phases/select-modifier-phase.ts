@@ -7,6 +7,7 @@ import { coopRewardOptionsReady } from "#coop/checkpoints";
 import { endTurnCosmetics, getCosmeticView } from "#coop/cosmetic-view";
 import { isDebugBatch } from "#coop/debug/actions";
 import { applyDebugBatch } from "#coop/debug/apply";
+import { debugRewardCount } from "#coop/debug/hooks";
 import { setDebugSink } from "#coop/debug/queue";
 import type { RewardOptionView, RewardView } from "#coop/legal";
 import { type PartyEdit, partyEditKey } from "#coop/party-edit";
@@ -501,6 +502,9 @@ export class SelectModifierPhase extends BattlePhase {
       } else {
         modifierCountHolder.value = newItemCount;
       }
+    } else {
+      // Co-op (D42): every item the host's debug menu chose for this screen is offered
+      modifierCountHolder.value = Math.max(modifierCountHolder.value, debugRewardCount());
     }
 
     return modifierCountHolder.value;

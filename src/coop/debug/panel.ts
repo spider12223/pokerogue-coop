@@ -9,6 +9,7 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { DebugAction } from "#coop/debug/actions";
 import { debugSendsNow, onDebugQueue, queueDebug, waitingDebug } from "#coop/debug/queue";
 import { emptyWavePlan, MAX_PLANNED_REWARDS, MAX_PLANNED_SPECIES, type WavePlan } from "#coop/debug/state";
+import { type Draggable, makeDraggable } from "#coop/draggable";
 import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
@@ -60,6 +61,7 @@ interface Choice {
 }
 
 let parts: Parts | null = null;
+let drag: Draggable | null = null;
 let running = false;
 let open = false;
 let tab: TabId = "party";
@@ -107,10 +109,11 @@ function enumChoices(values: Record<string, string | number>, skip: readonly num
 const HELD_FAMILIES: readonly string[] = ["BERRY", "ATTACK_TYPE_BOOSTER", "BASE_STAT_BOOSTER", "SPECIES_STAT_BOOSTER"];
 
 /**
- * The items of the game, as held items or items of the whole team. Made from the game's own item list; drawing nothing at
- * random (the battle's random numbers must stay as they are on every client).
+ * The items of the game: every one (what a reward screen can offer), the held items and the items of the whole team. Made from
+ * the game's own item list; drawing nothing at random (the battle's random numbers must stay as they are on every client).
  */
-function itemChoices(): { held: Choice[]; team: Choice[] } {
+function itemChoices(): { items: Choice[]; held: Choice[]; team: Choice[] } {
+  const items: Choice[] = [];
   const held: Choice[] = [];
   const team: Choice[] = [];
   const state = Phaser.Math.RND.state();
@@ -126,6 +129,7 @@ function itemChoices(): { held: Choice[]; team: Choice[] } {
           name = titleOf(key);
         }
         const choice = { label: `${name}${random ? ` (${t("Random", "random")})` : ""} · ${key}`, value: key };
+        items.push(choice);
         if (random) {
           if (HELD_FAMILIES.includes(key)) {
             held.push(choice);
@@ -136,13 +140,14 @@ function itemChoices(): { held: Choice[]; team: Choice[] } {
           team.push(choice);
         }
       } catch {
-        // an item the panel cannot make without a battle: not listed
+        // an item the panel cannot make without a battle: a reward screen can still offer it
+        items.push({ label: `${titleOf(key)} · ${key}`, value: key });
       }
     }
   } finally {
     Phaser.Math.RND.state(state);
   }
-  return { held, team };
+  return { items, held, team };
 }
 
 function list(name: string): Choice[] {
@@ -161,12 +166,14 @@ function list(name: string): Choice[] {
     case "abilities":
       made = allAbilities.slice(1).map(ability => ({ label: ability.name, value: ability.id }));
       break;
+    case "items":
     case "held":
     case "team": {
-      const items = itemChoices();
-      lists.set("held", items.held);
-      lists.set("team", items.team);
-      return name === "held" ? items.held : items.team;
+      const made = itemChoices();
+      lists.set("items", made.items);
+      lists.set("held", made.held);
+      lists.set("team", made.team);
+      return made[name];
     }
     case "natures":
       made = enumChoices(Nature as unknown as Record<string, number>).map(choice => ({
@@ -815,8 +822,7 @@ function rewardRows(): HTMLElement[] {
       }),
     );
   }
-  const item = searchBox("held", t("RewardSearch", "Item…"));
-  const team = searchBox("team", t("TeamItemSearch", "Team item…"));
+  const item = searchBox("items", t("RewardSearch", "Any item…"));
   const add = (box: { read: () => Choice | null }) => () => {
     const found = box.read();
     if (found !== null && draftRewards.length < MAX_PLANNED_REWARDS) {
@@ -825,8 +831,7 @@ function rewardRows(): HTMLElement[] {
     }
   };
   rows.push(row(t("RewardItems", "Items (in order)"), chips));
-  rows.push(row(t("RewardHeld", "Add held item"), item.input, button("+", add(item))));
-  rows.push(row(t("RewardTeam", "Add team item"), team.input, button("+", add(team))));
+  rows.push(row(t("RewardAdd", "Add an item (any of the game's, up to 8)"), item.input, button("+", add(item))));
   rows.push(
     row(
       "",
@@ -1151,6 +1156,8 @@ function draw(): void {
   }
   parts.body.replaceChildren(...rows);
   drawStatus();
+  // (another tab is taller or shorter: the panel stays inside the window)
+  drag?.clamp();
 }
 
 function isTyping(target: EventTarget | null): boolean {
@@ -1213,6 +1220,7 @@ function build(): Parts {
   close.type = "button";
   close.addEventListener("click", () => setOpen(false));
   head.append(title, close);
+  head.title = t("MoveHint", "Drag to move · double-click to put it back");
   const search = element("input", "coop-debug-search");
   search.type = "search";
   search.placeholder = t("Search", "Search every tab…");
@@ -1233,6 +1241,8 @@ function build(): Parts {
   }
   root.addEventListener("focusin", () => releaseGameKeys());
   window.addEventListener("keydown", onDebugKey, true);
+  // The host drags it by its title bar anywhere on the screen; this browser keeps the spot
+  drag = makeDraggable(root, [head], "coopDebugPos");
   return { root, tabs, search, body, status };
 }
 
@@ -1245,6 +1255,7 @@ function setOpen(next: boolean): void {
   releaseGameKeys();
   if (open) {
     draw();
+    drag?.clamp();
   } else if (parts.root.contains(document.activeElement)) {
     (document.activeElement as HTMLElement).blur();
   }

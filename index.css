@@ -653,6 +653,17 @@ a {
   pointer-events: auto;
 }
 
+/* the chat box and the debug menu are dragged by their title bar (and the chat by its button too): src/coop/draggable.ts */
+.coop-drag-handle {
+  cursor: move;
+  touch-action: none;
+  user-select: none;
+}
+
+.coop-drag-handle button:not(.coop-drag-handle) {
+  cursor: pointer;
+}
+
 #coopChat button {
   font: inherit;
   color: inherit;
