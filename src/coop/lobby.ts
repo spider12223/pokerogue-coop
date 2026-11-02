@@ -37,7 +37,6 @@ import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
 import { coloredName } from "#coop/player-colors";
 import {
-  COOP_STARTER_POINTS,
   type CoopRunMode,
   hashCanonical,
   keyId,
@@ -46,6 +45,7 @@ import {
   type Seat,
   type SeatRecord,
   seatsFor,
+  starterPoints,
 } from "#coop/protocol";
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
@@ -696,8 +696,10 @@ async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopT
   closeStarterLobby();
   const lobby = new StarterLobby({
     seat: session.seat,
+    players: link.players,
     link,
-    sharedLimit: COOP_STARTER_POINTS,
+    // 15 points for two, 20 for three (D32, D40)
+    sharedLimit: starterPoints(link.players),
     makeRunSeed: () => session.runSeed,
     localEvents: () => timedEventManager.eventsByClock(),
   });

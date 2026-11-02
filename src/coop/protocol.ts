@@ -577,10 +577,18 @@ export function isStartPayload(value: unknown, players: PlayerCount = 2): value 
  * - `collection`: the sender's Pokémon, for the starter select of both (D32); `ask` asks for the partner's in return
  */
 export type LobbyMessage =
-  | { t: "picks"; picks: CoopStarter[]; cost: number }
-  | { t: "ready"; starters: CoopStarter[]; cost: number; snapshot: AccountSnapshot; events: string[]; gen: number }
-  | { t: "unready" }
-  | { t: "reset"; gen: number }
+  | { t: "picks"; picks: CoopStarter[]; cost: number; seat?: Seat }
+  | {
+      t: "ready";
+      starters: CoopStarter[];
+      cost: number;
+      snapshot: AccountSnapshot;
+      events: string[];
+      gen: number;
+      seat?: Seat;
+    }
+  | { t: "unready"; seat?: Seat }
+  | { t: "reset"; gen: number; seat?: Seat }
   | { t: "collection"; collection: CollectionData; ask: boolean }
   /** At the end of a run (D35): whether this player wants to play again */
   | { t: "again"; want: boolean }
@@ -597,6 +605,10 @@ export function isLobbyMessage(value: unknown): value is LobbyMessage {
   const message = value as Record<string, unknown>;
   const isList = (list: unknown): boolean =>
     Array.isArray(list) && list.length <= STARTERS_PER_SEAT_MAX && list.every(isCoopStarter);
+  // In a game of three, whose party the host passes on, or whose reset it is (D40)
+  if (message["seat"] !== undefined && !isSeat(message["seat"])) {
+    return false;
+  }
   switch (message["t"]) {
     case "picks":
       return isList(message["picks"]) && typeof message["cost"] === "number";

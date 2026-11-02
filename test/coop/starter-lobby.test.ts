@@ -148,3 +148,123 @@ describe("Co-op: the starter select when a connection drops (D20)", () => {
     expect(fake.starts[1]).toEqual(fake.starts[0]);
   });
 });
+
+/**
+ * Three lobbies in a room of three (D40): the host's messages reach both guests, a guest's reach the host only, stamped with
+ * the guest's seat. Nothing is delivered until `flush`, so the test decides what happens at the same time.
+ */
+function roomOfThree() {
+  type Seat3 = "host" | "guest" | "guest2";
+  const queue: { to: Seat3; message: LobbyMessage; from: Seat3 }[] = [];
+  const lobbyListeners = new Map<Seat3, (message: LobbyMessage, from: Seat3) => void>();
+  const startListeners = new Map<Seat3, (start: StartPayload) => void>();
+  const presenceListeners = new Map<Seat3, (seat: Seat3, present: boolean) => void>();
+  const starts: StartPayload[] = [];
+  const linkOf = (seat: Seat3) => ({
+    players: 3,
+    partnerPresent: true,
+    sendLobby: (message: LobbyMessage) => {
+      for (const to of seat === "host" ? (["guest", "guest2"] as const) : (["host"] as const)) {
+        queue.push({ to, message, from: seat });
+      }
+    },
+    onLobby: (listener: (message: LobbyMessage, from: Seat3) => void) => {
+      lobbyListeners.set(seat, listener);
+      return () => undefined;
+    },
+    sendStart: (start: StartPayload) => {
+      starts.push(start);
+      startListeners.get("guest")?.(start);
+      startListeners.get("guest2")?.(start);
+    },
+    onStart: (listener: (start: StartPayload) => void) => {
+      startListeners.set(seat, listener);
+      return () => undefined;
+    },
+    onEnd: () => () => undefined,
+    onPresence: (listener: (seat: Seat3, present: boolean) => void) => {
+      presenceListeners.set(seat, listener);
+      return () => undefined;
+    },
+  });
+  const make = (seat: Seat3) =>
+    new StarterLobby({
+      seat,
+      players: 3,
+      link: linkOf(seat) as never,
+      sharedLimit: 20,
+      makeRunSeed: () => "seed",
+      localEvents: () => ["Halloween"],
+    });
+  const lobbies = { host: make("host"), guest: make("guest"), guest2: make("guest2") };
+  const flush = (): void => {
+    while (queue.length > 0) {
+      const { to, message, from } = queue.shift()!;
+      lobbyListeners.get(to)?.(message, from);
+    }
+  };
+  /** A seat's player left: the others' links say so */
+  const leave = (gone: Seat3): void => {
+    for (const [seat, listener] of presenceListeners) {
+      if (seat !== gone) {
+        listener(gone, false);
+      }
+    }
+  };
+  return { ...lobbies, flush, starts, leave };
+}
+
+describe("Co-op: the starter select of three (D40)", () => {
+  it("shows each player the others' picks, the guests' through the host, and takes their points", () => {
+    const room = roomOfThree();
+    room.guest.setPicks([STARTER], 3);
+    room.host.setPicks([STARTER, STARTER], 5);
+    room.flush();
+    expect(room.guest2.partners.get("guest")).toEqual({ picks: [STARTER], cost: 3, ready: false });
+    expect(room.guest2.partners.get("host")?.cost).toBe(5);
+    expect(room.host.partners.get("guest")?.cost).toBe(3);
+    expect(room.guest.partners.get("guest")).toBeUndefined();
+    expect(room.guest2.valueLimit).toBe(12);
+  });
+
+  it("starts the run once all three are ready, with every seat's starters and account", () => {
+    const room = roomOfThree();
+    room.host.setReady([STARTER], 5, SNAPSHOT);
+    room.guest.setReady([STARTER, STARTER], 5, SNAPSHOT);
+    room.flush();
+    expect(room.starts).toEqual([]);
+    room.guest2.setReady([STARTER], 5, SNAPSHOT);
+    room.flush();
+    expect(room.starts).toHaveLength(1);
+    const [start] = room.starts;
+    expect(Object.keys(start.starters)).toEqual(["host", "guest", "guest2"]);
+    expect(Object.keys(start.snapshots)).toEqual(["host", "guest", "guest2"]);
+    expect(start.timedEvents).toEqual(["Halloween"]);
+    expect(room.guest2.startInfo).toEqual(start);
+  });
+
+  it("resets the two guests and sends no START when all three together go over the 20 points", () => {
+    const room = roomOfThree();
+    room.host.setReady([STARTER], 7, SNAPSHOT);
+    room.flush();
+    // both guests confirm at the same time, each within what it saw left
+    expect(room.guest.setReady([STARTER], 7, SNAPSHOT)).toBe(true);
+    expect(room.guest2.setReady([STARTER], 7, SNAPSHOT)).toBe(true);
+    room.flush();
+    expect(room.starts).toEqual([]);
+    expect([room.host.localReady, room.guest.localReady, room.guest2.localReady]).toEqual([false, false, false]);
+    expect(room.guest2.wasReset).toBe(true);
+  });
+
+  it("ends for the other two when a guest leaves", () => {
+    const room = roomOfThree();
+    room.leave("guest2");
+    expect(room.host.closed).toBe(true);
+    expect(room.guest.closed).toBe(true);
+  });
+
+  it("takes at most two starters per player", () => {
+    const room = roomOfThree();
+    expect(room.guest.setReady([STARTER, STARTER, STARTER], 3, SNAPSHOT)).toBe(false);
+  });
+});
