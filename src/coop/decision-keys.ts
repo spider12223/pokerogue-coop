@@ -105,4 +105,17 @@ export function retryKey(wave: number): DecisionKey {
   return { wave, turn: 0, kind: "RETRY", ref: NO_REF };
 }
 
+/**
+ * The host's debug batch of a turn (D42): sequenced with the turn's commands, applied after them. Only a run whose host
+ * turned the menu on has it.
+ */
+export function debugTurnKey(wave: number, turn: number): DecisionKey {
+  return { wave, turn, kind: "DEBUG", ref: `t${turn}` };
+}
+
+/** The host's debug batch of a step of a reward screen (D42): one way out of the step's window */
+export function debugRewardKey(wave: number, screen: number, step: number): DecisionKey {
+  return { wave, turn: 0, kind: "DEBUG", ref: `r${screen}:${step}` };
+}
+
 export { NO_REF };

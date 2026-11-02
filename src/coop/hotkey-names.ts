@@ -27,6 +27,8 @@ export function coopSettingLabel(i18nKey: string): { defaultValue: string } | Re
       return { defaultValue: "Co-op: emote" };
     case "buttonCoopChat":
       return { defaultValue: "Co-op: chat" };
+    case "buttonCoopDebug":
+      return { defaultValue: "Co-op: debug menu (host)" };
     default:
       return {};
   }
@@ -57,6 +59,11 @@ export function bindCoopHotkeys(custom: Record<string, unknown>, isDev: boolean)
   // The chat box (D38) came later: H, if it is free
   if (!values.includes(SettingKeyboard.BUTTON_COOP_CHAT) && custom["KEY_H"] === -1) {
     custom["KEY_H"] = SettingKeyboard.BUTTON_COOP_CHAT;
+    changed = true;
+  }
+  // The debug menu (D42): F8, if it is free
+  if (!values.includes(SettingKeyboard.BUTTON_COOP_DEBUG) && custom["KEY_F8"] === -1) {
+    custom["KEY_F8"] = SettingKeyboard.BUTTON_COOP_DEBUG;
     changed = true;
   }
   return changed;

@@ -106,6 +106,7 @@ export const DECISION_KINDS = [
   "ME_CHOICE",
   "SIDE_PICK",
   "RETRY",
+  "DEBUG",
 ] as const;
 
 export type DecisionKind = (typeof DECISION_KINDS)[number];
@@ -310,6 +311,8 @@ export interface HelloPayload {
   players: PlayerCount;
   /** A challenge run's challenges (D41), and only a challenge run's: at least one is on */
   challenges?: CoopChallenge[];
+  /** The host's debug menu is on (D42): every turn has a `DEBUG` decision of the host's */
+  debug?: boolean;
 }
 
 /** The kind of a co-op run (D39); a challenge run is a classic run with challenges (D41) */
@@ -448,6 +451,7 @@ export function isHelloPayload(value: unknown): value is HelloPayload {
     && (hello["players"] === 2 || hello["players"] === 3)
     // A challenge run has its challenges, and no other run has any (D41)
     && (hello["runMode"] === "challenge" ? isCoopChallenges(hello["challenges"]) : hello["challenges"] === undefined)
+    && (hello["debug"] === undefined || typeof hello["debug"] === "boolean")
   );
 }
 

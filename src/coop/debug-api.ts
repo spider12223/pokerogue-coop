@@ -13,6 +13,7 @@ import type { Checkpoint } from "#coop/checkpoint-log";
 import { coopLog } from "#coop/coop-log";
 import type { CosmeticStats } from "#coop/cosmetic";
 import { getCosmeticView, sendEmote, sendPing } from "#coop/cosmetic-view";
+import { debugPanelInfo } from "#coop/debug/panel";
 import { getCoopName, setCoopName } from "#coop/display-name";
 import { pingKeyName } from "#coop/hotkey-names";
 import { openEmoteWheel, pingNow } from "#coop/hotkeys";
@@ -72,6 +73,7 @@ export interface CoopDebugReward {
 export interface CoopDebugPartyMember {
   owner: Seat | null;
   name: string;
+  level: number;
   hp: number;
   maxHp: number;
   moves: number[];
@@ -139,6 +141,8 @@ export interface CoopDebugApi {
   readonly partnerPresent: boolean;
   /** The chat box (D38): whether it is open, and its lines as shown; `null` without a session */
   readonly chat: ReturnType<typeof chatInfo>;
+  /** The host's debug menu (D42): whether the run has it, and the host's panel (`null` for a guest) */
+  readonly debugMenu: { on: boolean; panel: ReturnType<typeof debugPanelInfo> };
   /** The partner came back and this client still has to reload (D20) */
   readonly needsResync: boolean;
   /** What the waiting screen says while the partner is away, or `null` (D20) */
@@ -350,6 +354,7 @@ function api(): CoopDebugApi {
       return (globalScene?.getPlayerParty?.() ?? []).map(pokemon => ({
         owner: session?.ownership.get(pokemon.id) ?? null,
         name: pokemon.name,
+        level: pokemon.level,
         hp: pokemon.hp,
         maxHp: pokemon.getMaxHp(),
         moves: pokemon.getMoveset().map(move => move.moveId),
@@ -368,6 +373,9 @@ function api(): CoopDebugApi {
     },
     get chat() {
       return chatInfo();
+    },
+    get debugMenu() {
+      return { on: getCoopSession()?.debug ?? false, panel: debugPanelInfo() };
     },
     get partnerPresent() {
       return getCoopSession()?.link?.partnerPresent ?? false;

@@ -24,6 +24,9 @@ import { attachCoopLog, setCoopLogServer } from "#coop/coop-diagnostics";
 import { coopLog, hookPageIntoCoopLog } from "#coop/coop-log";
 import type { CoopSlot } from "#coop/coop-slot";
 import { startCosmeticView, stopCosmeticView } from "#coop/cosmetic-view";
+import { writeDebugOverrides } from "#coop/debug/overrides";
+import { startDebugPanel, stopDebugPanel } from "#coop/debug/panel";
+import { clearDebugQueue } from "#coop/debug/queue";
 import { getCoopName, setCoopName } from "#coop/display-name";
 import { systemImportAvailable } from "#coop/import-account";
 import {
@@ -148,6 +151,9 @@ export function leaveCoop(): void {
   stopCoopLog = null;
   setReportButtonVisible(false);
   stopChat();
+  stopDebugPanel();
+  clearDebugQueue();
+  writeDebugOverrides(null, 0);
   closeStarterLobby();
   stopCosmeticView();
   stopPacer();
@@ -665,6 +671,8 @@ export function beginSession(
     accountIds?: SeatRecord<string>;
     runMode?: CoopRunMode;
     challenges?: readonly CoopChallenge[];
+    /** The host's debug menu is on (D42) */
+    debug?: boolean;
   } = {},
 ): CoopSession {
   const session = startCoopSession({
@@ -676,6 +684,7 @@ export function beginSession(
     ...(init.accountIds === undefined ? {} : { accountIds: init.accountIds }),
     ...(init.runMode === undefined ? {} : { runMode: init.runMode }),
     ...(init.challenges === undefined ? {} : { challenges: init.challenges }),
+    ...(init.debug === true ? { debug: true } : {}),
   });
   session.link = link;
   // The seat token, so that a reloaded or reopened tab takes the seat back by itself (D20)
@@ -720,6 +729,14 @@ export function beginSession(
   setReportButtonVisible(true);
   // The chat box (D38), for the whole session
   startChat(link, getCoopName());
+  // The host's debug menu (D42): only the host's, and only with the menu on; nothing of an earlier run's is in effect
+  clearDebugQueue();
+  writeDebugOverrides(null, 0);
+  if (seat === "host" && session.debug) {
+    startDebugPanel();
+  } else {
+    stopDebugPanel();
+  }
   link.sequencer.onDesync(error => {
     session.desyncMessage ??= error.message;
     console.error("co-op desync:", error);
@@ -856,6 +873,7 @@ async function hostGame(
         name: getCoopName(),
         runMode,
         ...(challenges === undefined ? {} : { challenges }),
+        debug: settings.general.coopDebugMenu,
         ...(three
           ? {
               onProgress: (names: Partial<Record<Seat, string>>) => {
@@ -879,6 +897,7 @@ async function hostGame(
     const session = beginSession(established.link, "host", overlay, {
       runMode,
       ...(challenges === undefined ? {} : { challenges }),
+      debug: settings.general.coopDebugMenu,
     });
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
@@ -976,6 +995,7 @@ export async function joinGame(
     const session = beginSession(established.link, established.link.seat, overlay, {
       runMode: established.hello.runMode,
       ...(established.hello.challenges === undefined ? {} : { challenges: established.hello.challenges }),
+      debug: established.hello.debug === true,
     });
     lastFailedCode = null;
     if (established.hello.mode === "resume") {

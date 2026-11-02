@@ -1,5 +1,6 @@
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
+import { hasDebugBiome } from "#coop/debug/hooks";
 import { isLoneEnemy } from "#coop/me-run";
 import { modifierTypes } from "#data/data-lists";
 import { BattleType } from "#enums/battle-type";
@@ -129,7 +130,8 @@ export class VictoryPhase extends PokemonPhase {
           }
         }
 
-        if (gameMode.hasRandomBiomes || globalScene.isNewBiome()) {
+        // Co-op (D42): or the host's debug menu chose a biome
+        if (gameMode.hasRandomBiomes || globalScene.isNewBiome() || hasDebugBiome()) {
           globalScene.phaseManager.pushNew("SelectBiomePhase");
         }
 

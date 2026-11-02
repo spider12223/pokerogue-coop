@@ -1122,6 +1122,41 @@ count from the host's `HELLO`.
   achievement and its voucher the first time, a Premium voucher after that, a Voucher Plus for each species of their own
   Pokémon on its first win, and the challenges' achievements. The classic-win unlocks stay off, as in D4a.
 
+## D42. The host's debug menu
+
+A cheat menu for messing around with friends, in any co-op run (2 or 3 players). Cheated runs count for every account
+like any other run.
+
+- **On:** the host turns on **Settings → General → Co-op Debug Menu (Host)**, then presses its key (**F8**, rebindable as
+  "Co-op Debug" in the keyboard settings). The setting does nothing for a guest. The host's `HELLO` says the menu is on
+  (`debug: true`); a resumed or rejoined run keeps it.
+- **Who sees it:** the host only. The guests get no panel and no notice, only what changes.
+- **What it does:** a side panel over the game (like the chat box) with a search over all its tabs:
+  - *Party:* level, IVs, nature, any ability, any passive (unlocked), friendship, species and form, fusion, shiny and
+    variant, gender, Tera type, the four moves, held items, heal or revive, give to another player, remove, and add any
+    Pokémon (species, level, shiny) to any player's share.
+  - *Waves:* a plan for any later wave (the game's, wild, trainer or Mystery Encounter; the enemies' species in order,
+    their level, boss bars, shiny; the trainer; the encounter), a jump to a later wave, and the biome after this wave.
+  - *Rewards:* the items of the next reward screen (on an open reward screen: at once, the screen is drawn again), free
+    shop and free rerolls, money, Poké Balls, items of the whole team.
+  - *Battle:* win the wave, knock out / 1 HP / full HP / level of an enemy or all of them, stat stages, status, weather,
+    terrain.
+  - *Fun:* our Pokémon take no damage, our hits knock out, shiny enemies, EXP and money multipliers, a level for every
+    enemy, everyone shiny, a random species for each of our Pokémon.
+- **Sync:** each cheat goes into the host's queue. The queue travels as one sequenced `DEBUG` decision of the host
+  (`{ actions: [...] }`, at most 64): in the window of every turn's commands (`ref: t<turn>`, sent empty when nothing
+  waits; not in the second round of a turn) and as a way out of every reward screen step (`ref: r<screen>:<step>`, sent
+  when the host adds a cheat while the step is open). Every client carries the batch out at the same point: after the
+  turn's commands, or as the step's decision. The host picks every random value first (an added Pokémon's seed), so
+  every client makes the same. An action that does not fit (a Pokémon that left, a full party, the last Pokémon of a
+  player, one on the field to remove or give away) is skipped on every client alike.
+- **Later waves** go through the game's own overrides (`activeOverrides`): every client writes them from the run's debug
+  state when a wave is made, and only the ones the menu set. The state (plans, next rewards, jump, biome, modes) is in
+  the co-op save block (`debug`), so a reload, a resync or a rejoin keeps it. A plan is dropped once its wave is over;
+  the next reward screen's items once that screen is made; a jump and a biome once used. The build identity (D1) leaves
+  out what the menu wrote, so a rejoining player still matches.
+- **Only forward:** a jump goes to a later wave only (the keys of the waves played are used).
+
 ## See also
 
 - [HOW-TO-PLAY.md](HOW-TO-PLAY.md): co-op for players.

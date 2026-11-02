@@ -5,6 +5,9 @@ import { AfkWatcher, tookOverText } from "#coop/afk";
 import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
 import { coopRewardOptionsReady } from "#coop/checkpoints";
 import { endTurnCosmetics, getCosmeticView } from "#coop/cosmetic-view";
+import { isDebugBatch } from "#coop/debug/actions";
+import { applyDebugBatch } from "#coop/debug/apply";
+import { setDebugSink } from "#coop/debug/queue";
 import type { RewardOptionView, RewardView } from "#coop/legal";
 import { type PartyEdit, partyEditKey } from "#coop/party-edit";
 import { applyPartyEdit } from "#coop/party-edit-run";
@@ -19,7 +22,7 @@ import {
   rewardWindow,
 } from "#coop/reward-actions";
 import { rewardResumePlan } from "#coop/reward-resume";
-import { ProposalRejectedError, type RejectReason } from "#coop/sequencer";
+import { ProposalRejectedError, type RejectReason, type WindowEntry } from "#coop/sequencer";
 import { isCoop, requireCoopSession, rewardPickerOf } from "#coop/session";
 import { tradeRequestKey } from "#coop/trade";
 import { saveCoopWaveStart } from "#coop/wave-save";
@@ -620,9 +623,10 @@ export class SelectModifierPhase extends BattlePhase {
       // While the partner is away, or a reload is due, the screen does not go on (D20, D13)
       await coopGate();
       const { waveIndex } = globalScene.currentBattle;
-      const entries = rewardWindow(waveIndex, this.screen, session.rewardStep, this.picker);
+      const entries = rewardWindow(waveIndex, this.screen, session.rewardStep, this.picker, session.debug);
       session.openWindow = [...session.openWindow, ...entries.map(entry => entry.key)];
       this.watchPicker();
+      this.openDebugSink(entries);
       let decision: Awaited<ReturnType<typeof sequencer.awaitOneOf>>;
       try {
         decision = await sequencer.awaitOneOf(entries);
@@ -635,6 +639,9 @@ export class SelectModifierPhase extends BattlePhase {
         this.watcher?.stop();
         this.watcher = null;
         session.openWindow = session.openWindow.filter(open => !entries.some(entry => entry.key === open));
+        if (session.isHost && session.debug) {
+          setDebugSink(null);
+        }
       }
       if (this.screenSwitches > 0) {
         // The pending flag holds the screen's input meanwhile, and the step still shows the decision as not taken
@@ -661,6 +668,18 @@ export class SelectModifierPhase extends BattlePhase {
         this.rewardHandler()?.setTradeRequested(true);
         continue;
       }
+      if (decision.key.kind === "DEBUG") {
+        // The host's cheats (D42), carried out on every client; the screen's items it chose show at once
+        const batch = decision.payload;
+        if (isDebugBatch(batch) && batch.actions.length > 0) {
+          await applyDebugBatch(batch);
+          if (!this.closed && batch.actions.some(action => action.t === "rewards" && action.items !== null)) {
+            this.debugRedraw();
+            return;
+          }
+        }
+        continue;
+      }
       if (decision.key.kind === "PARTY_EDIT") {
         // A player changed one of their own Pokémon (D28): both carry it out; the screen's options stay
         if (decision.author === mySeat()) {
@@ -675,6 +694,38 @@ export class SelectModifierPhase extends BattlePhase {
       }
       this.applyAction(decision.payload);
     }
+  }
+
+  /**
+   * The host with its debug menu on (D42): while the step is open, the cheats it adds are sent at once, as the step's
+   * `DEBUG` decision. One that comes too late for the step waits for the next.
+   */
+  private openDebugSink(entries: readonly WindowEntry[]): void {
+    const session = requireCoopSession();
+    const entry = entries.find(open => open.key.kind === "DEBUG");
+    if (!session.isHost || entry === undefined) {
+      return;
+    }
+    setDebugSink(batch => {
+      try {
+        session.link!.sequencer.propose(entry.key, batch);
+        return true;
+      } catch (error) {
+        if (error instanceof ProposalRejectedError) {
+          return false;
+        }
+        throw error;
+      }
+    });
+  }
+
+  /** The host chose this screen's items with its debug menu (D42): the options are made again, for free */
+  private debugRedraw(): void {
+    this.closeScreen();
+    globalScene.reroll = true;
+    globalScene.phaseManager.unshiftNew("SelectModifierPhase", this.rerollCount + 1);
+    globalScene.ui.clearText();
+    globalScene.ui.setMode(UiMode.MESSAGE).then(() => super.end());
   }
 
   /** Propose an action of this player in the open step. A refusal comes back through {@linkcode onRejected}. */

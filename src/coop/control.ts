@@ -167,6 +167,7 @@ export type CoopDecision =
   | { kind: "SIDE_ACTION"; proposer: Seat }
   | { kind: "SIDE_PICK" }
   | { kind: "RETRY" }
+  | { kind: "DEBUG" }
   | { kind: "REWARD_PICK" | "REWARD_TARGET" | "REROLL" }
   | { kind: "SHOP_BUY" }
   | { kind: "LEARN_MOVE" | "EVOLUTION_CANCEL"; pokemonId: number }
@@ -200,6 +201,9 @@ export function deciderOf(decision: CoopDecision): Seat | "either" | null {
       return "host";
     case "RETRY":
       // the party is wiped: the host chooses to retry the wave or end the run (D4a)
+      return "host";
+    case "DEBUG":
+      // the host's debug menu (D42)
       return "host";
     case "REWARD_PICK":
     case "REWARD_TARGET":

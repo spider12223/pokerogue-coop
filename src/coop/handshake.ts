@@ -98,6 +98,8 @@ export interface HostHandshakeOptions extends HandshakeOptions {
   players?: PlayerCount;
   /** A challenge run's challenges (D41); the guest is told */
   challenges?: CoopChallenge[];
+  /** The host's debug menu is on (D42); the guest is told */
+  debug?: boolean;
   /** The guest account the run was saved with (D21): another one is refused, with `accountId` as the field that differs */
   expectedGuestAccountId?: string;
   /** The guest accounts a run of three was saved with (D40): a guest with any of them may come in */
@@ -193,6 +195,7 @@ export function hostHandshake(
       runMode: options.runMode ?? "classic",
       players: options.players ?? 2,
       ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
+      ...(options.debug === true ? { debug: true } : {}),
     };
     transport.send({ key: null, author: "host", kind: "HELLO", payload: hello });
   });

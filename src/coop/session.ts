@@ -6,6 +6,7 @@
 
 import type { AccountSnapshot, CoopAccountSnapshot } from "#coop/account-snapshot";
 import { type Checkpoint, CheckpointLog } from "#coop/checkpoint-log";
+import { type DebugState, emptyDebugState, isEmptyDebugState } from "#coop/debug/state";
 import type { SettingsOverlayPort } from "#coop/handshake";
 import type { RewardView } from "#coop/legal";
 import type { CoopLink } from "#coop/link";
@@ -82,6 +83,8 @@ export interface CoopSessionInit {
   challenges?: readonly CoopChallenge[];
   /** How many players the game has (D40), for a session without a link; a linked session takes its link's. Default 2 */
   players?: PlayerCount;
+  /** The host's debug menu is on (D42): every turn has a `DEBUG` decision of the host's. Default off */
+  debug?: boolean;
 }
 
 /** How long this client waited for its partner's decisions, for the debug API and the latency report */
@@ -206,6 +209,8 @@ export class CoopSession {
   public link: CoopLink | null = null;
   /** {@linkcode players} of a session without a link */
   private readonly initPlayers: PlayerCount;
+  /** The host's debug menu is on for this session (D42) */
+  public readonly debug: boolean;
   /** The kind of run (D39): what a new run is built as. A loaded save has its own (its game mode's id). */
   public readonly runMode: CoopRunMode;
   /** A challenge run's challenges (D41), what a new challenge run is built with; a loaded save has its own */
@@ -227,6 +232,8 @@ export class CoopSession {
   private events: string[] = [];
   /** The trainer types of the run's trainer battles so far (D34) */
   private trainers: number[] = [];
+  /** What the host's debug menu keeps between turns (D42): the same on every client */
+  public debugState: DebugState = emptyDebugState();
   /** How many times each prompt was asked in {@linkcode occurrencesWave} of this epoch (D2) */
   private readonly occurrences = new Map<string, number>();
   private occurrencesWave = -1;
@@ -242,6 +249,7 @@ export class CoopSession {
     this.runMode = init.runMode ?? "classic";
     this.challenges = init.challenges ?? [];
     this.initPlayers = init.players ?? 2;
+    this.debug = init.debug === true;
   }
 
   /** How many players the game has (D40): the link's, or the session's own without one */
@@ -321,6 +329,8 @@ export class CoopSession {
   /** A new run starts: it has met no trainer yet */
   public clearMetTrainers(): void {
     this.trainers = [];
+    // (and has no cheat in effect yet, D42: its first wave writes the overrides of the empty state)
+    this.debugState = emptyDebugState();
   }
 
   public get accountIds(): SeatRecord<string> {
@@ -375,6 +385,7 @@ export class CoopSession {
       accounts: this.accountSnapshot,
       events: [...this.events],
       trainers: [...this.trainers],
+      ...(this.debug && !isEmptyDebugState(this.debugState) ? { debug: structuredClone(this.debugState) } : {}),
     };
   }
 
@@ -393,6 +404,8 @@ export class CoopSession {
     this.events = saved.events ?? [];
     this.trainers = saved.trainers ?? [];
     this.resumeAt = saved.resumeAt ?? null;
+    // (the wave that is loaded writes the overrides of its plan, D42)
+    this.debugState = this.debug && saved.debug !== undefined ? structuredClone(saved.debug) : emptyDebugState();
   }
 
   /**

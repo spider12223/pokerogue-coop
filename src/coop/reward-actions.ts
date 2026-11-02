@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { debugRewardKey } from "#coop/decision-keys";
 import type { DecisionKey, DecisionKind, Seat } from "#coop/protocol";
 import type { WindowEntry } from "#coop/sequencer";
 
@@ -86,9 +87,11 @@ export function rewardKey(wave: number, kind: RewardKind, screen: number, step: 
  * own Pokémon. Neither is a {@linkcode RewardAction}: they do not change the screen's options, but like a shop buy they
  * take a step.
  */
-export function rewardWindow(wave: number, screen: number, step: number, picker: Seat): WindowEntry[] {
+export function rewardWindow(wave: number, screen: number, step: number, picker: Seat, debug = false): WindowEntry[] {
   const pickerOnly = [picker] as const;
   return [
+    // The host's cheats (D42), only with its debug menu on
+    ...(debug ? [{ key: debugRewardKey(wave, screen, step), authors: ["host"] as const }] : []),
     { key: rewardKey(wave, "REWARD_PICK", screen, step), authors: pickerOnly },
     { key: rewardKey(wave, "REROLL", screen, step), authors: pickerOnly },
     { key: rewardKey(wave, "REWARD_LOCK", screen, step), authors: pickerOnly },

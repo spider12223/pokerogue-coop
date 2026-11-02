@@ -109,12 +109,21 @@ export function takeoverPlan(key: Pick<DecisionKey, "kind" | "ref">): TakeoverPl
     case "ME_CHOICE":
       // the taker chooses with the same screens the chooser had (D29)
       return ASK;
+    case "DEBUG":
+      // the host's cheats (D42): nobody takes them over
+      return { mode: "payload", payload: { actions: [] } };
   }
 }
 
 /** @returns Whether a player may take over this kind of decision at all */
 export function canTakeOver(kind: DecisionKind): boolean {
-  return kind !== "TRADE_PROPOSE" && kind !== "TRADE_CANCEL" && kind !== "TRADE_REQUEST" && kind !== "PARTY_EDIT";
+  return (
+    kind !== "TRADE_PROPOSE"
+    && kind !== "TRADE_CANCEL"
+    && kind !== "TRADE_REQUEST"
+    && kind !== "PARTY_EDIT"
+    && kind !== "DEBUG"
+  );
 }
 
 export interface AfkClockCallbacks {

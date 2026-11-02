@@ -114,6 +114,8 @@ export class UiInputs {
       // Co-op (D38): the chat box's key is caught on the page before the game (src/coop/chat.ts); one that comes here was
       // typed in one of the game's own text fields, where it is a letter
       [Button.COOP_CHAT]: () => {},
+      // Co-op (D42): caught on the page like the chat key (src/coop/debug/panel.ts)
+      [Button.COOP_DEBUG]: () => {},
     };
     return actions;
   }
@@ -141,6 +143,8 @@ export class UiInputs {
       [Button.COOP_PING]: () => {},
       [Button.COOP_EMOTE]: () => {},
       [Button.COOP_CHAT]: () => {},
+      // Co-op (D42): caught on the page like the chat key (src/coop/debug/panel.ts)
+      [Button.COOP_DEBUG]: () => {},
     };
     return actions;
   }

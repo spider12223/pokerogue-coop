@@ -35,6 +35,8 @@ export interface UserFacingSettings {
 export interface GeneralSettings {
   battleCursorMemory: boolean;
   battleStyle: BattleStyle;
+  /** Co-op (D42): the host of a game may open the debug menu */
+  coopDebugMenu: boolean;
   /** Co-op (D40): Host a game offers 3 players (Beta) */
   coopThreePlayers: boolean;
   dexForDevs: boolean;

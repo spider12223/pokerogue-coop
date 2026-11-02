@@ -2,6 +2,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
 import { deciderOf } from "#coop/control";
+import { takeDebugBiome } from "#coop/debug/hooks";
 import { biomeKey } from "#coop/decision-keys";
 import { type BiomePayload, isBiomePayload } from "#coop/prompt-payloads";
 import { DesyncError } from "#coop/sequencer";
@@ -39,6 +40,13 @@ export class SelectBiomePhase extends BattlePhase {
       || (gameMode.hasShortBiomes && !(nextWaveIndex % 50))
     ) {
       this.setNextBiomeAndEnd(BiomeId.END);
+      return;
+    }
+
+    // Co-op (D42): the biome the host's debug menu chose
+    const planned = takeDebugBiome();
+    if (planned !== null) {
+      this.setNextBiomeAndEnd(planned as BiomeId);
       return;
     }
 

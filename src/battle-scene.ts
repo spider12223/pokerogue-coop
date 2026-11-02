@@ -29,6 +29,14 @@ import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import { arrangeCoopParty } from "#coop/arrange";
+import {
+  debugBeginWave,
+  debugEnemySpecies,
+  debugExpMultiplier,
+  debugForcesEncounter,
+  debugMoneyMultiplier,
+  takeDebugJump,
+} from "#coop/debug/hooks";
 import { withCoopDoubleVariant } from "#coop/doubles";
 import { getCoopSession } from "#coop/session";
 import { noteTrainerMet } from "#coop/trainer-variety";
@@ -912,6 +920,12 @@ export class BattleScene extends SceneBase {
       // The fact that a Pokemon is a boss or not can change based on its Species and level
       boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
     }
+    // Co-op (D42): the species the host planned for this wave's enemies (not one loaded from a save)
+    const planned = dataSource ? null : debugEnemySpecies(this.currentBattle?.waveIndex ?? 0);
+    if (planned !== null) {
+      species = speciesDataRegistry.getSpecies(planned);
+      boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
+    }
 
     const pokemon = new EnemyPokemon(species, level, trainerSlot, boss, shinyLock, dataSource, forRival);
     if (activeOverrides.ENEMY_FUSION_OVERRIDE) {
@@ -1272,6 +1286,8 @@ export class BattleScene extends SceneBase {
     const props = this.getNewBattleProps(fromSession);
     const { waveIndex, mysteryEncounterType } = props;
     const resolved: NewBattleInitialProps = { waveIndex, mysteryEncounterType };
+    // Co-op (D42): the host's plan for this wave, if any, is what the overrides say while it is made
+    debugBeginWave(waveIndex);
 
     // TODO: This _should_ be safe to move elsewhere but idk
     this.resetSeed(waveIndex);
@@ -1339,7 +1355,8 @@ export class BattleScene extends SceneBase {
         waveIndex:
           this.currentBattle == null
             ? (activeOverrides.STARTING_WAVE_OVERRIDE ?? STARTING_WAVE)
-            : this.currentBattle.waveIndex + 1,
+            : // Co-op (D42): the host's debug menu may jump ahead
+              (takeDebugJump(this.currentBattle.waveIndex) ?? this.currentBattle.waveIndex + 1),
       };
     }
 
@@ -1447,7 +1464,11 @@ export class BattleScene extends SceneBase {
     // Can only occur in place of a standard (non-boss) wild battle, waves 10-180
     // NB: battle type checks are offloaded to `isWaveMysteryEncounter`
     // TODO: This means MEs can generate when the override is set to `BattleType.WILD`
-    if (!activeOverrides.BATTLE_TYPE_OVERRIDE && this.isWaveMysteryEncounter(resolved.battleType, waveIndex)) {
+    // Co-op (D42): or wherever the host's debug menu planned one
+    if (
+      debugForcesEncounter(waveIndex)
+      || (!activeOverrides.BATTLE_TYPE_OVERRIDE && this.isWaveMysteryEncounter(resolved.battleType, waveIndex))
+    ) {
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
       // Reset to base spawn weight
       this.mysteryEncounterSaveData.encounterSpawnChance = BASE_MYSTERY_ENCOUNTER_SPAWN_WEIGHT;
@@ -2397,6 +2418,11 @@ export class BattleScene extends SceneBase {
   }
 
   addMoney(amount: number): void {
+    // Co-op (D42): the money multiplier of the host's debug menu
+    const cheat = debugMoneyMultiplier();
+    if (cheat !== 1) {
+      amount = Math.floor(amount * cheat);
+    }
     this.money = Math.min(this.money + amount, Number.MAX_SAFE_INTEGER);
     this.updateMoneyText();
     this.animateMoneyChanged(true);
@@ -3412,6 +3438,8 @@ export class BattleScene extends SceneBase {
         if (activeOverrides.XP_MULTIPLIER_OVERRIDE !== null) {
           expMultiplier = activeOverrides.XP_MULTIPLIER_OVERRIDE;
         }
+        // Co-op (D42): the EXP multiplier of the host's debug menu
+        expMultiplier *= debugExpMultiplier();
         const pokemonExp = new NumberHolder(expValue * expMultiplier);
         this.applyModifiers(PokemonExpBoosterModifier, true, partyMember, pokemonExp);
         partyMemberExp.push(Math.floor(pokemonExp.value));

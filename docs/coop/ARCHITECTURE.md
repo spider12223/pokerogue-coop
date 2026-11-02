@@ -325,6 +325,14 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
   a game that is already running, such as a container built with `COOP_E2E=1`. Screenshots go to
   `test-results/screenshots/`.
 
+## The host's debug menu (D42)
+
+`src/coop/debug/`: `state.ts` (the run's plans and modes, and what they write into `activeOverrides`), `actions.ts` (the
+actions of a `DEBUG` batch and their checks), `apply.ts` (carrying a batch out), `queue.ts` (the host's waiting cheats;
+an open reward step is its sink), `hooks.ts` (where the game reads the state: `newBattle`, `addEnemyPokemon`, the
+Mystery Encounter check, the biome, the reward options, damage, EXP and money) and `panel.ts` (the host's HTML panel).
+The batch rides in the turn's window (`CoopTurnSyncPhase`) and in each reward step's window (`rewardWindow`).
+
 ## Games of three (D40)
 
 A game of three is gated on the session's player count (`session.players`, the link's); a game of two keeps every key,
@@ -475,7 +483,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 
 | File | What co-op does there | Rules |
 |---|---|---|
-| `src/phases/coop-turn-sync-phase.ts` | Collects the turn's commands, side actions, side pick, the Tera rule, intents, the take over of a turn | D8, D16, D17 |
+| `src/phases/coop-turn-sync-phase.ts` | Collects the turn's commands, side actions, side pick, the Tera rule, intents, the take over of a turn; the host's debug batch | D8, D16, D17, D42 |
 | `src/phases/coop-trade-phase.ts` | The trade phase after a reward screen | D11 |
 | `src/phases/coop-resync-phase.ts` | The reload of the wave start, in a session that keeps its link | D13, D18, D20, D21 |
 | `src/ui/handlers/coop-trade-ui-handler.ts` | The trade screen (`UiMode.COOP_TRADE`) | D11 |

@@ -23,4 +23,6 @@ export enum Button {
   COOP_EMOTE,
   /** Co-op (D38): open the chat box */
   COOP_CHAT,
+  /** Co-op (D42): the host opens the debug menu */
+  COOP_DEBUG,
 }

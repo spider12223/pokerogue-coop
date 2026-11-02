@@ -25,6 +25,7 @@ import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/signature-moves";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
 import { isLinked, reportBridgeError } from "#coop/bridge";
 import { coopSwitchFilter, giveOwnerOf, isAllowedSwitch, mayAddBeside, switchTargets } from "#coop/control";
+import { debugDamage } from "#coop/debug/hooks";
 import { coopEnemyStat } from "#coop/enemy-buff";
 import { drawUniquePokemonId } from "#coop/pokemon-id";
 import { getCoopSession, isCoop } from "#coop/session";
@@ -4225,6 +4226,12 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       source?: Pokemon;
     } = {},
   ): number {
+    // Co-op (D42): the damage modes of the host's debug menu
+    if (isCoop()) {
+      const cheat = debugDamage(this.isPlayer(), source?.isPlayer() === true, damage, this.hp);
+      damage = cheat.damage;
+      ignoreSegments ||= cheat.ignoreSegments;
+    }
     const isIndirectDamage = [HitResult.INDIRECT, HitResult.INDIRECT_KO].includes(result);
     const damagePhase = globalScene.phaseManager.create(
       "DamageAnimPhase",

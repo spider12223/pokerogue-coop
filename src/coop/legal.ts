@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { isDebugBatch } from "#coop/debug/actions";
 import { checkMeChoice, type MeQuestion } from "#coop/me-choice";
 import type { OwnerMap } from "#coop/ownership";
 import { checkPartyEdit, type PartyMemberView } from "#coop/party-edit";
@@ -553,6 +554,12 @@ export function checkDecisionLegal(
     case "RETRY":
       // the game over phase is what asks it: a retry or an end is legal whenever it is asked (D4a)
       return isRetryPayload(payload) ? null : reasonOf("an answer that cannot be read");
+    case "DEBUG":
+      // the host's cheats (D42): what each does is checked as it is carried out, the same on every client
+      if (author !== "host") {
+        return reasonOf("a debug batch that is not the host's");
+      }
+      return isDebugBatch(payload) ? null : reasonOf("a debug batch that cannot be read");
     default:
       return reasonOf("a decision of a kind that does not exist");
   }

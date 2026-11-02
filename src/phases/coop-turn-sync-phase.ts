@@ -22,7 +22,10 @@ import {
 } from "#coop/bridge";
 import { deciderOf, requireOwnerOf } from "#coop/control";
 import { getCosmeticView, sendIntent } from "#coop/cosmetic-view";
-import { sideActionKey, sidePickKey, turnCommandsKey } from "#coop/decision-keys";
+import { isDebugBatch } from "#coop/debug/actions";
+import { applyDebugBatch } from "#coop/debug/apply";
+import { takeDebugBatch } from "#coop/debug/queue";
+import { debugTurnKey, sideActionKey, sidePickKey, turnCommandsKey } from "#coop/decision-keys";
 import { type DecisionKey, keyId, type Seat } from "#coop/protocol";
 import type { Decision } from "#coop/sequencer";
 import { requireCoopSession } from "#coop/session";
@@ -119,8 +122,20 @@ export class CoopTurnSyncPhase extends Phase {
         return { ...entry, controller, key: turnCommandsKey(wave, turn, entry.pokemon.id, attempt) };
       });
 
+    // The host's debug batch of the turn (D42): sequenced with the commands, carried out after them. Not on a second round
+    // of the turn (a declined Ball or Run): the first had it
+    const debugKey = session.debug && this.onlyPokemonId === null ? debugTurnKey(wave, turn) : null;
+    const debugWait = debugKey === null ? null : sequencer.awaitDecision(debugKey, { authors: ["host"] });
+    if (debugKey !== null && session.isHost) {
+      proposeUnlessLate(link, debugKey, takeDebugBatch());
+    }
+
     // The window: every Pokémon's commands, in whatever order they are sequenced
-    session.openWindow = [...session.openWindow, ...participants.map(part => part.key)];
+    session.openWindow = [
+      ...session.openWindow,
+      ...participants.map(part => part.key),
+      ...(debugKey === null ? [] : [debugKey]),
+    ];
     let arrived = 0;
     const arrivedKeys = new Set<string>();
     const waits = participants.map(part =>
@@ -205,6 +220,13 @@ export class CoopTurnSyncPhase extends Phase {
       participants,
       decisions.map(decision => decision.seq),
     );
+    if (debugWait !== null) {
+      const batch = (await debugWait).payload;
+      session.openWindow = session.openWindow.filter(open => open !== debugKey);
+      if (isDebugBatch(batch) && batch.actions.length > 0) {
+        await applyDebugBatch(batch);
+      }
+    }
     await this.settleSideAction(participants);
   }
 

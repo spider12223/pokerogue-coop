@@ -17,11 +17,13 @@ import { view } from "./legal-fixtures";
 /** The retry after a wipe (DECISIONS D4a, amended): the host retries the wave or ends the run; a retry is a reload of D13 */
 
 describe("the retry after a wipe", () => {
-  it("is one per wave, and the last decision kind (the kinds before it keep their place)", () => {
+  it("is one per wave, and came after the kinds before it (they keep their place)", () => {
     expect(retryKey(14)).toEqual({ wave: 14, turn: 0, kind: "RETRY", ref: -1 });
     expect(isDecisionKey(retryKey(14))).toBe(true);
-    expect(DECISION_KINDS.at(-1)).toBe("RETRY");
-    expect(DECISION_KINDS.indexOf("SIDE_PICK")).toBe(DECISION_KINDS.length - 2);
+    // (the host's debug batch came after it, D42)
+    expect(DECISION_KINDS.at(-1)).toBe("DEBUG");
+    expect(DECISION_KINDS.indexOf("RETRY")).toBe(DECISION_KINDS.length - 2);
+    expect(DECISION_KINDS.indexOf("SIDE_PICK")).toBe(DECISION_KINDS.length - 3);
   });
 
   it.each([{ retry: true }, { retry: false }])("reads %o", payload => {

@@ -5,6 +5,7 @@
  */
 
 import { type CoopAccountSnapshot, isCoopAccountSnapshot } from "#coop/account-snapshot";
+import { type DebugState, isDebugState } from "#coop/debug/state";
 import { isOwnerRecord } from "#coop/ownership";
 import { isTimedEventNames, type Seat, type SeatRecord } from "#coop/protocol";
 
@@ -39,6 +40,8 @@ export interface CoopSaveBlock {
   trainers?: number[];
   /** A save taken when a reward screen opened (D19): a reload goes back to that screen, not to the wave start */
   resumeAt?: RewardResume;
+  /** The plans and modes of the host's debug menu (D42); a run without cheats has none */
+  debug?: DebugState;
 }
 
 /**
@@ -137,6 +140,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
     && (block["events"] === undefined || isTimedEventNames(block["events"]))
     && (block["trainers"] === undefined || isTrainerTypeList(block["trainers"]))
     && (block["resumeAt"] === undefined || isRewardResume(block["resumeAt"]))
+    && (block["debug"] === undefined || isDebugState(block["debug"]))
   );
 }
 

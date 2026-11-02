@@ -223,6 +223,7 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     [SettingKeyboard.BUTTON_COOP_PING]: Button.COOP_PING,
     [SettingKeyboard.BUTTON_COOP_EMOTE]: Button.COOP_EMOTE,
     [SettingKeyboard.BUTTON_COOP_CHAT]: Button.COOP_CHAT,
+    [SettingKeyboard.BUTTON_COOP_DEBUG]: Button.COOP_DEBUG,
   },
   default: {
     KEY_ARROW_UP: SettingKeyboard.BUTTON_UP,
@@ -282,7 +283,7 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     KEY_F5: -1,
     KEY_F6: -1,
     KEY_F7: -1,
-    KEY_F8: -1,
+    KEY_F8: SettingKeyboard.BUTTON_COOP_DEBUG,
     KEY_F9: -1,
     KEY_F10: -1,
     KEY_F11: -1,

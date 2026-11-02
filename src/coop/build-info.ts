@@ -4,13 +4,15 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { activeOverrides, defaultOverrides } from "#app/overrides";
+import { defaultOverrides } from "#app/overrides";
 import { bypassLogin } from "#constants/app-constants";
+import { identityOverrides } from "#coop/debug/overrides";
 import { type BuildIdentity, COOP_PROTOCOL_VERSION, hashCanonical } from "#coop/protocol";
 
 /** @returns Whether no override is in effect; a client with overrides must not start or join a co-op run (D1) */
 export function overridesAreDefaults(): boolean {
-  return hashCanonical(activeOverrides) === hashCanonical({ ...defaultOverrides });
+  // (the overrides the host's debug menu writes are the run's, not the client's: D42)
+  return hashCanonical(identityOverrides()) === hashCanonical({ ...defaultOverrides });
 }
 
 /**
@@ -25,6 +27,6 @@ export function getLocalBuildIdentity(): BuildIdentity {
     gitSha: __COOP_GIT_SHA__,
     dirtyHash: __COOP_DIRTY_HASH__,
     buildMode: `${import.meta.env.MODE}${bypassLogin ? "+bypass" : ""}`,
-    overridesHash: hashCanonical(activeOverrides),
+    overridesHash: hashCanonical(identityOverrides()),
   };
 }

@@ -82,6 +82,23 @@ Three friends can play one run together. It is a Beta: turn it on with **Setting
   missing friend's Pokémon are commanded by the two of you, one each, until they are back.
 - **Chat** is one box for all three, each name in its colour. **Play again** starts a new game with whoever wants it.
 
+## Debug menu (for messing around)
+
+The host can cheat: **Settings → General → Co-op Debug Menu (Host)**, then **F8** opens a panel over the game (the key can
+be changed in **Menu > Settings > Keyboard**). Only the host sees it; friends only see what happens.
+
+- **Party:** level, IVs, nature, any ability or passive, friendship, species, fusion, shiny, gender, Tera type, moves,
+  held items, heal, give a Pokémon to another player, remove one, or add any Pokémon to anyone.
+- **Waves:** choose what a later wave is (wild, trainer, Mystery Encounter), which Pokémon come and at what level,
+  boss bars, shiny; jump ahead to a later wave; pick the next biome.
+- **Rewards:** choose the items of the next reward screen (on a reward screen, it changes at once), free shop and
+  rerolls, money, Poké Balls.
+- **Battle and fun:** win the wave, knock out or weaken enemies, stat stages, status, weather, terrain, no damage for your
+  team, one-hit knockouts, EXP and money multipliers, everyone shiny, random species.
+
+A cheat happens with the next turn (or at once on a reward screen); the line at the bottom of the panel says what is
+waiting. The search box finds an option in any tab. A cheated run counts for your accounts like any other.
+
 ## Mystery Encounters
 
 They appear as in single player. The host makes every choice of an encounter; the guest's cursor follows the host's (and the
@@ -149,6 +166,7 @@ server collects logs. It contains your display names and what you chose in the r
 | Ping what your cursor is on (your friend sees it) | **P** | the button of "Cycle Gender" (left trigger) | **!** button |
 | Emote wheel | **Q** | the button of "Cycle Ability" (right trigger) | emote button |
 | Chat with your partner | **H** (Enter sends, Esc closes) | | **Chat** button, top right |
+| Debug menu (host, when on) | **F8** (Esc closes) | | |
 
 The keys can be changed in **Menu > Settings > Keyboard**.
 

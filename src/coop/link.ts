@@ -1304,6 +1304,7 @@ function establishHostOfThree(
     ...(options.expectedGuestAccountIds === undefined
       ? {}
       : { expectedGuestAccountIds: options.expectedGuestAccountIds }),
+    ...(options.debug === true ? { debug: true } : {}),
   };
   return new Promise<EstablishedHost>((resolve, reject) => {
     let over = false;
@@ -1465,6 +1466,8 @@ export async function establishHost(
     expectedGuestAccountId?: string;
     /** The guest accounts of a saved run of three (D40): a guest with any of them may join */
     expectedGuestAccountIds?: readonly string[];
+    /** The host's debug menu is on (D42): the guests are told */
+    debug?: boolean;
     /** A room of three (D40): the guests whose handshake is through, by seat, each time that changes */
     onProgress?: (names: Partial<Record<Seat, string>>) => void;
   } = {},
@@ -1481,6 +1484,7 @@ export async function establishHost(
     ...(options.expectedGuestAccountIds === undefined
       ? {}
       : { expectedGuestAccountIds: options.expectedGuestAccountIds }),
+    ...(options.debug === true ? { debug: true } : {}),
     ...(options.expectedEffectiveSettingsHash === undefined
       ? {}
       : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
@@ -1528,6 +1532,8 @@ export interface EstablishedGuest {
     runMode: CoopRunMode;
     /** A challenge run's challenges (D41) */
     challenges?: CoopChallenge[];
+    /** The host's debug menu is on (D42) */
+    debug?: boolean;
   };
 }
 

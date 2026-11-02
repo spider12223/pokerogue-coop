@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { isDebugBatch } from "#coop/debug/actions";
 import { isMeChoice } from "#coop/me-choice";
 import { isPartyEdit, pokemonOfEdit } from "#coop/party-edit";
 import { isCatchReleasePayload } from "#coop/prompt-payloads";
@@ -56,6 +57,9 @@ export function validateProposal(key: DecisionKey, payload: unknown, author: Sea
       return isSidePickPayload(payload);
     case "RETRY":
       return isRetryPayload(payload);
+    case "DEBUG":
+      // only the host's, and only with its menu on (D42)
+      return author === "host" && getCoopSession()?.debug === true && isDebugBatch(payload);
     default:
       break;
   }

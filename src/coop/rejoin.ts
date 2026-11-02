@@ -110,6 +110,7 @@ function resumeFromSlot(
     runSeed: seedOf(slot),
     accountIds: slot.accountIds,
     runMode: slot.runMode ?? "classic",
+    debug: settings.general.coopDebugMenu,
   });
   session.waveSave = { wave: slot.wave, epoch: slot.epoch, json: slot.session };
   // the epoch and the seq go on from where the slot left them (D18)
@@ -226,6 +227,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
           runMode: slot!.runMode ?? "classic",
           ...(slot!.challenges === undefined ? {} : { challenges: slot!.challenges }),
           ...savedGuests(slot!),
+          debug: settings.general.coopDebugMenu,
         },
       );
       resumeFromSlot(established, slot!, overlay, "rejoin");
@@ -237,6 +239,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
       });
       const session = beginSession(established.link, established.link.seat, overlay, {
         runMode: established.hello.runMode,
+        debug: established.hello.debug === true,
       });
       session.timing["rejoinStartedAt"] = startedAt;
       session.timing["handshakeAt"] = Date.now();
@@ -302,7 +305,6 @@ function offerToDelete(reason: string, callbacks: CoopTitleCallbacks): void {
 }
 
 export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void> {
-  const { ui } = globalScene;
   const slot = currentCoopSlot();
   if (slot === null) {
     showFailure(new Error("no co-op slot"), callbacks);
@@ -374,6 +376,7 @@ async function continueWith(callbacks: CoopTitleCallbacks, slot: CoopSlot, playe
         runMode: slot.runMode ?? "classic",
         ...(slot.challenges === undefined ? {} : { challenges: slot.challenges }),
         ...savedGuests(slot),
+        debug: settings.general.coopDebugMenu,
       });
     } catch (error) {
       overlay.remove();

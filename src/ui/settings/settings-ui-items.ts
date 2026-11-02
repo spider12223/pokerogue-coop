@@ -227,6 +227,12 @@ export const generalSettingsUiItems: SettingsUiItem<GeneralSettingsKey>[] = [
     label: coopText("threePlayersSetting", "3-Player Co-op (Beta)"),
     options: useOnOffOptions(),
   },
+  {
+    // Co-op (D42): the host's debug menu (F8 by default)
+    key: "coopDebugMenu",
+    label: coopText("debugMenuSetting", "Co-op Debug Menu (Host)"),
+    options: useOnOffOptions(),
+  },
 ];
 
 if (isDev) {
