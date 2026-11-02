@@ -42,7 +42,8 @@ export type PaceAt = [checkpoint: number, phase: number, prompt: number];
  * - `emote`: one of {@linkcode EMOTE_COUNT}
  * - `pace` (host, D27): where the host is in the text, and its game speed, EXP bar speed, HP bar speed, IV Scanner,
  *   move animation and level-up stats settings, which the guest follows
- * - `press` (guest, D27): the guest pressed on the line at `at`
+ * - `press` (either, D27): the sender pressed on the line at `at`
+ * - `at` (guest, D27): where the guest is in the text; the host follows it when the guest is ahead
  */
 export type CosmeticMessage =
   | { t: "intent"; pokemonId: number; move: number | null; target: number | null; ready: boolean }
@@ -51,7 +52,8 @@ export type CosmeticMessage =
   | { t: "ping"; at: CosmeticTarget }
   | { t: "emote"; id: number }
   | { t: "pace"; at: PaceAt; game: number; exp: number; hp: number; iv: boolean; anim: boolean; stats: boolean }
-  | { t: "press"; at: PaceAt };
+  | { t: "press"; at: PaceAt }
+  | { t: "at"; at: PaceAt };
 
 export type CosmeticKind = CosmeticMessage["t"];
 
@@ -63,6 +65,7 @@ export const COSMETIC_KINDS: readonly CosmeticKind[] = [
   "emote",
   "pace",
   "press",
+  "at",
 ];
 
 export const EMOTE_COUNT = 6;
@@ -128,6 +131,7 @@ export function isCosmeticMessage(value: unknown): value is CosmeticMessage {
         && typeof message["stats"] === "boolean"
       );
     case "press":
+    case "at":
       return isPaceAt(message["at"]);
     default:
       return false;
@@ -152,6 +156,7 @@ export const COSMETIC_LIMITS: Readonly<Record<CosmeticKind, CosmeticLimit>> = {
   emote: { perSecond: 1 / 1.5, burst: 2 },
   pace: { perSecond: 8, burst: 4 },
   press: { perSecond: 5, burst: 3 },
+  at: { perSecond: 8, burst: 4 },
 };
 
 /** A token bucket on an injectable clock */
@@ -199,7 +204,7 @@ export interface CosmeticStats {
 }
 
 function emptyKindCounts(): Record<CosmeticKind, number> {
-  return { intent: 0, cursor: 0, meCursor: 0, ping: 0, emote: 0, pace: 0, press: 0 };
+  return { intent: 0, cursor: 0, meCursor: 0, ping: 0, emote: 0, pace: 0, press: 0, at: 0 };
 }
 
 /** A token bucket for each kind, at `limit(kind)` */

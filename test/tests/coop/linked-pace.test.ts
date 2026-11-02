@@ -172,6 +172,59 @@ describe("Co-op: pacing in a linked run (D27)", () => {
     expect(paceInfo()!.stats.presses).toBe(1);
   });
 
+  it("host: a line closes once the guest is past it: the faster player leads (D27)", async () => {
+    const r = await battle("host");
+    const at = position();
+    const line = showLine(r, "A wild Rattata appeared!");
+    r.partner.cosmetic({ t: "at", at });
+    await flush();
+    expect(line.closed()).toBe(false);
+
+    r.partner.cosmetic({ t: "at", at: [at[0], at[1], at[2] + 1] });
+    await flush();
+    expect(line.closed()).toBe(true);
+    expect(paceInfo()!.stats.followed).toBe(1);
+  });
+
+  it("host: while behind the guest, a line comes at once and goes by itself (D27)", async () => {
+    const r = await battle("host");
+    const [checkpoint, phase] = position();
+    r.partner.cosmetic({ t: "at", at: [checkpoint, phase + 1, 0] });
+    await flush();
+    expect(paceInfo()!.behind).toBe(true);
+
+    const handler = r.ctx.game.scene.ui.getMessageHandler();
+    let closed = false;
+    handler.showText("Squirtle used Tackle!", null, () => (closed = true), null, true);
+    expect(handler.message.text).toContain("Squirtle used Tackle!");
+    await vi.waitUntil(() => closed, { timeout: 2000, interval: 20 });
+  });
+
+  it("host: a press tells the guest which line it was, and the guest's line closes with it (D27)", async () => {
+    const r = await battle("host");
+    const at = position();
+    const line = showLine(r, "Go! Bulbasaur!");
+    r.ctx.game.scene.ui.getMessageHandler().processInput(Button.ACTION);
+    expect(line.closed()).toBe(true);
+    await flush();
+    expect(r.partner.paceSeen).toContainEqual({ t: "press", at });
+  });
+
+  it("guest: tells the host where it is (D27)", async () => {
+    const r = await battle("guest");
+    await vi.waitUntil(() => r.partner.paceSeen.some(m => m.t === "at"), { timeout: 2000, interval: 20 });
+    expect(r.partner.paceSeen).toContainEqual({ t: "at", at: position() });
+  });
+
+  it("guest: a press of the host closes the line the guest waits on (D27)", async () => {
+    const r = await battle("guest");
+    const at = position();
+    const line = showLine(r, "Pidgey fainted!");
+    r.partner.cosmetic({ t: "press", at });
+    await flush();
+    expect(line.closed()).toBe(true);
+  });
+
   it("host: tells the guest where it is, with its speeds", async () => {
     const r = await battle("host");
     const line = showLine(r, "A wild Rattata appeared!");

@@ -19,10 +19,10 @@ import type { DisplaySettings, GeneralSettings } from "#types/settings";
 import type { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 
 /**
- * The game's side of pacing (DECISIONS D27): the host's screen is the clock of the run's text.
- * - Host: tells the guest where it is (`pace`), and closes the line it waits on when the guest pressed on that same line.
- * - Guest: closes a line by itself once the host is past it (and shows it at once), so a player who looks away is never
- *   what the other waits for; it follows the host's game speed too.
+ * The game's side of pacing (DECISIONS D27): the faster player leads the run's text.
+ * - Each client tells the other where it is (the host's `pace` with its speeds, the guest's `at`), and closes a line by
+ *   itself once the partner is past it (showing it at once while behind), so a player who looks away is never what the
+ *   other waits for. A press on a line closes the partner's same line too. The guest follows the host's game speed.
  *
  * `MessageUiHandler.showPrompt` reports the lines that wait for a press ({@linkcode coopPromptOpened}); the tracker in the
  * session (`src/coop/pace.ts`) says whether they are shared and where they are.
@@ -61,9 +61,9 @@ const GAME_SPEEDS: readonly number[] = Object.values(GameSpeed);
 const TEXT_MODES: ReadonlySet<UiMode> = new Set([UiMode.MESSAGE, UiMode.EVOLUTION_SCENE]);
 
 interface PaceStats {
-  /** Lines and panels the guest closed because the host was past them */
+  /** Lines and panels this client closed because the partner was past them */
   followed: number;
-  /** Guest: presses sent; host: presses that closed its line */
+  /** Presses sent, and presses of the partner that closed this client's line */
   presses: number;
 }
 
@@ -72,7 +72,7 @@ interface Pacer {
   readonly link: CoopLink;
   /** The handler each open shared line is on */
   readonly handlers: Map<number, AwaitableUiHandler>;
-  /** A question of this screen alone that gives way when the guest is behind (the IV Scanner's) */
+  /** A question of this screen alone that gives way when this player is behind (the IV Scanner's) */
   onBehind: (() => void) | null;
   followsSettings: boolean;
   readonly stats: PaceStats;
@@ -113,25 +113,25 @@ export function coopPromptClosed(ticket: PromptTicket | null): void {
   }
   active.handlers.delete(ticket.id);
   active.session.pace.promptClosed(ticket);
-  // The guest's press on a line the host waits on moves the host's too
-  if (!following && active.session.seat === "guest" && active.link.sendCosmetic({ t: "press", at: atOf(ticket.at) })) {
+  // A press on a line the partner waits on moves the partner's too
+  if (!following && active.link.sendCosmetic({ t: "press", at: atOf(ticket.at) })) {
     active.stats.presses++;
   }
 }
 
-/** The guest is behind the host: the next line comes at once instead of letter by letter */
+/** This player is behind the partner: the next line comes at once instead of letter by letter */
 export function coopTextAtOnce(): boolean {
   const active = activePacer();
-  return active !== null && active.session.seat === "guest" && active.session.pace.behind;
+  return active !== null && active.session.pace.behind;
 }
 
 /**
- * A question that only this screen asks and that the run does not wait for (the IV Scanner's): on the guest, `action`
- * answers it once the host is past it. The action must do nothing if the player answered already.
+ * A question that only this screen asks and that the run does not wait for (the IV Scanner's): `action` answers it once
+ * the partner is past it. The action must do nothing if the player answered already.
  */
 export function whenCoopBehind(action: () => void): void {
   const active = activePacer();
-  if (active !== null && active.session.seat === "guest") {
+  if (active !== null) {
     active.onBehind = action;
   }
 }
@@ -158,7 +158,7 @@ function follow(active: Pacer, handler: unknown): boolean {
   }
 }
 
-/** Guest: the host is past what this screen shows; close it (a shared line, or a panel of its own: level-up stats, IVs) */
+/** The partner is past what this screen shows; close it (a shared line, or a panel of its own: level-up stats, IVs) */
 function catchUp(active: Pacer): void {
   if (!active.session.pace.behind) {
     return;
@@ -222,6 +222,11 @@ function followSettings(active: Pacer, message: Extract<CosmeticMessage, { t: "p
   coopLog().info("pace", "following the host's speed", { ...wanted, ...wantedDisplay });
 }
 
+/** Guest: where it is, so that the host follows it when the guest is ahead */
+function sendAt(active: Pacer): void {
+  active.link.sendCosmetic({ t: "at", at: atOf(active.session.pace.position) });
+}
+
 function onMessage(active: Pacer, message: CosmeticMessage): void {
   const { session } = active;
   if (message.t === "pace" && session.seat === "guest") {
@@ -230,10 +235,16 @@ function onMessage(active: Pacer, message: CosmeticMessage): void {
     catchUp(active);
     return;
   }
-  if (message.t === "press" && session.seat === "host") {
+  // The faster player leads (D27): the host follows a guest who is ahead, as the guest follows the host
+  if (message.t === "at" && session.seat === "host") {
+    session.pace.setLeader(message.at);
+    catchUp(active);
+    return;
+  }
+  if (message.t === "press") {
     const open = session.pace.openPrompt;
     const handler = open === null ? undefined : active.handlers.get(open.id);
-    // Only the line this screen shows now: a press on a line the host has not reached does not skip it
+    // Only the line this screen shows now: a press on a line this client has not reached does not skip it
     if (
       open !== null
       && session.pace.pressFits(message.at)
@@ -270,14 +281,16 @@ export function startPacer(session: CoopSession, link: CoopLink): () => void {
     },
   };
   unsubscribes.push(link.onCosmetic(message => safely(() => onMessage(active, message))));
-  if (session.seat === "host") {
+  {
+    // Each player says where it is (the host with its speeds), and follows the partner when the partner is ahead
+    const send = session.seat === "host" ? sendPace : sendAt;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    /** Say where the host is now, and again after {@linkcode REPEAT_MS} without a move */
+    /** Say where this client is now, and again after {@linkcode REPEAT_MS} without a move */
     const say = (): void => {
       if (timer !== null) {
         clearTimeout(timer);
       }
-      safely(() => sendPace(active));
+      safely(() => send(active));
       timer = setTimeout(say, REPEAT_MS);
     };
     let cooling: ReturnType<typeof setTimeout> | null = null;
@@ -316,9 +329,8 @@ export function startPacer(session: CoopSession, link: CoopLink): () => void {
       },
     );
     timer = setTimeout(say, REPEAT_MS);
-  } else {
-    const timer = setInterval(() => safely(() => catchUp(active)), FOLLOW_MS);
-    unsubscribes.push(() => clearInterval(timer));
+    const follower = setInterval(() => safely(() => catchUp(active)), FOLLOW_MS);
+    unsubscribes.push(() => clearInterval(follower));
   }
   pacer = active;
   return stopPacer;

@@ -702,7 +702,7 @@ report (D13) only exists once a run is stopped; this log also covers hangs, erro
   optional note, adds a snapshot of the game (party, enemies, the last 120 phases, the last checkpoints), sends the log
   at once, and saves it as a file as well.
 
-## D27. Pacing: the host's screen is the clock of the text
+## D27. Pacing: the faster player leads the text
 
 Without pacing, each client would press through its own text (battle lines, a trainer's speech, level-ups), so a player
 who looked away would still be reading while the other already waited at the next decision. The decisions would be in
@@ -723,12 +723,14 @@ step; the screens would not.
   phases of a move start in bursts, and the guest looks every 250 ms anyway). It is sent again when the partner is back,
   and after 10 s without a change, so one the relay dropped is repaired. (It was on every change and every 2 s: three
   in five relay messages of a battle were `pace`.)
-- **The guest follows:** a shared line closes by itself once the host is past it, and while the guest is behind, its
-  lines appear at once. A panel of its own (level-up stats, IVs) closes once the host is past it too, and the IV
-  Scanner question (`ScanIvsPhase`) is answered no. Nothing follows on the host.
-- **Either player presses:** the guest's press on a shared line closes its own and sends `press {at}` (an event, 5 per
-  s, burst 3); the host closes its line if it waits on that same position. A press never closes a line the host has not
-  reached, so the host never misses one; the guest can read ahead and then waits at the next decision as before.
+- **The guest says where it is too:** `at {at}`, an unsequenced `COSMETIC` state sent the same way as `pace` (8 per s,
+  burst 4), without settings.
+- **Whoever is behind follows:** on either client, a shared line closes by itself once the partner is past it, and while
+  this player is behind, its lines appear at once. A panel of its own (level-up stats, IVs) closes once the partner is
+  past it too, and the IV Scanner question (`ScanIvsPhase`) is answered no. So the faster player leads, and nobody waits
+  at the next decision because the other forgot to press.
+- **Either player presses:** a press on a shared line closes it and sends `press {at}` (an event, 5 per s, burst 3); the
+  partner closes its line if it waits on that same position. A press never closes a line the partner has not reached.
 - **Speed:** while the run lasts, the guest uses the host's game speed, EXP bar speed, HP bar speed, IV Scanner, move
   animation and level-up stats settings: an overlay like D1's (general and display settings; never saved, taken off at
   the end), updated live when the host changes them.

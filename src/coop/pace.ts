@@ -5,8 +5,8 @@
  */
 
 /**
- * Pacing (DECISIONS D27): the host's screen is the clock of the run's text. Each client knows where it is in the text by a
- * position, and the guest closes a line by itself once the host is past it.
+ * Pacing (DECISIONS D27): the faster player leads the run's text. Each client knows where it is in the text by a position,
+ * and closes a line by itself once the partner is past it.
  *
  * A position is `[checkpoint, phase, prompt]`: the D13 checkpoints taken in this epoch, the phases started since the last
  * one, and the shared prompts closed in the current phase. Between two checkpoints both clients run the same phases
@@ -66,7 +66,7 @@ export class PaceTracker {
   /** The questions of this player that are open (the decider's side of a decision): their lines are not shared */
   private readonly privateSpans = new Set<number>();
   private nextSpan = 1;
-  /** The host's position as it last told it (guest only) */
+  /** The partner's position as it last told it */
   private leaderAt: PacePosition | null = null;
   /** The number of phases of each checkpoint's stretch in this epoch, for the tests that compare both seats */
   public readonly segments: number[] = [];
@@ -79,7 +79,7 @@ export class PaceTracker {
     return [this.checkpoint, this.phase, this.prompt];
   }
 
-  /** The host's position, as far as the guest knows it */
+  /** The partner's position, as far as this client knows it */
   public get leader(): PacePosition | null {
     return this.leaderAt;
   }
@@ -155,19 +155,19 @@ export class PaceTracker {
     }
   }
 
-  /** Guest: the host said where it is. Positions only go forward within an epoch. */
+  /** The partner said where it is. Positions only go forward within an epoch. */
   public setLeader(at: PacePosition): void {
     if (this.leaderAt === null || comparePositions(at, this.leaderAt) > 0) {
       this.leaderAt = at;
     }
   }
 
-  /** Guest: whether the host is past `at` */
+  /** Whether the partner is past `at` */
   public isPast(at: PacePosition): boolean {
     return this.leaderAt !== null && this.leaderAt[0] > 0 && comparePositions(this.leaderAt, at) > 0;
   }
 
-  /** Guest: the host is past what this screen shows, and what it shows is not this player's own */
+  /** The partner is past what this screen shows, and what it shows is not this player's own */
   public get behind(): boolean {
     return !this.isPrivate && this.isPast(this.position);
   }

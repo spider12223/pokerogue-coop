@@ -158,7 +158,9 @@ export class ScriptedPartner {
     reliable.onMessage(message => {
       if (message.kind === "COSMETIC") {
         const payload = message.payload as CosmeticMessage;
-        (payload.t === "pace" || payload.t === "press" ? this.paceSeen : this.cosmeticsSeen).push(payload);
+        (payload.t === "pace" || payload.t === "press" || payload.t === "at" ? this.paceSeen : this.cosmeticsSeen).push(
+          payload,
+        );
       }
     });
     this.channel.onMessage(message => {
