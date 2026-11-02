@@ -74,6 +74,8 @@ function threeCoverFrames(): boolean {
       texture.add(frame, 0, 144, 37, 176, rows);
     }
   }
+  // Phaser makes the first frame added the texture's default: the whole image stays the default, for every screen
+  texture.firstFrame = "__BASE";
   return true;
 }
 
@@ -347,7 +349,7 @@ export class PartyUiHandler extends MessageUiHandler {
     const three = globalScene.currentBattle?.playerSlots === 3;
     this.showThreeCovers(three);
     if (three) {
-      this.partyBg.setTexture(THREE_BG);
+      this.partyBg.setTexture(THREE_BG, "__BASE");
     } else if (this.isItemManageMode()) {
       this.partyBg.setTexture(`party_bg${globalScene.currentBattle.double ? "_double_manage" : ""}`);
     } else {

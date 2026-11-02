@@ -153,6 +153,16 @@ test("three players link up, pick on one starter select, and the host starts the
   await expect.poll(() => ui(host), { timeout: 10_000 }).toBe("COMMAND");
   await pressIf(host, "UP", "COMMAND");
 
+  // The second guest aims from the third slot: Fight, the first move, the target screen
+  await pressIf(guest2, "ACTION", "COMMAND");
+  await expect.poll(() => ui(guest2), { timeout: 10_000 }).toBe("FIGHT");
+  await guest2.page.waitForTimeout(300);
+  await pressIf(guest2, "ACTION", "FIGHT");
+  await expect.poll(() => ui(guest2), { timeout: 10_000 }).toBe("TARGET_SELECT");
+  await guest2.page.waitForTimeout(800);
+  await shot("07b-target", guest2);
+  await pressIf(guest2, "ACTION", "TARGET_SELECT");
+
   // The three play the wave to its reward screen, each with their own Pokémon
   await Promise.all([host, guest, guest2].map(client => playToRewardScreen(client, 0)));
   await host.page.waitForTimeout(800);
