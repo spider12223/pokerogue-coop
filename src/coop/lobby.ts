@@ -35,14 +35,17 @@ import {
 } from "#coop/link";
 import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
+import { coloredName } from "#coop/player-colors";
 import {
   COOP_STARTER_POINTS,
   type CoopRunMode,
   hashCanonical,
   keyId,
   otherSeat,
+  type PlayerCount,
   type Seat,
   type SeatRecord,
+  seatsFor,
 } from "#coop/protocol";
 import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
@@ -313,19 +316,27 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
     {
       label: coopText("host", "Host a game"),
       handler: () => {
-        askRunMode(callbacks, runMode =>
-          confirmOverwrite(
-            callbacks,
-            slot,
-            saved =>
-              coopText(
-                "hostOverwrites",
-                "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
-                { wave: saved.wave },
-              ),
-            () => void hostGame(callbacks, runMode),
-          ),
-        );
+        // How many players first, then the kind of run; Cancel on the second asks the first again (D40)
+        const host = (): void =>
+          askPlayers(callbacks, players =>
+            askRunMode(
+              callbacks,
+              runMode =>
+                confirmOverwrite(
+                  callbacks,
+                  slot,
+                  saved =>
+                    coopText(
+                      "hostOverwrites",
+                      "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
+                      { wave: saved.wave },
+                    ),
+                  () => void hostGame(callbacks, runMode, undefined, players),
+                ),
+              host,
+            ),
+          );
+        host();
         return true;
       },
     },
@@ -412,8 +423,45 @@ function showMenu(config: OptionSelectModeConfig): void {
   ui.setOverlayMode(UiMode.OPTION_SELECT, config);
 }
 
-/** Classic or Endless (D39), asked before hosting and before looking for a partner; Cancel goes back to the co-op menu */
-function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode) => void): void {
+/** 2 or 3 players (D40), asked first when hosting; Cancel goes back to the co-op menu */
+function askPlayers(callbacks: CoopTitleCallbacks, chosen: (players: PlayerCount) => void): void {
+  const { ui } = globalScene;
+  const option = (players: PlayerCount, label: string): OptionSelectItem => ({
+    label,
+    handler: () => {
+      chosen(players);
+      return true;
+    },
+  });
+  // Out of the co-op menu first: it clears itself once the entry that led here returns, and would take this one with it
+  void ui.setMode(UiMode.MESSAGE).then(() =>
+    ui.showText(coopText("howManyPlayers", "How many players?"), null, () =>
+      showMenu({
+        options: [
+          option(2, coopText("twoPlayers", "2 players")),
+          option(3, coopText("threePlayers", "3 players (Beta)")),
+          {
+            label: i18next.t("menu:cancel"),
+            handler: () => {
+              void ui.setMode(UiMode.MESSAGE).then(() => {
+                ui.clearText();
+                showCoopTitleMenu(callbacks);
+              });
+              return true;
+            },
+          },
+        ],
+        yOffset: 48,
+      }),
+    ),
+  );
+}
+
+/**
+ * Classic or Endless (D39), asked before hosting and before looking for a partner
+ * @param back - What Cancel does; default: back to the co-op menu
+ */
+function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode) => void, back?: () => void): void {
   const { ui } = globalScene;
   const option = (runMode: CoopRunMode): OptionSelectItem => ({
     label: i18next.t(runMode === "endless" ? "gameMode:endless" : "gameMode:classic"),
@@ -434,7 +482,11 @@ function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode
             handler: () => {
               void ui.setMode(UiMode.MESSAGE).then(() => {
                 ui.clearText();
-                showCoopTitleMenu(callbacks);
+                if (back === undefined) {
+                  showCoopTitleMenu(callbacks);
+                } else {
+                  back();
+                }
               });
               return true;
             },
@@ -444,6 +496,28 @@ function askRunMode(callbacks: CoopTitleCallbacks, chosen: (runMode: CoopRunMode
       }),
     ),
   );
+}
+
+/**
+ * Who is in a room of three and who is still to come (D40): each name in its player's colour with a tick, "…" for a free
+ * seat. The host leaves itself out
+ */
+function playersLine(names: Partial<Record<Seat, string>>, withHost: boolean): string {
+  return seatsFor(3)
+    .filter(seat => withHost || seat !== "host")
+    .map(seat => {
+      const name = names[seat];
+      return name === undefined ? "…" : `${coloredName(seat, name)} ✓`;
+    })
+    .join("  ");
+}
+
+/** The host's waiting text in a room of three: the code, and who has joined (D40) */
+function hostWaitingText(code: string, names: Partial<Record<Seat, string>>): string {
+  return coopText("waitingForPlayersHost", "Your join code is {{code}}. Waiting for players:\n{{players}}", {
+    code,
+    players: playersLine(names, false),
+  });
 }
 
 /**
@@ -671,6 +745,7 @@ async function hostGame(
     partnerWaitMs?: number;
     onNoPartner?: () => void;
   },
+  players: PlayerCount = 2,
 ): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
@@ -681,8 +756,9 @@ async function hostGame(
   let cancelled = false;
   const cancel = (): void => {
     cancelled = true;
-    if (ready !== undefined && room !== null) {
-      // A room whose partner joins by themselves (a match, Play again): they are told at once, not left waiting in it
+    if ((ready !== undefined || room?.seats === 3) && room !== null) {
+      // A room whose partner joins by themselves (a match, Play again), or a room of three a guest may be waiting in (D40):
+      // they are told at once, not left waiting in it
       endRoom(room);
     } else {
       room?.cancel();
@@ -695,29 +771,33 @@ async function hostGame(
   ui.showText(coopText("gettingJoinCode", "Getting a join code…"));
   startLobbyLog();
   try {
-    room = ready?.room ?? (await createRoom(getRelayUrl()));
+    room = ready?.room ?? (await createRoom(getRelayUrl(), players === 3 ? { seats: 3 } : {}));
     if (cancelled) {
       return;
     }
     const code = room.identity.code;
+    const three = room.seats === 3;
     coopLog().setContext({ room: code, seat: "host" });
     coopLog().info("lobby", ready === undefined ? "room created" : `room created ${ready.why}`, { code });
-    showJoinCode(code, cancel, ready?.waiting, ready?.copy ?? true);
-    if (!(await partnerWithin(room, ready?.partnerWaitMs))) {
-      if (!cancelled) {
-        cancelled = true;
-        coopLog().info("lobby", "the partner did not come", { code });
-        endRoom(room);
-        ready?.onNoPartner?.();
+    showJoinCode(code, cancel, three ? hostWaitingText(code, {}) : ready?.waiting, ready?.copy ?? true);
+    // In a room of three the host shakes hands with each guest as it comes (D40), below
+    if (!three) {
+      if (!(await partnerWithin(room, ready?.partnerWaitMs))) {
+        if (!cancelled) {
+          cancelled = true;
+          coopLog().info("lobby", "the partner did not come", { code });
+          endRoom(room);
+          ready?.onNoPartner?.();
+        }
+        return;
       }
-      return;
+      if (cancelled) {
+        return;
+      }
+      coopLog().info("lobby", "partner joined", { code: room.identity.code });
+      ui.setMode(UiMode.MESSAGE);
+      ui.showText(coopText("connecting", "Connecting…"));
     }
-    if (cancelled) {
-      return;
-    }
-    coopLog().info("lobby", "partner joined", { code: room.identity.code });
-    ui.setMode(UiMode.MESSAGE);
-    ui.showText(coopText("connecting", "Connecting…"));
     const overlay = createSettingsOverlayPort(settings);
     const pinned = buildPinnedSettings(settings.general.playerGender);
     // The host plays with the pinned settings too (D1, D5)
@@ -729,6 +809,16 @@ async function hostGame(
         sequencer: { validatePayload: validateProposal },
         name: getCoopName(),
         runMode,
+        ...(three
+          ? {
+              onProgress: (names: Partial<Record<Seat, string>>) => {
+                if (!cancelled) {
+                  coopLog().info("lobby", "players", { guests: Object.keys(names).length });
+                  ui.showText(hostWaitingText(code, names), null, undefined, null, false);
+                }
+              },
+            }
+          : {}),
       });
     } catch (error) {
       overlay.remove();
@@ -743,10 +833,60 @@ async function hostGame(
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
     if (!cancelled) {
-      room?.cancel();
+      if (room?.seats === 3) {
+        // A guest who is through may be waiting in it: the room ends for them too (D40)
+        endRoom(room);
+      } else {
+        room?.cancel();
+      }
       showFailure(error, callbacks);
     }
   }
+}
+
+/**
+ * A guest of three waits until the room is full (D40): who is in, in their colours, as the host's roster says.
+ * @returns Whether it is; `false` if the link ended first
+ */
+function rosterComplete(link: CoopLink): Promise<boolean> {
+  const { ui } = globalScene;
+  return new Promise(resolve => {
+    const show = (): void => {
+      ui.setMode(UiMode.MESSAGE);
+      ui.showText(
+        coopText("waitingForPlayersGuest", "Waiting for players:\n{{players}}", {
+          players: playersLine(link.names, true),
+        }),
+        null,
+        undefined,
+        null,
+        false,
+      );
+    };
+    const stops = [
+      link.onRoster(() => {
+        if (link.rosterComplete) {
+          done(true);
+        } else {
+          show();
+        }
+      }),
+      link.onEnd(() => done(false)),
+    ];
+    const done = (complete: boolean): void => {
+      for (const stop of stops) {
+        stop();
+      }
+      resolve(complete);
+    };
+    if (link.rosterComplete) {
+      done(true);
+    } else if (link.isClosed) {
+      done(false);
+    } else {
+      show();
+    }
+  });
 }
 
 /**
@@ -807,6 +947,9 @@ export async function joinGame(
         false,
       );
       return;
+    }
+    if (!(await rosterComplete(established.link))) {
+      return; // the room ended under the guest: the session's end says so
     }
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
