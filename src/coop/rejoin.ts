@@ -15,10 +15,12 @@ import {
   establishHost,
   HandshakeRefusedError,
   type HostRoom,
+  hostRoomOfThree,
   type RejoinedRoom,
   rejoinRoom,
 } from "#coop/link";
 import {
+  askPlayers,
   beginSession,
   type CoopTitleCallbacks,
   describeCoopError,
@@ -31,9 +33,10 @@ import {
   showJoinCode,
 } from "#coop/lobby";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
+import type { PlayerCount, Seat, SeatRecord } from "#coop/protocol";
 import { hideReconnectScreen, showReconnectScreen } from "#coop/reconnect-ui";
 import { issueResync } from "#coop/resync-run";
-import { CoopSaveRefusedError, checkSaveBlock } from "#coop/save-block";
+import { type CoopSaveBlock, CoopSaveRefusedError, checkSaveBlock, swapGuestSeats } from "#coop/save-block";
 import { forgetSeat, newestSeat } from "#coop/seat-store";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
@@ -66,6 +69,33 @@ function seedOf(slot: CoopSlot): string {
   }
 }
 
+/**
+ * The slot of a run of three, arranged for who came back (D40): if the player in the first guest seat is the saved second
+ * guest, the two guests' seats are exchanged in the save (what each owns, their account), so that everyone keeps their own
+ */
+function arrangeGuests(slot: CoopSlot, joined: Partial<Record<Seat, string>> | undefined): CoopSlot {
+  if (slot.accountIds.guest2 === undefined || joined?.guest !== slot.accountIds.guest2) {
+    return slot;
+  }
+  const data = JSON.parse(slot.session) as { coop?: CoopSaveBlock };
+  if (data.coop !== undefined) {
+    data.coop = swapGuestSeats(data.coop);
+  }
+  const swap = <T>(record: SeatRecord<T>): SeatRecord<T> => ({
+    host: record.host,
+    guest: record.guest2 ?? record.guest,
+    ...(record.guest2 === undefined ? {} : { guest2: record.guest }),
+  });
+  return { ...slot, session: JSON.stringify(data), names: swap(slot.names), accountIds: swap(slot.accountIds) };
+}
+
+/** The guest accounts a saved run may be continued with: its guest, or either guest of a run of three (D21, D40) */
+function savedGuests(slot: CoopSlot): { expectedGuestAccountId: string } | { expectedGuestAccountIds: string[] } {
+  return slot.accountIds.guest2 === undefined
+    ? { expectedGuestAccountId: slot.accountIds.guest }
+    : { expectedGuestAccountIds: [slot.accountIds.guest, slot.accountIds.guest2] };
+}
+
 /** Start the host's session on a link that shook hands, with the run of its slot loaded under the next epoch (D21) */
 function resumeFromSlot(
   established: Awaited<ReturnType<typeof establishHost>>,
@@ -74,6 +104,8 @@ function resumeFromSlot(
   reason: "resume" | "rejoin",
 ): void {
   const { link } = established;
+  // (a run of three whose guests came back the other way round: their seats are exchanged first, D40)
+  slot = arrangeGuests(slot, established.accountIds);
   const session = beginSession(link, "host", overlay, {
     runSeed: seedOf(slot),
     accountIds: slot.accountIds,
@@ -181,15 +213,21 @@ export async function tryAutoRejoin(): Promise<boolean> {
     if (seat === "host") {
       const pinned = buildPinnedSettings(settings.general.playerGender);
       const effectiveHash = overlay.apply(pinned);
-      const established = await establishHost(room, getLocalBuildIdentity(), pinned, {
-        expectedEffectiveSettingsHash: effectiveHash,
-        sequencer: { validatePayload: validateProposal },
-        name: getCoopName(),
-        mode: "resume",
-        runMode: slot!.runMode ?? "classic",
-        ...(slot!.challenges === undefined ? {} : { challenges: slot!.challenges }),
-        expectedGuestAccountId: slot!.accountIds.guest,
-      });
+      // A game of three takes both guests back on channels of their own (D40)
+      const established = await establishHost(
+        slot!.players === 3 ? hostRoomOfThree(room) : room,
+        getLocalBuildIdentity(),
+        pinned,
+        {
+          expectedEffectiveSettingsHash: effectiveHash,
+          sequencer: { validatePayload: validateProposal },
+          name: getCoopName(),
+          mode: "resume",
+          runMode: slot!.runMode ?? "classic",
+          ...(slot!.challenges === undefined ? {} : { challenges: slot!.challenges }),
+          ...savedGuests(slot!),
+        },
+      );
       resumeFromSlot(established, slot!, overlay, "rejoin");
       getCoopSession()!.timing["rejoinStartedAt"] = startedAt;
     } else {
@@ -289,6 +327,17 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
     offerToDelete(unusable, callbacks);
     return;
   }
+  // A run of three is continued with 2 or 3 players (D40): the host chooses
+  if (slot.accountIds.guest2 !== undefined) {
+    askPlayers(callbacks, players => void continueWith(callbacks, slot, players));
+    return;
+  }
+  await continueWith(callbacks, slot, 2);
+}
+
+/** Continue the run of the slot with this many players (D21, D40) */
+async function continueWith(callbacks: CoopTitleCallbacks, slot: CoopSlot, players: PlayerCount): Promise<void> {
+  const { ui } = globalScene;
   let room: HostRoom | null = null;
   let cancelled = false;
   const cancel = (): void => {
@@ -301,7 +350,7 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
   ui.setMode(UiMode.MESSAGE);
   ui.showText(coopText("gettingJoinCode", "Getting a join code…"));
   try {
-    room = await createRoom(getRelayUrl());
+    room = await createRoom(getRelayUrl(), players === 3 ? { seats: 3 } : {});
     if (cancelled) {
       return;
     }
@@ -324,7 +373,7 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
         mode: "resume",
         runMode: slot.runMode ?? "classic",
         ...(slot.challenges === undefined ? {} : { challenges: slot.challenges }),
-        expectedGuestAccountId: slot.accountIds.guest,
+        ...savedGuests(slot),
       });
     } catch (error) {
       overlay.remove();

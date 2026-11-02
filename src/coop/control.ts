@@ -55,11 +55,16 @@ export function notYourPokemonText(pokemon: Pokemon): string {
 }
 
 /**
- * @returns The seat that owns a party member
+ * @returns The seat that commands a party member: its owner (in a run of three continued with two, a present player for the
+ * absent one's, D40)
  * @throws If it has no owner: a party member without one means the two clients could decide differently
  */
 export function requireOwnerOf(pokemon: PlayerPokemon): Seat {
-  return requireCoopSession().ownership.require(pokemon.id);
+  const session = requireCoopSession();
+  session.ownership.require(pokemon.id);
+  // Who commands it: its owner, or a present player for one who is not in this game (a run of three continued with two,
+  // D40)
+  return session.actingSeatOf(pokemon.id);
 }
 
 /**
@@ -205,7 +210,9 @@ export function deciderOf(decision: CoopDecision): Seat | "either" | null {
       return "either";
     case "LEARN_MOVE":
     case "EVOLUTION_CANCEL":
-      return session.ownership.require(decision.pokemonId);
+      session.ownership.require(decision.pokemonId);
+      // (a present player answers for one who is not in this game, D40)
+      return session.actingSeatOf(decision.pokemonId);
     case "BIOME":
       return session.lastRewardPicker;
     case "CATCH_RELEASE":

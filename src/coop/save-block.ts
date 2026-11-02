@@ -41,6 +41,27 @@ export interface CoopSaveBlock {
   resumeAt?: RewardResume;
 }
 
+/**
+ * The same save with its two guests' seats exchanged (D40): when the players of a run of three come back the other way
+ * round (the second guest takes the first guest's seat), what each owns, their account and their id follow them
+ */
+export function swapGuestSeats(block: CoopSaveBlock): CoopSaveBlock {
+  const swap = (seat: Seat): Seat => (seat === "guest" ? "guest2" : seat === "guest2" ? "guest" : seat);
+  const swapRecord = <T>(record: SeatRecord<T>): SeatRecord<T> => {
+    const out: SeatRecord<T> = { host: record.host, guest: (record.guest2 ?? record.guest) as T };
+    if (record.guest2 !== undefined) {
+      out.guest2 = record.guest;
+    }
+    return out;
+  };
+  return {
+    ...block,
+    accountIds: swapRecord(block.accountIds),
+    accounts: swapRecord(block.accounts) as CoopAccountSnapshot,
+    owners: Object.fromEntries(Object.entries(block.owners).map(([id, seat]) => [id, swap(seat)])),
+  };
+}
+
 /** Where a reward-screen save resumes (D19): the screen, with the wave's fixed settings or none, and the phases after it */
 export interface RewardResume {
   at: "rewards";
@@ -147,7 +168,9 @@ export function checkSaveBlock(block: unknown, session: { accountIds: SeatRecord
     session.accountIds !== null
     && (block.accountIds.host !== session.accountIds.host
       || block.accountIds.guest !== session.accountIds.guest
-      || block.accountIds.guest2 !== session.accountIds.guest2)
+      // (a run of three continued with two: the absent player's account is not asked for, D40)
+      || (session.accountIds.guest2 !== undefined && block.accountIds.guest2 !== session.accountIds.guest2)
+      || (block.accountIds.guest2 === undefined && session.accountIds.guest2 !== undefined))
   ) {
     throw new CoopSaveRefusedError("different-accounts", "This co-op run belongs to two other players.");
   }

@@ -100,6 +100,8 @@ export interface HostHandshakeOptions extends HandshakeOptions {
   challenges?: CoopChallenge[];
   /** The guest account the run was saved with (D21): another one is refused, with `accountId` as the field that differs */
   expectedGuestAccountId?: string;
+  /** The guest accounts a run of three was saved with (D40): a guest with any of them may come in */
+  expectedGuestAccountIds?: readonly string[];
 }
 
 /**
@@ -153,6 +155,16 @@ export function hostHandshake(
           }
           if (options.expectedGuestAccountId !== undefined && ack.accountId !== options.expectedGuestAccountId) {
             mismatches.push({ field: "accountId", local: options.expectedGuestAccountId, remote: ack.accountId });
+          }
+          if (
+            options.expectedGuestAccountIds !== undefined
+            && !options.expectedGuestAccountIds.includes(ack.accountId)
+          ) {
+            mismatches.push({
+              field: "accountId",
+              local: options.expectedGuestAccountIds.join(" or "),
+              remote: ack.accountId,
+            });
           }
           if (mismatches.length > 0) {
             refuse("mismatch", mismatches);

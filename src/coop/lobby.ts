@@ -309,11 +309,14 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
       : [
           {
             label:
-              slot.runMode === "endless"
-                ? coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave })
-                : slot.runMode === "challenge"
-                  ? coopText("continueChallengeRun", "Continue (Challenge, wave {{wave}})", { wave: slot.wave })
-                  : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave }),
+              // (a run of three says so, D40)
+              slot.accountIds.guest2 === undefined
+                ? slot.runMode === "endless"
+                  ? coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave })
+                  : slot.runMode === "challenge"
+                    ? coopText("continueChallengeRun", "Continue (Challenge, wave {{wave}})", { wave: slot.wave })
+                    : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave })
+                : coopText("continueThreeRun", "Continue (3 players, wave {{wave}})", { wave: slot.wave }),
             handler: () => {
               continueHandler?.(callbacks);
               return true;
@@ -439,8 +442,8 @@ function showMenu(config: OptionSelectModeConfig): void {
   ui.setOverlayMode(UiMode.OPTION_SELECT, config);
 }
 
-/** 2 or 3 players (D40), asked first when hosting; Cancel goes back to the co-op menu */
-function askPlayers(callbacks: CoopTitleCallbacks, chosen: (players: PlayerCount) => void): void {
+/** 2 or 3 players (D40), asked first when hosting (and at Continue of a run of three); Cancel goes back to the co-op menu */
+export function askPlayers(callbacks: CoopTitleCallbacks, chosen: (players: PlayerCount) => void): void {
   const { ui } = globalScene;
   const option = (players: PlayerCount, label: string): OptionSelectItem => ({
     label,
@@ -1229,7 +1232,8 @@ export function hostAgain(
     partner,
     code: room.identity.code,
   });
-  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, 2, challenges);
+  // (a room of three when both guests of a game of three want to play again, D40)
+  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, room.seats, challenges);
 }
 
 /** Host: start a game without the menus (the debug API and the end-to-end test use it) */

@@ -4,7 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type CoopChallenge, type CoopRunMode, isCoopChallenges, isCoopRunMode, type SeatRecord } from "#coop/protocol";
+import {
+  type CoopChallenge,
+  type CoopRunMode,
+  isCoopChallenges,
+  isCoopRunMode,
+  type PlayerCount,
+  type SeatRecord,
+} from "#coop/protocol";
 import type { KeyValueStore } from "#coop/seat-store";
 
 /**
@@ -43,6 +50,8 @@ export interface CoopSlot {
   runMode?: CoopRunMode;
   /** A challenge run's challenges (D41), for the partner's handshake when the run is continued */
   challenges?: CoopChallenge[];
+  /** How many played when it was saved (D40); a run of three has the third seat's name and account. Default 2 */
+  players?: PlayerCount;
 }
 
 export function isCoopSlot(value: unknown): value is CoopSlot {
@@ -74,6 +83,7 @@ export function isCoopSlot(value: unknown): value is CoopSlot {
     && (slot["runMode"] === undefined || isCoopRunMode(slot["runMode"]))
     // A challenge run has its challenges, and no other run has any (D41)
     && (slot["runMode"] === "challenge" ? isCoopChallenges(slot["challenges"]) : slot["challenges"] === undefined)
+    && (slot["players"] === undefined || slot["players"] === 2 || slot["players"] === 3)
   );
 }
 

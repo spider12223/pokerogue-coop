@@ -12,6 +12,7 @@ import {
   CoopSaveRefusedError,
   checkSaveBlock,
   isCoopSaveBlock,
+  swapGuestSeats,
 } from "#coop/save-block";
 import { accountIdOf, checkSessionSaveBlock, endCoopSession, rewardPickerOf, startCoopSession } from "#coop/session";
 import { afterEach, describe, expect, it } from "vitest";
@@ -120,8 +121,9 @@ describe("checkSaveBlock", () => {
     expect(() => checkSaveBlock(three, { accountIds: { host: "h", guest: "g", guest2: "x" } })).toThrow(
       CoopSaveRefusedError,
     );
-    // a game of two does not continue a save of three
-    expect(() => checkSaveBlock(three, session)).toThrow(CoopSaveRefusedError);
+    // a game of two continues a save of three with the host and one of its guests (D40)
+    expect(() => checkSaveBlock(three, session)).not.toThrow();
+    expect(() => checkSaveBlock(three, { accountIds: { host: "h", guest: "x" } })).toThrow(CoopSaveRefusedError);
     // a third account without its snapshot, or a snapshot without its account, is damaged
     expect(isCoopSaveBlock({ ...three, accounts: { host: account(1), guest: account(2) } })).toBe(false);
     expect(isCoopSaveBlock({ ...three, accountIds: { host: "h", guest: "g" } })).toBe(false);
@@ -224,6 +226,36 @@ describe("the session and its save block", () => {
     expect(() => checkSessionSaveBlock(block())).not.toThrow(); // the same two accounts
     expect(() => checkSessionSaveBlock(block({ accountIds: { host: "h", guest: "x" } }))).toThrow("two other players");
     expect(() => checkSessionSaveBlock(undefined)).toThrow("solo run");
+  });
+
+  it("a run of three continued with two: the absent player's Pokémon are commanded one by each present player (D40)", () => {
+    const session = startCoopSession({ seat: "host", runSeed: "s", build, players: 2 });
+    session.ownership.load({ "1": "host", "2": "host", "3": "guest", "4": "guest", "5": "guest2", "6": "guest2" });
+    expect([1, 2, 3, 4].map(id => session.actingSeatOf(id))).toEqual(["host", "host", "guest", "guest"]);
+    // the absent second guest's two: the first (by id) the host's to command, the second the guest's
+    expect([5, 6].map(id => session.actingSeatOf(id))).toEqual(["host", "guest"]);
+    // their owner stays theirs
+    expect(session.ownership.get(5)).toBe("guest2");
+  });
+
+  it("in a game of three everyone commands their own (D40)", () => {
+    const session = startCoopSession({ seat: "host", runSeed: "s", build, players: 3 });
+    session.ownership.load({ "5": "guest2", "6": "guest2" });
+    expect([5, 6].map(id => session.actingSeatOf(id))).toEqual(["guest2", "guest2"]);
+  });
+
+  it("the two guests of a save of three change seats when they come back the other way round (D40)", () => {
+    const saved = block({
+      accountIds: { host: "h", guest: "g", guest2: "k" },
+      owners: { "10": "host", "20": "guest", "30": "guest2" },
+      accounts: { host: account(1), guest: account(2), guest2: account(3) },
+    });
+    const swapped = swapGuestSeats(saved);
+    expect(swapped.accountIds).toEqual({ host: "h", guest: "k", guest2: "g" });
+    expect(swapped.owners).toEqual({ "10": "host", "20": "guest2", "30": "guest" });
+    expect(swapped.accounts.guest).toEqual(account(3));
+    expect(swapped.accounts.guest2).toEqual(account(2));
+    expect(isCoopSaveBlock(swapped)).toBe(true);
   });
 
   it("in a game of three the picker of the reward screens goes round host, guest, guest2 (D40)", () => {

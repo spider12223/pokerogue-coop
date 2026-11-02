@@ -10,7 +10,7 @@ import { challengesOn } from "#coop/challenge-pick";
 import { coopLog } from "#coop/coop-log";
 import { createRoom, type HostRoom } from "#coop/link";
 import { type CoopTitleCallbacks, getRelayUrl, hostAgain, joinGame, quietRunEnd } from "#coop/lobby";
-import type { CoopChallenge, CoopRunMode } from "#coop/protocol";
+import type { CoopChallenge, CoopRunMode, PlayerCount, Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { UiMode } from "#enums/ui-mode";
@@ -42,7 +42,8 @@ let answer: AgainAnswer | null = null;
 
 /** How this client reaches the relay for the new game; a test puts stand-ins here */
 export const playAgainNetwork = {
-  createRoom: (url: string): Promise<HostRoom> => createRoom(url),
+  createRoom: (url: string, seats: PlayerCount = 2): Promise<HostRoom> =>
+    createRoom(url, seats === 3 ? { seats: 3 } : {}),
   host: hostAgain,
   join: joinGame,
 };
@@ -84,6 +85,13 @@ export function askPlayAgain(): Promise<void> {
   }
   const partner = session.partnerName;
   const couldNot = coopText("againFailed", "Could not start a new game with {{partner}}.", { partner });
+  // The host of three (D40) hears each guest; the new game is with those who want it: of three, or of two
+  const ofThree = session.isHost && link.players === 3;
+  const guests = ["guest", "guest2"] as const;
+  const answered = (): boolean =>
+    guests.every(seat => partnerAnswer.wantBy.has(seat) || partnerAnswer.goneBy.has(seat));
+  const wanting = (): Seat[] =>
+    guests.filter(seat => partnerAnswer.wantBy.get(seat) === true && !partnerAnswer.goneBy.has(seat));
 
   return new Promise<void>(resolve => {
     /** This player's answer; `null` while the menu is open */
@@ -145,6 +153,8 @@ export function askPlayAgain(): Promise<void> {
       coopLog().info("lobby", "play again", { want, partner: partnerAnswer.want });
       if (!want) {
         finish(null);
+      } else if (ofThree) {
+        heard();
       } else if (partnerAnswer.want === true) {
         bothWant();
       } else {
@@ -166,9 +176,15 @@ export function askPlayAgain(): Promise<void> {
           ),
         );
       if (session.isHost) {
-        void playAgainNetwork.createRoom(getRelayUrl()).then(
+        const players: PlayerCount = ofThree && wanting().length === 2 ? 3 : 2;
+        const names = ofThree
+          ? wanting()
+              .map(seat => session.nameOf(seat))
+              .join(" & ")
+          : partner;
+        void playAgainNetwork.createRoom(getRelayUrl(), players).then(
           room => {
-            if (done || partnerAnswer.gone) {
+            if (done || (!ofThree && partnerAnswer.gone)) {
               room.cancel();
               finish(couldNot);
               return;
@@ -176,8 +192,8 @@ export function askPlayAgain(): Promise<void> {
             // The new game is the same kind of run (D39), with the same challenges (D41)
             const mode = globalScene.gameMode;
             pending = mode.isChallenge
-              ? { seat: "host", room, partner, runMode: "challenge", challenges: challengesOn(mode) }
-              : { seat: "host", room, partner, runMode: mode.isEndless ? "endless" : "classic" };
+              ? { seat: "host", room, partner: names, runMode: "challenge", challenges: challengesOn(mode) }
+              : { seat: "host", room, partner: names, runMode: mode.isEndless ? "endless" : "classic" };
             link.sendLobby({ t: "againCode", code: room.identity.code });
             // The guest leaves the old room as soon as it has the code; until then that room carries it
             timer = setTimeout(() => finish(null), LEAVE_WAIT_MS);
@@ -215,6 +231,10 @@ export function askPlayAgain(): Promise<void> {
       if (done) {
         return;
       }
+      if (ofThree) {
+        heardOfThree();
+        return;
+      }
       if (agreed) {
         heardAfterAgreeing();
         return;
@@ -236,6 +256,25 @@ export function askPlayAgain(): Promise<void> {
         );
       }
     };
+    /** The host of three (D40): once every guest answered (or left), a new game with those who want it */
+    const heardOfThree = (): void => {
+      if (agreed) {
+        // they leave the old room as soon as they have the code: then the title screen goes on with the new room
+        if (wanting().every(seat => partnerAnswer.goneBy.has(seat))) {
+          finish(null);
+        }
+        return;
+      }
+      if (mine !== true || !answered()) {
+        return;
+      }
+      if (wanting().length === 0) {
+        finish(coopText("againNobody", "Nobody else wants to play again."));
+        return;
+      }
+      bothWant();
+    };
+
     partnerAnswer.onChange = heard;
 
     menu(

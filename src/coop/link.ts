@@ -1163,6 +1163,26 @@ export interface RejoinedRoom {
 }
 
 /**
+ * A host who took the seat of a room of three back (D20, D40), as a room to shake hands in: both guests are there already
+ * and shake hands again once they see the host back. The room's channel of two is not used.
+ */
+export function hostRoomOfThree(room: RejoinedRoom): HostRoom {
+  room.reliable.close();
+  return {
+    identity: room.identity,
+    relay: room.relay,
+    reliable: room.reliable,
+    seats: 3,
+    url: room.url,
+    ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
+    partner: Promise.resolve(),
+    joinedSeats: new Set<Seat>(["guest", "guest2"]),
+    onJoined: () => () => undefined,
+    cancel: () => room.cancel(),
+  };
+}
+
+/**
  * Take a seat back with its token.
  * @throws `RelayError` (`notFound`, `badToken`, `badRequest`, or `closed` if the relay is not reachable)
  */
@@ -1234,7 +1254,7 @@ function establishHostOfThree(
   const hostName = cleanName(options.name ?? DEFAULT_NAME);
   /** The channel of each guest seat that someone joined, and what its handshake gave */
   const channels = new Map<Seat, ReliableTransport>();
-  const through = new Map<Seat, { name: string; remote: BuildIdentity }>();
+  const through = new Map<Seat, { name: string; remote: BuildIdentity; accountId: string }>();
   const handshakeOptions = {
     players: 3 as const,
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -1245,6 +1265,9 @@ function establishHostOfThree(
       ? {}
       : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    ...(options.expectedGuestAccountIds === undefined
+      ? {}
+      : { expectedGuestAccountIds: options.expectedGuestAccountIds }),
   };
   return new Promise<EstablishedHost>((resolve, reject) => {
     let over = false;
@@ -1307,7 +1330,12 @@ function establishHostOfThree(
         ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
         ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
       });
-      resolve({ link, remote: through.get("guest")!.remote, partnerName: link.partnerName });
+      resolve({
+        link,
+        remote: through.get("guest")!.remote,
+        partnerName: link.partnerName,
+        accountIds: Object.fromEntries([...through].map(([seat, done]) => [seat, done.accountId])),
+      });
     };
     /** A guest took the seat: shake hands with them on a channel of their own */
     const shake = (seat: Seat): void => {
@@ -1331,7 +1359,7 @@ function establishHostOfThree(
           fail(new HandshakeRefusedError(result));
           return;
         }
-        through.set(seat, { name: cleanName(result.name), remote: result.remote });
+        through.set(seat, { name: cleanName(result.name), remote: result.remote, accountId: result.accountId });
         changed();
         if (guests.every(guest => through.has(guest))) {
           complete();
@@ -1372,6 +1400,8 @@ export interface EstablishedHost {
   remote: BuildIdentity;
   /** What to call the guest (D1) */
   partnerName: string;
+  /** The account of the player in each guest seat, as their handshake said (D21, D40) */
+  accountIds?: Partial<Record<Seat, string>>;
 }
 
 /**
@@ -1397,6 +1427,8 @@ export async function establishHost(
     challenges?: CoopChallenge[];
     /** The guest account that may join (D21); another one is refused */
     expectedGuestAccountId?: string;
+    /** The guest accounts of a saved run of three (D40): a guest with any of them may join */
+    expectedGuestAccountIds?: readonly string[];
     /** A room of three (D40): the guests whose handshake is through, by seat, each time that changes */
     onProgress?: (names: Partial<Record<Seat, string>>) => void;
   } = {},
@@ -1410,6 +1442,9 @@ export async function establishHost(
     ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
     ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
     ...(options.expectedGuestAccountId === undefined ? {} : { expectedGuestAccountId: options.expectedGuestAccountId }),
+    ...(options.expectedGuestAccountIds === undefined
+      ? {}
+      : { expectedGuestAccountIds: options.expectedGuestAccountIds }),
     ...(options.expectedEffectiveSettingsHash === undefined
       ? {}
       : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
@@ -1444,7 +1479,7 @@ export async function establishHost(
     ...(options.sequencer === undefined ? {} : { sequencer: options.sequencer }),
     ...(options.scheduler === undefined ? {} : { scheduler: options.scheduler }),
   });
-  return { link, remote: result.remote, partnerName: link.partnerName };
+  return { link, remote: result.remote, partnerName: link.partnerName, accountIds: { guest: result.accountId } };
 }
 
 export interface EstablishedGuest {

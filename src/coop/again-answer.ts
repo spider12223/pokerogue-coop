@@ -5,7 +5,7 @@
  */
 
 import type { CoopLink } from "#coop/link";
-import type { LobbyMessage } from "#coop/protocol";
+import type { LobbyMessage, Seat } from "#coop/protocol";
 
 /**
  * What the partner answered on the end screen of a run (D35), heard from the start of the session on: a partner whose game
@@ -21,11 +21,21 @@ export class AgainAnswer {
   /** They left the room for good, or the room is gone */
   public gone = false;
   public onChange: (() => void) | null = null;
+  /** The host of three (D40): each guest's answer, and the guests who left */
+  public readonly wantBy = new Map<Seat, boolean>();
+  public readonly goneBy = new Set<Seat>();
   private readonly unsubscribes: (() => void)[];
 
-  constructor(link: CoopLink) {
+  constructor(private readonly link: CoopLink) {
     this.unsubscribes = [
-      link.onLobby(message => this.receive(message)),
+      link.onLobby((message, from) => this.receive(message, from)),
+      link.onPresence((seat, present) => {
+        // A guest of three who left does not come back to the end screen (D40)
+        if (!present && link.seat === "host") {
+          this.goneBy.add(seat);
+          this.onChange?.();
+        }
+      }),
       link.onEnd(end => {
         // A dropped socket may come back (`peerLeft`); a partner who left, or a room that closed, does not
         if (end !== "peerLeft") {
@@ -36,8 +46,15 @@ export class AgainAnswer {
     ];
   }
 
-  private receive(message: LobbyMessage): void {
+  private receive(message: LobbyMessage, from: Seat): void {
     if (message.t === "again") {
+      if (this.link.players === 3) {
+        this.wantBy.set(from, message.want);
+        // a guest of three answers to the host only
+        if (this.link.seat !== "host" && from !== "host") {
+          return;
+        }
+      }
       this.want = message.want;
     } else if (message.t === "againCode") {
       this.code = message.code;

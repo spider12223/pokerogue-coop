@@ -194,6 +194,37 @@ describe("Co-op: the battle of a game of three (D40)", () => {
     5 * 60_000,
   );
 
+  it(
+    "a run of three continued with two: 2 of ours against 2, no buff, the absent player's two on the others' benches (D40)",
+    async () => {
+      const scenario: Scenario = {
+        ...THREE,
+        players: 2,
+        waves: 3,
+        // the host's lead faints in the first turn: its replacement may be the absent player's, commanded by the host
+        faints: [{ wave: 1, turn: 1, slots: [0] }],
+        starterOwners: ["host", "host", "guest", "guest", "guest2", "guest2"],
+      };
+      const recorded = await playClient(phaserGame, SHARED_THREE, HOST, Decider.recording(), scenario);
+      expect(recorded.stalledIn).toBeNull();
+      expect(recorded.waves.every(w => w.controllers.length === 2)).toBe(true);
+      expect(recorded.waves[0].controllers).toEqual(["host", "guest"]);
+      // nobody decides as the absent player
+      expect(recorded.decisions.some(d => d.by === "guest2")).toBe(false);
+      const replayed = await playClient(
+        phaserGame,
+        SHARED_THREE,
+        { ...HOST, seat: "guest" },
+        Decider.replaying(recorded.decisions),
+        scenario,
+        recorded.checkpoints,
+      );
+      expect(replayed.divergence).toBeNull();
+      expect(replayed.checkpoints.map(c => c.hash)).toEqual(recorded.checkpoints.map(c => c.hash));
+    },
+    5 * 60_000,
+  );
+
   it("a player's Pokémon is not made tougher in a game of three", () => {
     openSession(2);
     const ours = game.scene.addPlayerPokemon(speciesDataRegistry.getSpecies(SpeciesId.SNORLAX), 50);

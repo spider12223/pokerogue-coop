@@ -1090,10 +1090,13 @@ count from the host's `HELLO`.
   reloaded with its seat) shakes hands with the host again on a new channel and waits ("You join the others at the start of
   the next wave"); the reload that lets them in waits for that wave start, so the other two lose nothing of the wave they
   are in. The host dropping pauses both guests until the host is back.
-- **Saves:** the save of a game of three holds the third account; only the same three accounts load it. The host
-  chooses 2 or 3 players at **Continue** of a 3-player run. With 2 it plays as a game of two (2v2, no
-  buff), the absent player's two Pokémon commanded one by each present player; with 3 everything goes back. A run started
-  with 2 stays a game of two.
+- **Saves:** the save of a game of three holds the third account, and its slot the third name and how many played; only
+  those accounts load it. **Continue** of a run of three ("Continue (3 players, wave N)") asks 2 or 3 players; either saved
+  guest may join (a game of two takes one of them). If the guests come back the other way round, their seats are exchanged
+  in the save first, so each keeps their own Pokémon and account. With 2 it plays as a game of two (2v2, no buff, rewards
+  alternate); the absent player's Pokémon keep their owner but are commanded by the present players, the first (by id) by
+  the host and the next by the guest, and nothing is written to the absent account. With 3 everything goes back. A run
+  started with 2 stays a game of two. A host whose page reloads takes both guests back on channels of their own.
 - **End:** retry after a wipe is the host's (D4a); Play again starts a new game with whoever wants to play again.
 - **Find a partner** pairs two players only.
 

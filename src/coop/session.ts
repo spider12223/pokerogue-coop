@@ -478,6 +478,23 @@ export class CoopSession {
     return this.seat === "host" ? { host: mine, guest: theirs } : { host: theirs, guest: mine };
   }
 
+  /**
+   * Who commands a Pokémon of ours: its owner; in a run of three continued with two (D40), the absent player's are commanded
+   * one by each present player, the first (by id) by the host, the next by the guest. Ownership itself does not change.
+   */
+  public actingSeatOf(pokemonId: number): Seat {
+    const owner = this.ownership.get(pokemonId) ?? "host";
+    const seats: readonly Seat[] = this.players === 3 ? ["host", "guest", "guest2"] : ["host", "guest"];
+    if (seats.includes(owner)) {
+      return owner;
+    }
+    const theirs = Object.entries(this.ownership.toJSON())
+      .filter(([, seat]) => seat === owner)
+      .map(([id]) => Number(id))
+      .sort((a, b) => a - b);
+    return seats[Math.max(0, theirs.indexOf(pokemonId)) % seats.length];
+  }
+
   /** What to call the partner in texts (D1); `"Your partner"` in a session without a network */
   public get partnerName(): string {
     return this.link?.partnerName ?? "Your partner";

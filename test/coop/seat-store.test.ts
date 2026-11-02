@@ -116,6 +116,20 @@ describe("the co-op slot of the host (D19)", () => {
     expect(readCoopSlot(store)).toBeNull();
   });
 
+  it("keeps a run of three: the third seat's name and account, and how many played (D40)", () => {
+    const store = new MemoryStore();
+    const three: CoopSlot = {
+      ...slot,
+      names: { host: "Sam", guest: "Alex", guest2: "Kim" },
+      accountIds: { host: "1:2", guest: "3:4", guest2: "5:6" },
+      players: 3,
+    };
+    expect(writeCoopSlot(store, three)).toBe(true);
+    expect(readCoopSlot(store)).toEqual(three);
+    expect(writeCoopSlot(store, { ...three, players: 4 as never })).toBe(true);
+    expect(readCoopSlot(store)).toBeNull();
+  });
+
   it("lives under a key no solo slot has", () => {
     expect(COOP_SLOT_KEY.startsWith("sessionData")).toBe(false);
     expect(COOP_SLOT_KEY).not.toMatch(/^(data_|sessionData|settings|runHistory)/);

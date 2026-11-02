@@ -81,8 +81,19 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
     wave: data.waveIndex,
     epoch: link.epoch,
     seq: link.sequencer.nextExpected - 1,
-    names: { host: link.name, guest: link.theirName },
+    // (a run of three keeps the third seat's name, even while it is played with two: D40)
+    names:
+      link.players === 3
+        ? link.names
+        : {
+            host: link.name,
+            guest: link.theirName,
+            ...(session.accountIds.guest2 === undefined
+              ? {}
+              : { guest2: currentCoopSlot()?.names.guest2 ?? "Player 3" }),
+          },
     accountIds: { ...session.accountIds },
+    players: link.players,
     session: json,
     ...(globalScene.gameMode.isChallenge
       ? { runMode: "challenge", challenges: challengesOn() }
