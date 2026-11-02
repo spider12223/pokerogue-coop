@@ -1030,18 +1030,29 @@ A co-op run is Classic or Endless. Co-op Endless is solo Endless with every co-o
 
 ## D40. Three players
 
-A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; the host chooses 3 when hosting.
+A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; 3 players is a **Beta**. **Host a game** asks
+how many players first (2 players, 3 players (Beta)), then Classic or Endless (D39); Cancel on the second asks the first
+again. **Join a game** asks nothing: the guest learns the count from the host's `HELLO`.
 
 - **Seats:** `host`, `guest`, `guest2` (`Seat`, `seatsFor`, `peers` in `src/coop/protocol.ts`). A game of two has the first
   two only, so every 2-player path keeps its seat names; `otherSeat` is for a game of two.
 - **Network:** the host is the only sequencer and a hub: one reliable channel per guest. The relay room has three seats;
   the relay stamps each guest frame with the sender's seat and routes the host's frames to one guest. Guests never talk to
   each other directly. A 2-seat room is unchanged.
+- **Joining:** the relay tells the room which seat a guest took (`relay:peerJoined`), and the host shakes hands with each
+  guest as it comes, so nobody waits on the other guest. After each handshake the host sends the guests a `ROSTER` of
+  every player's name; a guest waits, with who is in on screen, until the room is full. A guest who leaves before then
+  frees the seat for the next one. A refused handshake refuses the game. `COOP_PROTOCOL_VERSION` is 11 since
+  `HELLO.players`.
+- **Colours:** each player has one, the same on every screen: P1 (the host) yellow, P2 blue, P3 green.
 - **Battle:** 3 player Pokémon against 2 enemies (a single boss stays one). The third player battler is numbered after the
   enemies (`BattlerIndex.PLAYER_3 = 4`), so the enemies' numbers and everything sent over the wire stay. The field zooms
   out (about 0.8). Any Pokémon can target any enemy. Enemies in a game of three get HP x1.5 and Attack and Sp. Atk x1.15,
   bosses too.
-- **Party:** 2 Pokémon per player, 20 starter points shared, a catch cap of 2 per player.
+- **Party:** 2 Pokémon per player, 20 starter points shared, a catch cap of 2 per player. On the starter select each
+  partner's picks show in a window of their own with their name in their colour, and everyone sees the Pokémon of all
+  three (D32); the host passes each guest's picks, ready and collection on to the other guest. A player who leaves the
+  starter select ends it for the other two.
 - **Turns:** each player commands the Pokémon in their slot; an empty slot is filled from a teammate's bench and commanded
   by that teammate. Ball and Run are the host's decision.
 - **Between waves:** the reward picker rotates host, guest, guest2; a trade names its counterpart.

@@ -16,7 +16,7 @@ import { getCosmeticView, sendEmote, sendPing } from "#coop/cosmetic-view";
 import { getCoopName, setCoopName } from "#coop/display-name";
 import { pingKeyName } from "#coop/hotkey-names";
 import { openEmoteWheel, pingNow } from "#coop/hotkeys";
-import { getJoinCode } from "#coop/lobby";
+import { getJoinCode, getStarterLobby } from "#coop/lobby";
 import { type PaceInfo, paceInfo } from "#coop/pace-run";
 import type { PhaseTraceEntry } from "#coop/phase-trace";
 import { keyId, type Seat, type SeatRecord } from "#coop/protocol";
@@ -87,6 +87,12 @@ export interface CoopDebugApi {
   readonly linked: boolean;
   /** The join code of the room this client hosts, once it exists */
   readonly joinCode: string | null;
+  /** The starter select (D32, D40): how many players, each partner's picks and ready, and whether the run started */
+  readonly lobby: {
+    players: number;
+    partners: Partial<Record<Seat, { picks: number; ready: boolean }>>;
+    started: boolean;
+  } | null;
   /** The decision keys the simulation is waiting for right now (the decision window), as `wave:turn:KIND:ref` */
   readonly window: string[];
   /** The state-hash checkpoints this client passed, in order (D13) */
@@ -229,6 +235,19 @@ function api(): CoopDebugApi {
     },
     get joinCode() {
       return getJoinCode();
+    },
+    get lobby() {
+      const lobby = getStarterLobby();
+      if (lobby === null) {
+        return null;
+      }
+      return {
+        players: lobby.players,
+        partners: Object.fromEntries(
+          [...lobby.partners].map(([seat, state]) => [seat, { picks: state.picks.length, ready: state.ready }]),
+        ),
+        started: lobby.startInfo !== null,
+      };
     },
     get window() {
       return (getCoopSession()?.openWindow ?? []).map(keyId);

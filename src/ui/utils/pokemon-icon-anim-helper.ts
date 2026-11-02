@@ -122,6 +122,17 @@ export class PokemonIconAnimHelper {
     }
   }
 
+  /** Move an icon's resting place by `dy` (co-op moves the team slots of the partners, D40) */
+  public shiftRest(icon: PokemonIcon, dy: number): void {
+    const state = this.icons.get(icon);
+    if (state === undefined) {
+      icon.y += dy;
+      return;
+    }
+    state.restY += dy;
+    icon.y = state.restY + this.getCurrentOffset(state.mode);
+  }
+
   public removeAll(): void {
     for (const [icon, state] of this.icons) {
       icon.y = state.restY;

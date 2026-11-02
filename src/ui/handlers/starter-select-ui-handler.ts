@@ -644,6 +644,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
       {
         iconPosition: i => [teamWindowX + 7, calcStarterIconY(i)],
         slotIcons: this.partyIcons,
+        shiftSlotIcon: (icon, dy) => this.iconAnimHandler.shiftRest(icon, dy),
         // The free strip at the top, between the species number and the filter bar (the grid has icons in every row)
         statusPosition: [speciesContainerX - 3, 1],
         statusWidth: 62,

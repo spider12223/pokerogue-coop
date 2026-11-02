@@ -14,7 +14,7 @@ the background runs slowly.
 ## Starting a game
 
 1. **Both:** on the title screen choose **Co-op**, then **Your name** and type the name your friend will see.
-2. **One of you hosts:** **Host a game**, then **Classic** or **Endless**. A six-character code appears; **Copy code** puts
+2. **One of you hosts:** **Host a game**, then **2 players**, then **Classic** or **Endless**. A six-character code appears; **Copy code** puts
    it in the clipboard. Send it to your friend.
 3. **The other joins:** **Join a game** and paste the code. You play the kind of run your friend chose; the starter select
    says "Endless" when it is one.

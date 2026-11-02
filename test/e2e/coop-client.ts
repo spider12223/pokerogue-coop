@@ -238,6 +238,22 @@ export async function openCoopMenu(client: Client): Promise<void> {
   await expect.poll(() => ui(client), { timeout: 20_000 }).toBe("OPTION_SELECT");
 }
 
+/** 2 or 3 players (D40), which Host a game asks first: pick one */
+export async function choosePlayers(client: Client, players: 2 | 3 = 2): Promise<void> {
+  await expect
+    .poll(() => client.page.evaluate(() => (window as any).__coop.menuOptions as string[]), {
+      message: `${client.label}: no players question`,
+      timeout: 20_000,
+    })
+    .toContain("3 players (Beta)");
+  await client.page.waitForTimeout(300);
+  if (players === 3) {
+    await press(client, "DOWN");
+    await client.page.waitForTimeout(150);
+  }
+  await press(client, "ACTION");
+}
+
 /** Classic or Endless (D39), which Host a game and Find a partner ask: pick one */
 export async function chooseRunMode(client: Client, mode: "Classic" | "Endless" = "Classic"): Promise<void> {
   await expect
@@ -293,9 +309,10 @@ export async function startLinkedRun(host: Client, guest: Client, afterLinked?: 
  * @param mode - The kind of run the host chooses (D39)
  */
 export async function linkClients(host: Client, guest: Client, mode: "Classic" | "Endless" = "Classic"): Promise<void> {
-  // The host: Co-op -> Host a game -> Classic or Endless -> a join code
+  // The host: Co-op -> Host a game -> 2 players -> Classic or Endless -> a join code
   await openCoopMenu(host);
   await press(host, "ACTION");
+  await choosePlayers(host, 2);
   await chooseRunMode(host, mode);
   await expect
     .poll(() => host.page.evaluate(() => (window as any).__coop.joinCode as string | null), {

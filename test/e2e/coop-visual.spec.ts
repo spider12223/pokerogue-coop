@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   type Client,
+  choosePlayers,
   chooseRunMode,
   describeClients,
   newClientContext,
@@ -75,7 +76,8 @@ test.describe("co-op: the screens of both players", () => {
       await sleep(host, 500);
       await shot("02-coop-menu", host);
       await press(host, "ACTION");
-      // Classic or Endless (D39)
+      // 2 or 3 players (D40), then Classic or Endless (D39)
+      await choosePlayers(host, 2);
       await expect
         .poll(() => host.page.evaluate(() => (window as any).__coop.menuOptions as string[]), { timeout: 20_000 })
         .toContain("Endless");
@@ -238,6 +240,7 @@ test.describe("co-op: the screens of both players", () => {
       await guest.page.evaluate(() => (window as any).__coop.setName("Alex"));
       await openCoopMenu(host);
       await press(host, "ACTION");
+      await choosePlayers(host, 2);
       await chooseRunMode(host);
       await expect
         .poll(() => host.page.evaluate(() => (window as any).__coop.joinCode as string | null), { timeout: 30_000 })

@@ -36,11 +36,11 @@ import {
 import { startPacer, stopPacer } from "#coop/pace-run";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
 import { coloredName } from "#coop/player-colors";
+import { hidePlayersLine, showPlayersLine } from "#coop/players-line";
 import {
   type CoopRunMode,
   hashCanonical,
   keyId,
-  otherSeat,
   type PlayerCount,
   type Seat,
   type SeatRecord,
@@ -136,6 +136,7 @@ export function closeStarterLobby(): void {
  * so is the seat in the room: it was only for coming back (D20).
  */
 export function leaveCoop(): void {
+  hidePlayersLine();
   const link = getCoopSession()?.link;
   // A tab whose seat another tab took leaves that tab's seat in the store (it is using it)
   const code = link?.wasReplaced ? undefined : link?.code;
@@ -512,12 +513,9 @@ function playersLine(names: Partial<Record<Seat, string>>, withHost: boolean): s
     .join("  ");
 }
 
-/** The host's waiting text in a room of three: the code, and who has joined (D40) */
-function hostWaitingText(code: string, names: Partial<Record<Seat, string>>): string {
-  return coopText("waitingForPlayersHost", "Your join code is {{code}}. Waiting for players:\n{{players}}", {
-    code,
-    players: playersLine(names, false),
-  });
+/** The host's waiting text in a room of three (D40); who has joined is on the line under it (`showPlayersLine`) */
+function hostWaitingText(code: string): string {
+  return coopText("waitingForPlayersHost", "Your join code is {{code}}. Waiting for players:", { code });
 }
 
 /**
@@ -675,7 +673,8 @@ export function beginSession(
   });
   // What the partner's cosmetic messages show; the keys that send ours are buttons of the game (D16), and a touch screen
   // gets its emote button now
-  startCosmeticView(link, otherSeat(seat));
+  // In a game of three a guest shows the host's for now; the emotes of three come with the screen texts (D40)
+  startCosmeticView(link, seat === "host" ? "guest" : "host");
   setTouchEmoteVisible(true);
   // The host's screen is the clock of the run's text: the guest's follows it (D27)
   startPacer(session, link);
@@ -694,6 +693,7 @@ export function beginSession(
 
 async function enterLobby(session: CoopSession, link: CoopLink, callbacks: CoopTitleCallbacks): Promise<void> {
   closeStarterLobby();
+  hidePlayersLine();
   const lobby = new StarterLobby({
     seat: session.seat,
     players: link.players,
@@ -784,7 +784,10 @@ async function hostGame(
     const three = room.seats === 3;
     coopLog().setContext({ room: code, seat: "host" });
     coopLog().info("lobby", ready === undefined ? "room created" : `room created ${ready.why}`, { code });
-    showJoinCode(code, cancel, three ? hostWaitingText(code, {}) : ready?.waiting, ready?.copy ?? true);
+    showJoinCode(code, cancel, three ? hostWaitingText(code) : ready?.waiting, ready?.copy ?? true);
+    if (three) {
+      showPlayersLine(playersLine({}, false));
+    }
     // In a room of three the host shakes hands with each guest as it comes (D40), below
     if (!three) {
       if (!(await partnerWithin(room, ready?.partnerWaitMs))) {
@@ -819,7 +822,7 @@ async function hostGame(
               onProgress: (names: Partial<Record<Seat, string>>) => {
                 if (!cancelled) {
                   coopLog().info("lobby", "players", { guests: Object.keys(names).length });
-                  ui.showText(hostWaitingText(code, names), null, undefined, null, false);
+                  showPlayersLine(playersLine(names, false));
                 }
               },
             }
@@ -858,15 +861,8 @@ function rosterComplete(link: CoopLink): Promise<boolean> {
   return new Promise(resolve => {
     const show = (): void => {
       ui.setMode(UiMode.MESSAGE);
-      ui.showText(
-        coopText("waitingForPlayersGuest", "Waiting for players:\n{{players}}", {
-          players: playersLine(link.names, true),
-        }),
-        null,
-        undefined,
-        null,
-        false,
-      );
+      ui.showText(coopText("waitingForPlayersGuest", "Waiting for players:"), 0, undefined, null, false);
+      showPlayersLine(playersLine(link.knownNames, true));
     };
     const stops = [
       link.onRoster(() => {
@@ -882,6 +878,7 @@ function rosterComplete(link: CoopLink): Promise<boolean> {
       for (const stop of stops) {
         stop();
       }
+      hidePlayersLine();
       resolve(complete);
     };
     if (link.rosterComplete) {

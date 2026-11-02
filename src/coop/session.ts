@@ -416,8 +416,11 @@ export class CoopSession {
     return otherSeat(this.seat);
   }
 
-  /** The display names of the two players, by seat (D1); the seat's own for a session without a network */
+  /** The display names of the players, by seat (D1, D40); the seat's own for a session without a network */
   public get names(): SeatRecord<string> {
+    if (this.link?.players === 3) {
+      return this.link.names;
+    }
     const mine = this.link?.name ?? "Host";
     const theirs = this.link?.theirName ?? "Guest";
     return this.seat === "host" ? { host: mine, guest: theirs } : { host: theirs, guest: mine };

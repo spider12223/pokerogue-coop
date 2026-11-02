@@ -249,6 +249,8 @@ describe("CoopLink over the relay", () => {
       const guest = (await establishGuest(guestRoom, build, guestOverlay, { name: "Alex" })).link;
       links.push(guest);
       expect(guest.rosterComplete).toBe(false);
+      // Only who is in: the second guest's seat has no name yet
+      expect(guest.knownNames).toEqual({ host: "Sam", guest: "Alex" });
       const guest2Room = await joinRoom(url, room.identity.code, { reliable });
       const guest2 = (await establishGuest(guest2Room, build, guestOverlay, { name: "Kim" })).link;
       const host = (await hosting).link;
@@ -295,6 +297,14 @@ describe("CoopLink over the relay", () => {
       expect((refused[0] as PromiseRejectedResult).reason).toBeInstanceOf(HandshakeRefusedError);
       room.cancel();
       guest2Room.cancel();
+    });
+
+    it("gives a session of three every player's name by seat (D40)", async () => {
+      const { guest2 } = await connectThree();
+      await waitFor(() => guest2.rosterComplete);
+      const session = new CoopSession({ seat: "guest2", runSeed: "x", build });
+      session.link = guest2;
+      expect(session.names).toEqual({ host: "Sam", guest: "Alex", guest2: "Kim" });
     });
 
     it("tells lobby listeners which seat a lobby message came from (D40)", async () => {

@@ -261,6 +261,11 @@ export class CoopLink {
       .join(" & ");
   }
 
+  /** The names of the seats this link knows a player in, and only those (a guest of three before the room is full, D40) */
+  get knownNames(): Partial<Record<Seat, string>> {
+    return { ...this.seatNames };
+  }
+
   /** Whether every player's name is known: always in a game of two; a guest of three, once the host's roster says so */
   get rosterComplete(): boolean {
     return this.players === 2 || seatsFor(this.players).every(seat => this.seatNames[seat] !== undefined);

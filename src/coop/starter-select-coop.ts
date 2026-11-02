@@ -13,8 +13,9 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { coopText } from "#coop/bridge";
 import { coopLog } from "#coop/coop-log";
 import { drawPixels, MARK_COLORS, MARK_ICONS, type MarkIcon } from "#coop/cosmetic-tag";
-import { returnToTitle } from "#coop/lobby";
-import { type CoopStarter, STARTERS_PER_SEAT_MAX } from "#coop/protocol";
+import { getStarterLobby, returnToTitle } from "#coop/lobby";
+import { PLAYER_COLORS } from "#coop/player-colors";
+import { type CoopStarter, otherSeat, peers, type Seat, STARTERS_PER_SEAT_MAX } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { captureAccountSnapshot } from "#coop/sim-account";
 import type { StarterLobby } from "#coop/starter-lobby";
@@ -84,6 +85,8 @@ export interface CoopStarterSelectLayout {
   iconPosition(index: number): [x: number, y: number];
   /** The screen's own team slot icons (0-5); the free ones show the empty-slot placeholder */
   slotIcons: readonly Phaser.GameObjects.Sprite[];
+  /** Move a slot icon down by `dy`: the screen's icons bob, so their resting place moves */
+  shiftSlotIcon(icon: Phaser.GameObjects.Sprite, dy: number): void;
   /** Right edge and top of the status plate, in a free part of the screen */
   statusPosition: [x: number, y: number];
   /** How wide the status plate may be before its text wraps (it has room for two lines) */
@@ -109,6 +112,15 @@ export type StatusTone = "picking" | "ready" | "self" | "warn";
 
 /** How far the partner's team slots sit below their place in solo play, for the edge of their window */
 const PARTNER_SLOT_SHIFT = 3;
+
+/** How tall a team slot's icon is */
+const ICON_HEIGHT = 15;
+
+/** In a game of three (D40): where a partner's first icon starts in their window (their name is above it, over the icon's empty top) */
+const LABEL_ROOM = 4;
+
+/** In a game of three: how far apart a partner's two slots are, a little closer than the screen's own */
+const SLOT_PITCH_THREE = 14;
 
 /** The accent of a warning on the status plate */
 const WARN_COLOR = 0xf0a048;
@@ -170,51 +182,78 @@ class StatusPlate {
   }
 }
 
+/** One partner's part of the team column: its slots, where each icon's top goes, its window, and the name in it (D40) */
+interface PartnerGroup {
+  seat: Seat;
+  slots: { index: number; top: number }[];
+  windowTop: number;
+  label: { name: string; color: number } | null;
+}
+
 /**
- * Draws the partner's picks as icons in the team slots after the player's own, in a window of their own (the team column is
- * split in two, in the player's window style), and the status on a plate.
+ * Draws each partner's picks as icons in the team slots after the player's own, in a window of their own (the team column is
+ * split, in the player's window style), and the status on a plate. In a game of three each partner's window has their name
+ * on top, in their colour (D40).
  */
 class PartnerView {
-  private readonly icons: Phaser.GameObjects.Sprite[] = [];
-  /** The placeholders under {@linkcode icons}, hidden while a partner pick covers them */
-  private readonly placeholders: Phaser.GameObjects.Sprite[];
-  /** The window of the partner's half of the team column */
-  private readonly window: Phaser.GameObjects.NineSlice;
+  private readonly icons = new Map<Seat, Phaser.GameObjects.Sprite[]>();
+  /** The placeholders under the icons, hidden while a partner pick covers them */
+  private readonly placeholders = new Map<Seat, Phaser.GameObjects.Sprite[]>();
+  private readonly shifts: { sprite: Phaser.GameObjects.Sprite; by: number }[] = [];
+  private readonly windows: Phaser.GameObjects.NineSlice[] = [];
+  private readonly labels: Phaser.GameObjects.Text[] = [];
   private readonly plate: StatusPlate;
 
-  constructor(container: Phaser.GameObjects.Container, layout: CoopStarterSelectLayout, firstSlot: number) {
-    this.placeholders = layout.slotIcons.slice(firstSlot, firstSlot + STARTERS_PER_SEAT_MAX);
-    // The partner's slots move down a little, to make room for their window's top edge under the player's last slot
-    for (const placeholder of this.placeholders) {
-      placeholder.y += PARTNER_SLOT_SHIFT;
-    }
-    for (let i = 0; i < STARTERS_PER_SEAT_MAX; i++) {
-      const [x, y] = layout.iconPosition(firstSlot + i);
-      this.icons.push(
-        globalScene.add
-          .sprite(x, y + PARTNER_SLOT_SHIFT, "pokemon_icons_0")
-          .setScale(0.5)
-          .setOrigin(0)
-          .setVisible(false),
-      );
-    }
-    const [, firstPartner] = layout.iconPosition(firstSlot);
+  constructor(
+    container: Phaser.GameObjects.Container,
+    private readonly layout: CoopStarterSelectLayout,
+    groups: readonly PartnerGroup[],
+  ) {
     const team = layout.teamWindow;
-    // The edge sits in the empty top of the partner's first icon
-    const top = firstPartner + PARTNER_SLOT_SHIFT - 2;
-    this.window = addWindow(team.x, top, team.width, team.y + team.height - top);
-    // Under the icons of the column, so the placeholders of the partner's free slots show on it
-    layout.teamColumn.addAt(this.window, layout.teamColumn.getIndex(layout.slotIcons[0]));
+    const allIcons: Phaser.GameObjects.Sprite[] = [];
+    for (const [g, group] of groups.entries()) {
+      const placeholders: Phaser.GameObjects.Sprite[] = [];
+      const icons: Phaser.GameObjects.Sprite[] = [];
+      for (const { index, top } of group.slots) {
+        const [x, y] = layout.iconPosition(index);
+        const placeholder = layout.slotIcons[index]!;
+        // The placeholder moves with the partner's icon
+        layout.shiftSlotIcon(placeholder, top - y);
+        this.shifts.push({ sprite: placeholder, by: top - y });
+        placeholders.push(placeholder);
+        icons.push(globalScene.add.sprite(x, top, "pokemon_icons_0").setScale(0.5).setOrigin(0).setVisible(false));
+      }
+      this.placeholders.set(group.seat, placeholders);
+      this.icons.set(group.seat, icons);
+      allIcons.push(...icons);
+      const top = group.windowTop;
+      const bottom = groups[g + 1]?.windowTop ?? team.y + team.height;
+      const window = addWindow(team.x, top, team.width, bottom - top);
+      // Under the icons of the column, so the placeholders of the partner's free slots show on it
+      layout.teamColumn.addAt(window, layout.teamColumn.getIndex(layout.slotIcons[0]));
+      this.windows.push(window);
+      if (group.label !== null) {
+        const label = addTextObject(team.x + 4, top + 2, group.label.name, TextStyle.TOOLTIP_CONTENT, {
+          fontSize: "36px",
+        })
+          .setOrigin(0, 0)
+          .setColor(`#${group.label.color.toString(16).padStart(6, "0")}`);
+        // As wide as the window lets it be: a long name is cut
+        label.setCrop(0, 0, (team.width - 7) * 6, label.height);
+        layout.teamColumn.add(label);
+        this.labels.push(label);
+      }
+    }
     const [x, y] = layout.statusPosition;
     this.plate = new StatusPlate(x, y, layout.statusWidth);
-    container.addAt([...this.icons, this.plate.object], container.getIndex(layout.drawBelow));
+    container.addAt([...allIcons, this.plate.object], container.getIndex(layout.drawBelow));
   }
 
-  /** The partner's party is drawn faded until they are ready. */
-  setPartner(picks: readonly CoopStarter[], ready: boolean): void {
-    for (const [i, icon] of this.icons.entries()) {
+  /** A partner's party is drawn faded until they are ready. */
+  setPartner(seat: Seat, picks: readonly CoopStarter[], ready: boolean): void {
+    for (const [i, icon] of (this.icons.get(seat) ?? []).entries()) {
       const pick = picks.at(i);
-      this.placeholders.at(i)?.setVisible(!pick);
+      this.placeholders.get(seat)?.at(i)?.setVisible(!pick);
       if (!pick) {
         icon.setVisible(false);
         continue;
@@ -238,16 +277,27 @@ class PartnerView {
   }
 
   destroy(): void {
-    for (const icon of this.icons) {
+    for (const icon of [...this.icons.values()].flat()) {
       icon.destroy();
     }
-    for (const placeholder of this.placeholders) {
+    for (const placeholder of [...this.placeholders.values()].flat()) {
       placeholder.setVisible(true);
-      placeholder.y -= PARTNER_SLOT_SHIFT;
     }
-    this.window.destroy();
+    for (const { sprite, by } of this.shifts) {
+      this.layout.shiftSlotIcon(sprite, -by);
+    }
+    for (const object of [...this.windows, ...this.labels]) {
+      object.destroy();
+    }
     this.plate.object.destroy();
   }
+}
+
+/** Names joined for a line: "Alex", "Alex and Kim" */
+function namesLine(names: readonly string[]): string {
+  return names.length < 2
+    ? (names[0] ?? "")
+    : coopText("namesAnd", "{{first}} and {{second}}", { first: names[0]!, second: names[1]! });
 }
 
 export class CoopStarterSelectController {
@@ -269,7 +319,7 @@ export class CoopStarterSelectController {
     layout: CoopStarterSelectLayout,
     private readonly onLimitChange: () => void,
   ) {
-    this.view = new PartnerView(container, layout, STARTERS_PER_SEAT_MAX);
+    this.view = new PartnerView(container, layout, partnerGroups(lobby, layout));
     this.unsubscribe = lobby.onChange(() => this.render());
     this.render();
   }
@@ -378,7 +428,50 @@ export class CoopStarterSelectController {
       this.lastPartnerCost = partner.cost;
       this.overLimit = false;
     }
-    this.view.setPartner(partner.picks, partner.ready);
+    for (const [seat, state] of this.lobby.partners) {
+      this.view.setPartner(seat, state.picks, state.ready);
+    }
+    if (this.lobby.players === 3) {
+      this.renderStatusOfThree();
+    } else {
+      this.renderStatus();
+    }
+    if (limitChanged) {
+      this.onLimitChange();
+    }
+  }
+
+  /** The status of a game of three (D40): who is still picking, kept short */
+  private renderStatusOfThree(): void {
+    const names = getCoopSession()?.link?.names;
+    const nameOf = (seat: Seat): string => names?.[seat] ?? coopText("aPlayer", "a player");
+    const partners = [...this.lobby.partners];
+    const notReady = partners.filter(([, state]) => !state.ready).map(([seat]) => nameOf(seat));
+    const ready = partners.filter(([, state]) => state.ready).map(([seat]) => nameOf(seat));
+    const mode = getCoopSession()?.runMode === "endless" ? `${i18next.t("gameMode:endless")}: ` : "";
+    const status = (text: string, tone: StatusTone): void => this.view.setStatus(mode + text, tone);
+    if (this.lobby.closed) {
+      status(coopText("playerLeftLobby", "A player left. Cancel: back to the title"), "warn");
+    } else if (this.lobby.localReady) {
+      status(
+        coopText("waitingForPlayersReady", "Ready! Waiting for {{names}}", { names: namesLine(notReady) }),
+        "self",
+      );
+    } else if (this.overLimit) {
+      status(coopText("notEnoughPoints", "Not enough points"), "warn");
+    } else if (this.lobby.wasReset) {
+      status(coopText("pointsReset", "Too many points together: pick again"), "warn");
+    } else if (notReady.length === 0) {
+      status(coopText("playersAreReady", "{{names}} are ready", { names: namesLine(ready) }), "ready");
+    } else if (ready.length > 0) {
+      status(coopText("partnerIsReady", "{{partner}} is ready", { partner: namesLine(ready) }), "ready");
+    } else {
+      status(coopText("playersArePicking", "{{names}} are picking", { names: namesLine(notReady) }), "picking");
+    }
+  }
+
+  private renderStatus(): void {
+    const { partner } = this.lobby;
     const vars = { partner: partnerName() };
     // An endless run says so on every line (D39): the guest learns the host's choice here
     const mode = getCoopSession()?.runMode === "endless" ? `${i18next.t("gameMode:endless")}: ` : "";
@@ -398,13 +491,44 @@ export class CoopStarterSelectController {
     } else {
       status(coopText("partnerIsPicking", "{{partner}} is picking", vars), "picking");
     }
-    if (limitChanged) {
-      this.onLimitChange();
-    }
   }
+}
+
+/**
+ * Where each partner's picks go: in a game of two, the three slots after the player's own; in a game of three, two slots
+ * each, in seat order, with the partner's name over them (D40)
+ */
+function partnerGroups(lobby: StarterLobby, layout: CoopStarterSelectLayout): PartnerGroup[] {
+  const iconTop = (index: number): number => layout.iconPosition(index)[1];
+  if (lobby.players === 2) {
+    // The slots move down a little, to make room for the window's top edge under the player's last slot
+    const slots = [3, 4, 5].map(index => ({ index, top: iconTop(index) + PARTNER_SLOT_SHIFT }));
+    // The edge sits in the empty top of the partner's first icon
+    return [{ seat: otherSeat(lobby.seat), slots, windowTop: slots[0]!.top - 2, label: null }];
+  }
+  // Two windows share the column under the player's own slots evenly: each a row for the name, then two slots
+  const names = getCoopSession()?.link?.names;
+  const first = iconTop(lobby.pickLimit - 1) + ICON_HEIGHT;
+  const team = layout.teamWindow;
+  const height = (team.y + team.height - first) / 2;
+  return peers(lobby.seat, 3).map((seat, i) => {
+    const windowTop = Math.round(first + height * i);
+    return {
+      seat,
+      slots: [0, 1].map(j => ({
+        index: lobby.pickLimit * (i + 1) + j,
+        top: windowTop + LABEL_ROOM + j * SLOT_PITCH_THREE,
+      })),
+      windowTop,
+      label: { name: names?.[seat] ?? "", color: PLAYER_COLORS[seat] },
+    };
+  });
 }
 
 /** @returns How many starters the local player may pick: their share of the party in co-op, a full party otherwise */
 export function getStarterPickLimit(): number {
-  return globalScene.gameMode.isCoop ? STARTERS_PER_SEAT_MAX : PLAYER_PARTY_MAX_SIZE;
+  if (!globalScene.gameMode.isCoop) {
+    return PLAYER_PARTY_MAX_SIZE;
+  }
+  return getStarterLobby()?.pickLimit ?? STARTERS_PER_SEAT_MAX;
 }

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   type Client,
+  choosePlayers,
   chooseRunMode,
   describeClients,
   EXTERNAL_BASE_URL,
@@ -64,6 +65,7 @@ test.describe("co-op: the lobby, the hotkeys and problem reports", () => {
 
       await openCoopMenu(host);
       await press(host, "ACTION"); // "Host a game": the first entry while there is no co-op slot
+      await choosePlayers(host, 2);
       await chooseRunMode(host);
       await expect
         .poll(() => coop<string | null>(host, "joinCode"), { message: "no join code", timeout: 30_000 })
