@@ -4,6 +4,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
+import { chatNote } from "#coop/chat";
 import { catchReleaseKey } from "#coop/decision-keys";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
 import { type Seat, startersPerSeat } from "#coop/protocol";
@@ -341,13 +342,15 @@ export class AttemptCapturePhase extends PokemonPhase {
           globalScene.clearEnemyHeldItemModifiers();
           pokemon.leaveField(true, true, true);
         };
-        const addToParty = (slotIndex?: number) => {
+        /** @param owner - Co-op (D10): who gets the catch; the thrower unless a partner's Pokémon made room for it */
+        const addToParty = (slotIndex?: number, owner: Seat | null = thrower) => {
           const newPokemon = pokemon.addToParty(this.pokeballType, slotIndex);
           const session = getCoopSession();
-          if (session !== null && thrower !== null) {
-            // The catch belongs to the thrower (D10); a Pokémon that was released is no one's any more
+          if (session !== null && owner !== null) {
+            // The catch belongs to the thrower, or to the player whose Pokémon was released for it (D10, amended); a
+            // Pokémon that was released is no one's any more
             if (newPokemon) {
-              session.ownership.set(newPokemon.id, thrower);
+              session.ownership.set(newPokemon.id, owner);
             }
             session.ownership.retain(globalScene.getPlayerParty().map(member => member.id));
           }
@@ -497,15 +500,37 @@ export class AttemptCapturePhase extends PokemonPhase {
                     }
                     const party = globalScene.getPlayerParty();
                     const index = party.findIndex(member => member.id === payload.release);
-                    if (index < 0 || getCoopSession()?.ownership.get(payload.release) !== thrower) {
-                      throw new DesyncError("the sequenced release is not a Pokémon of the thrower", {
+                    const owner = getCoopSession()?.ownership.get(payload.release);
+                    // The thrower releases one of their own, or one of a partner's that is not in the battle (D10,
+                    // amended): the catch goes to the player whose Pokémon made room for it, so each keeps their share
+                    if (
+                      index < 0
+                      || owner === undefined
+                      || (owner !== thrower && globalScene.getPlayerField().includes(party[index]))
+                    ) {
+                      throw new DesyncError("the sequenced release is not a Pokémon the thrower may release", {
                         actual: key,
                         seq,
                       });
                     }
+                    const released = party[index].getNameToRender();
                     globalScene.removePartyMemberModifiers(index);
                     party.splice(index, 1)[0].destroy();
-                    addToParty(index);
+                    addToParty(index, owner);
+                    if (owner !== thrower && owner === getCoopSession()?.seat) {
+                      // The player whose Pokémon it was is told, without stopping the game (in the chat box)
+                      chatNote(
+                        coopText(
+                          "partnerReleasedForCatch",
+                          "{{name}} released your {{released}}: {{caught}} is yours now.",
+                          {
+                            name: getCoopSession()?.nameOf(thrower) ?? "",
+                            released,
+                            caught: pokemon.getNameToRender(),
+                          },
+                        ),
+                      );
+                    }
                   })
                   .catch(reportBridgeError);
               } else {

@@ -163,6 +163,20 @@ test.describe("co-op: the screens of both players", () => {
       await sleep(host, 800);
       if ((await ui(host)) === "TARGET_SELECT") {
         await shot("16-target", host);
+        // Aimed at the partner's Pokémon, the move asks first (D8, amended): No goes back to the target screen
+        await press(host, "DOWN");
+        await sleep(host, 400);
+        await press(host, "ACTION");
+        // (the question is typed out first: its Yes / No menu comes after it)
+        await untilUi(host, "CONFIRM");
+        await sleep(host, 400);
+        await shot("16b-teammate-question", host);
+        await press(host, "DOWN");
+        await sleep(host, 300);
+        await press(host, "ACTION");
+        await untilUi(host, "TARGET_SELECT");
+        await press(host, "UP");
+        await sleep(host, 400);
         await press(host, "ACTION");
         await sleep(host, 800);
       }

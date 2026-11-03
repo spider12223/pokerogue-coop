@@ -374,18 +374,21 @@ function addLine(who: Who, text: string, from?: Seat): void {
   parts.log.scrollTop = parts.log.scrollHeight;
 }
 
-/** While the box is closed, a line of the partner shows in the corner for a few seconds */
-function toast(text: string, from?: Seat): void {
+/** While the box is closed, a line of the partner shows in the corner for a few seconds (`null`: a note of the game's) */
+function toast(text: string, from?: Seat | null): void {
   if (parts === null || chat === null) {
     return;
   }
   const item = element("div", "coop-chat-toast");
-  const said = speaker(from);
-  const name = element("span", "coop-chat-name", `${said.name}: `);
-  if (said.color !== null) {
-    name.style.color = said.color;
+  if (from !== null) {
+    const said = speaker(from);
+    const name = element("span", "coop-chat-name", `${said.name}: `);
+    if (said.color !== null) {
+      name.style.color = said.color;
+    }
+    item.append(name);
   }
-  item.append(name, document.createTextNode(text));
+  item.append(document.createTextNode(text));
   parts.toasts.append(item);
   while (parts.toasts.childElementCount > TOASTS_MAX) {
     parts.toasts.firstElementChild?.remove();
@@ -545,6 +548,20 @@ export function stopChat(): void {
     parts.panel.hidden = true;
     parts.log.replaceChildren();
     parts.toasts.replaceChildren();
+  }
+}
+
+/**
+ * A note of the game for this player that must not stop the game (a partner released one of their Pokémon): a line in the
+ * box, and in the corner for a few seconds while the box is closed
+ */
+export function chatNote(text: string): void {
+  if (parts === null || chat === null) {
+    return;
+  }
+  addLine("note", text);
+  if (!chat.open) {
+    toast(text, null);
   }
 }
 

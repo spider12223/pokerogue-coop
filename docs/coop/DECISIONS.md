@@ -294,7 +294,8 @@ In a game of three each player owns 2 of the 6 (D40).
     uses the seeded battle RNG, so both clients get the same one.
 - Ownership changes only through a trade (D11), a catch (D10) or a Mystery Encounter (D29). A Pokémon that leaves the
   party (a release, a fusion) loses its owner entry.
-- Party edits on the reward screen (reorder, release, …) apply only to the player's own Pokémon (D28).
+- Party edits on the reward screen (reorder, rename, …) apply only to the player's own Pokémon; a release may be of a
+  partner's too (D28, amended 2026-11-03).
 - No trading during a battle.
 
 ## D8. Commands
@@ -316,6 +317,10 @@ In a game of three each player owns 2 of the 6 (D40).
     did not happen, and who did not pick, sees a short notice.
 - **Tera is a side resource:** if both players choose Tera in the same turn, the first by `seq` keeps it. The other
   player's Tera flag is cleared and that player sees a short notice. `CoopTurnSyncPhase` enforces it.
+- **A move aimed at a teammate's Pokémon** (amended 2026-11-03, after a playtest video): when a move that could hit an
+  enemy is aimed at a Pokémon of another player, the target screen asks first ("Use Bite on Alex's Squirtle?"). Yes
+  uses it; No goes back to the target screen. A move that only goes to allies (Helping Hand) asks nothing
+  (`src/coop/teammate-hit.ts`).
 
 ## D9. Rewards
 
@@ -330,8 +335,9 @@ In a game of three each player owns 2 of the 6 (D40).
   - Either player can buy shop items while the screen is open; purchases are sequenced. The buyer chooses the target
     (any party Pokémon, by `pokemon.id`).
   - **A DNA Splicer** fuses two of the user's own Pokémon (the picker's or the buyer's): fusing takes the second one out
-    of the party, and the partner's is not theirs to give up. The party screen refuses the partner's on both picks; the
-    host's validation and the legality check (D24) refuse it too.
+    of the party, and the partner's is not theirs to give up. The party screen says so before the first pick ("Pick two
+    of your own Pokémon to fuse"), dims the partner's Pokémon and refuses them on both picks; the host's validation and
+    the legality check (D24) refuse them too.
   - Item transfer is open to either player, but only from their own Pokémon.
   - The screen closes when the picker picks or skips. The host rejects proposals that arrive after it closes, and the
     proposer is told.
@@ -350,7 +356,10 @@ In a game of three each player owns 2 of the 6 (D40).
 - **Learn-move and evolution:** the owner answers; the partner sees a read-only view.
 - **Biome** (Map item): the picker of the most recent reward screen decides.
 - **Catch:** each seat has a cap of 3. A thrower with fewer than 3 adds the catch and owns it. A thrower with 3 releases
-  one of their own, or declines the catch (`CATCH_RELEASE`).
+  one of their own, or one of a partner's that is not in the battle (amended 2026-11-03), or declines the catch
+  (`CATCH_RELEASE`). The catch goes to the player whose Pokémon was released, so each keeps their share; that player is
+  told in their chat box ("Sam released your Pidgey: Zubat is yours now."). The host refuses a release of a partner's
+  Pokémon on the field (`invalid`), and both clients refuse to carry one out (a desync).
 - **Nincada's Shedinja** is the Nincada owner's, within the same cap: an owner who has three gets none.
 
 ## D11. Trade
@@ -752,15 +761,16 @@ step; the screens would not.
 ## D28. Party edits on the reward screen
 
 - From the party screen of the reward screen, each player can reorder, release, rename, pause or unpause the evolutions
-  of, switch the form change items of, and unsplice **their own** Pokémon, as in solo play. The partner's Pokémon only
-  show their summary and dex entry.
+  of, switch the form change items of, and unsplice **their own** Pokémon, as in solo play. A partner's Pokémon shows
+  its summary and dex entry, and may be released too (amended 2026-11-03): the confirm names its owner ("Release Alex's
+  Pidgey?"), its owner keeps at least one, and is told in their chat box.
 - An edit is a `PARTY_EDIT` decision of the reward window (either seat, `ref = "${screen}:${step}"`): like a shop buy it
   takes a step, and it does not close the screen. If another decision takes the step first, the client proposes the
   edit again in the next step (up to 5 times) instead of telling the player it was too late. Nobody takes it over.
 - **Rules** (the host validates before it sequences, both clients check before they apply, D24):
-  - every Pokémon the edit names is the author's;
+  - every Pokémon the edit names is the author's (a release: anyone's);
   - a swap is between two of their own, so the partner's order (and who leads for the partner, D7) never changes;
-  - a release keeps at least one of their own;
+  - a release keeps at least one for the Pokémon's owner;
   - unsplicing needs a fusion, a form item must be held, a pause needs an evolution;
   - a nickname is the rename form's base64, at most 96 characters.
 - **Apply** (both clients): a swap exchanges the two party positions; a release removes the Pokémon's items, the

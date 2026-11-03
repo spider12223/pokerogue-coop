@@ -236,6 +236,62 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(r.session.desyncMessage).toBeNull();
     });
 
+    it("lets a thrower who has three release one of the partner's instead: the catch goes to the partner (amended)", async () => {
+      let r: LinkedRun | null = null;
+      const hostBenched = () =>
+        r!.ctx.game.scene
+          .getPlayerParty()
+          .filter(p => ownerOf(p) === "host" && !p.isOnField())
+          .at(-1)!;
+      const partner = ballThrowingPartner(() => r!, { catchRelease: () => hostBenched().id });
+      r = await start({ policy: partner.policy });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const released = hostBenched().id;
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const caughtSpecies = enemy.species.speciesId;
+
+      partner.throwBall();
+      queueTurnCommands(r.ctx);
+      answerSideAction(r, true);
+      await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+
+      const party = game.scene.getPlayerParty();
+      expect(party).toHaveLength(6);
+      expect(partyIds(r)).not.toContain(released);
+      const caught = party.find(p => p.species.speciesId === caughtSpecies && !p.isOnField())!;
+      expect(ownerOf(caught)).toBe("host");
+      expect(party.filter(p => ownerOf(p) === "guest")).toHaveLength(3);
+      expect(party.filter(p => ownerOf(p) === "host")).toHaveLength(3);
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
+    it("refuses the release of a partner's Pokémon that is in the battle (amended)", async () => {
+      let r: LinkedRun | null = null;
+      const hostActive = () => r!.ctx.game.scene.getPlayerField().find(p => ownerOf(p) === "host")!;
+      const partner = ballThrowingPartner(() => r!, { catchRelease: () => hostActive().id });
+      r = await start({ policy: partner.policy });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const before = partyIds(r);
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const key = catchReleaseKey(game.scene.currentBattle.waveIndex, enemy.id);
+      const rejected: string[] = [];
+      r.partner.sequencer.onProposalRejected(({ key: refused, reason }) => rejected.push(`${refused.kind}:${reason}`));
+
+      partner.throwBall();
+      queueTurnCommands(r.ctx);
+      answerSideAction(r, true);
+      const turn = advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+      await vi.waitUntil(() => rejected.includes("CATCH_RELEASE:invalid"), { interval: 10, timeout: 8000 });
+      // the guest thinks again and lets the catch go
+      r.partner.propose(key, { release: null });
+      await turn;
+
+      expect(partyIds(r)).toEqual(before);
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
     it("lets a thrower who has three decline the catch: nothing changes", async () => {
       let r: LinkedRun | null = null;
       const partner = ballThrowingPartner(() => r!, { catchRelease: () => null });

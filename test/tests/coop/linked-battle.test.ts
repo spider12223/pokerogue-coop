@@ -29,6 +29,7 @@ import {
 } from "#test/helpers/coop-linked";
 import type { ConfirmUiHandler } from "#ui/confirm-ui-handler";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
+import type { TargetSelectUiHandler } from "#ui/target-select-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -190,6 +191,55 @@ describe("Co-op: the decisions of the battle go through the sequencer (D2, D7, D
       const r = await start();
       await advanceTo(r.ctx, ["CommandPhase"]);
       expect(cancelFrom(r, 1)).toEqual([]);
+    });
+  });
+
+  describe("a move aimed at a teammate's Pokémon (D8, amended)", () => {
+    /** The host's Pokémon uses Bite on the guest's; the question that comes is answered with `yes` */
+    async function biteTheGuest(r: LinkedRun, yes: boolean): Promise<string[]> {
+      const { game } = r.ctx;
+      const said: string[] = [];
+      const showText = game.scene.ui.showText.bind(game.scene.ui);
+      vi.spyOn(game.scene.ui, "showText").mockImplementation((text, ...rest) => {
+        said.push(text);
+        showText(text, ...rest);
+      });
+      game.move.select(MoveId.BITE, 0, BattlerIndex.PLAYER_2);
+      game.onNextPrompt("SelectTargetPhase", UiMode.CONFIRM, () => {
+        const handler = game.scene.ui.getHandler() as ConfirmUiHandler;
+        (handler as unknown as { unblockInput(): void }).unblockInput();
+        handler.setCursor(yes ? 0 : 1);
+        handler.processInput(Button.ACTION);
+      });
+      if (!yes) {
+        // back on the target screen: the player picks an enemy instead
+        game.onNextPrompt("SelectTargetPhase", UiMode.TARGET_SELECT, () => {
+          const handler = game.scene.ui.getHandler() as TargetSelectUiHandler;
+          handler.setCursor(BattlerIndex.ENEMY);
+          handler.processInput(Button.ACTION);
+        });
+      }
+      await advanceTo(r.ctx, ["TurnStartPhase"]);
+      return said;
+    }
+
+    it("asks first, and a yes hits the teammate's Pokémon", async () => {
+      const r = await start({ names: { mine: "Sam", theirs: "Alex" }, policy: { auto: ["TURN_COMMANDS"] } });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const said = await biteTheGuest(r, true);
+      expect(said).toContain("Use Bite on Alex's Squirtle?");
+      expect(r.ctx.game.scene.currentBattle.turnCommands[BattlerIndex.PLAYER]).toMatchObject({
+        targets: [BattlerIndex.PLAYER_2],
+      });
+    });
+
+    it("a no goes back to the target screen, and the player picks again", async () => {
+      const r = await start({ names: { mine: "Sam", theirs: "Alex" }, policy: { auto: ["TURN_COMMANDS"] } });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      await biteTheGuest(r, false);
+      expect(r.ctx.game.scene.currentBattle.turnCommands[BattlerIndex.PLAYER]).toMatchObject({
+        targets: [BattlerIndex.ENEMY],
+      });
     });
   });
 

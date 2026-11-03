@@ -603,11 +603,21 @@ export class CoopTradeUiHandler extends UiHandler {
   private statusLine(model: TradeScreenModel): string {
     const pending = model.pending;
     if (pending === null) {
-      return coopText(
-        "tradeHelp",
-        "Pick yours to give, and one of {{partner}}'s to trade for it, or none to give it for free.",
-        { partner: model.partnerName },
-      );
+      // Step by step, as the deal is put together
+      const deal = this.deal();
+      if (deal.gives === null) {
+        return coopText("tradeStepGive", "1. Pick one of your Pokémon (left) to give.");
+      }
+      if (deal.gets === null) {
+        return coopText(
+          "tradeStepGet",
+          "2. Pick one of {{partner}}'s (right) to get for it, or choose Give to give it as a gift.",
+          { partner: model.partnerName },
+        );
+      }
+      return coopText("tradeStepPropose", "3. Choose Propose: {{partner}} accepts or declines.", {
+        partner: model.partnerName,
+      });
     }
     const give = getPokemonNameWithAffix(pending.give);
     const want = pending.want === null ? "" : getPokemonNameWithAffix(pending.want);

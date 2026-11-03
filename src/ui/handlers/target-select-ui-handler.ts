@@ -1,9 +1,14 @@
 import { globalScene } from "#app/global-scene";
+import { getPokemonNameWithAffix } from "#app/messages";
 import { sendIntent } from "#coop/cosmetic-view";
+import { teammateTarget } from "#coop/teammate-hit";
+import { coopText } from "#coop/text";
 import { SubstituteTag } from "#data/battler-tags";
+import { allMoves } from "#data/data-lists";
 import { BattlerIndex, isPlayerBattler } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import type { MoveId } from "#enums/move-id";
+import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import type { ModifierBar } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
@@ -20,6 +25,8 @@ export class TargetSelectUiHandler extends UiHandler {
   private cursor2: number; // associated with BattlerIndex.PLAYER_3 (co-op, D40)
 
   private isMultipleTargets = false;
+  /** Co-op (D8, amended): the player is asked whether to hit a teammate's Pokémon */
+  private asking = false;
   private targets: BattlerIndex[];
   private targetsHighlighted: Pokemon[];
   private targetFlashTween: Phaser.Tweens.Tween | null;
@@ -88,24 +95,67 @@ export class TargetSelectUiHandler extends UiHandler {
     this.setCursor(this.targets.includes(cursorN) ? cursorN : this.targets[0]);
   }
 
+  /**
+   * Co-op (D8, amended): a move that could hit an enemy is aimed at a teammate's Pokémon: the player is asked first
+   * @returns Whether the question is open (the press is not a choice yet)
+   */
+  private askTeammateHit(): boolean {
+    const hit = this.isMultipleTargets ? null : teammateTarget(this.fieldIndex, this.cursor, this.targets);
+    if (hit === null) {
+      return false;
+    }
+    const ui = this.getUi();
+    this.asking = true;
+    const done = (hitIt: boolean): void => {
+      ui.revertMode().then(() => {
+        this.asking = false;
+        ui.clearText();
+        if (hitIt) {
+          this.choose(Button.ACTION);
+        }
+      });
+    };
+    ui.showText(
+      coopText("hitTeammate", "Use {{move}} on {{owner}}'s {{pokemon}}?", {
+        move: allMoves[this.move].name,
+        owner: hit.owner,
+        pokemon: getPokemonNameWithAffix(hit.pokemon, false),
+      }),
+      null,
+      () => ui.setOverlayMode(UiMode.CONFIRM, { yesHandler: () => done(true), noHandler: () => done(false) }),
+    );
+    return true;
+  }
+
+  /** The player chose the target (`ACTION`) or went back (`CANCEL`) */
+  private choose(button: Button.ACTION | Button.CANCEL): void {
+    const targetIndexes: BattlerIndex[] = this.isMultipleTargets ? this.targets : [this.cursor];
+    this.targetSelectCallback(button === Button.ACTION ? targetIndexes : []);
+    if (this.fieldIndex === BattlerIndex.PLAYER) {
+      if (this.cursor0 == null || this.cursor0 !== this.cursor) {
+        this.cursor0 = this.cursor;
+      }
+    } else if (this.fieldIndex === BattlerIndex.PLAYER_2 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
+      this.cursor1 = this.cursor;
+    } else if (this.fieldIndex === 2) {
+      this.cursor2 = this.cursor;
+    }
+  }
+
   processInput(button: Button): boolean {
     const ui = this.getUi();
 
     let success = false;
 
-    if (button === Button.ACTION || button === Button.CANCEL) {
-      const targetIndexes: BattlerIndex[] = this.isMultipleTargets ? this.targets : [this.cursor];
-      this.targetSelectCallback(button === Button.ACTION ? targetIndexes : []);
+    if (this.asking) {
+      // (the question about a teammate's Pokémon is on screen: its own menu takes the keys)
+      return false;
+    }
+    if (button === Button.ACTION && this.askTeammateHit()) {
       success = true;
-      if (this.fieldIndex === BattlerIndex.PLAYER) {
-        if (this.cursor0 == null || this.cursor0 !== this.cursor) {
-          this.cursor0 = this.cursor;
-        }
-      } else if (this.fieldIndex === BattlerIndex.PLAYER_2 && (this.cursor1 == null || this.cursor1 !== this.cursor)) {
-        this.cursor1 = this.cursor;
-      } else if (this.fieldIndex === 2) {
-        this.cursor2 = this.cursor;
-      }
+    } else if (button === Button.ACTION || button === Button.CANCEL) {
+      this.choose(button);
+      success = true;
     } else if (this.isMultipleTargets) {
       success = false;
     } else if (globalScene.currentBattle.playerSlots === 3) {

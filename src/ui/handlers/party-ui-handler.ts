@@ -4,8 +4,8 @@ import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import type { EvolutionItem } from "#balance/pokemon-evolutions";
 import { coopText, isLinked } from "#coop/bridge";
-import { isPartnersPokemon, notYourPokemonText, switchTargets } from "#coop/control";
-import { canEditInCoop, ownCount, proposePartyEdit } from "#coop/party-edit-run";
+import { isPartnersPokemon, notYourPokemonText, ownersPokemonName, switchTargets } from "#coop/control";
+import { canEditInCoop, canReleaseInCoop, ownCount, proposePartyEdit } from "#coop/party-edit-run";
 import { getCoopSession, isCoop } from "#coop/session";
 import { allMoves } from "#data/data-lists";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
@@ -480,16 +480,17 @@ export class PartyUiHandler extends MessageUiHandler {
     ui.playSelect();
     // In release mode, we do not ask for confirmation when clicking release.
     if (this.partyUiMode === PartyUiMode.RELEASE) {
-      // Co-op (D10): a thrower at the cap releases one of their own, never the partner's. With a network only the
-      // thrower's client shows this; without one (the rules harness) a client plays both seats
+      // Co-op (D10, amended): a thrower at the cap releases one of their own, or one of a partner's that is not in the
+      // battle (the catch then goes to that partner). With a network only the thrower's client shows this; without one
+      // (the rules harness) a client plays both seats
       const coop = getCoopSession();
       const phase = globalScene.phaseManager.getCurrentPhase();
       const releaser = phase.is("AttemptCapturePhase") ? phase.getThrowerSeat() : coop?.seat;
-      if (coop !== null && coop.ownership.get(pokemon.id) !== releaser) {
+      const owner = coop?.ownership.get(pokemon.id);
+      if (coop !== null && owner !== releaser && (owner === undefined || pokemon.isOnField())) {
         ui.playError();
         this.showText(
-          // (whose it is, in a game of three: D40)
-          coop.players === 3 ? notYourPokemonText(pokemon) : coopText("notYours", "That one is your partner's."),
+          i18next.t("partyUiHandler:releaseInBattle"),
           undefined,
           () => this.showPartyText(),
           undefined,
@@ -513,7 +514,12 @@ export class PartyUiHandler extends MessageUiHandler {
         },
       };
       this.showText(
-        i18next.t("partyUiHandler:releaseConfirmation", { pokemonName: getPokemonNameWithAffix(pokemon, false) }),
+        i18next.t("partyUiHandler:releaseConfirmation", {
+          // Co-op (D28, amended): whose it is, when it is a partner's ("Alex's Pidgey")
+          pokemonName: isPartnersPokemon(pokemon)
+            ? ownersPokemonName(pokemon)
+            : getPokemonNameWithAffix(pokemon, false),
+        }),
         null,
         () => {
           this.blockInput = false;
@@ -1386,6 +1392,10 @@ export class PartyUiHandler extends MessageUiHandler {
       if (this.cursor === slotIndex) {
         partySlot.select();
       }
+      // Co-op (D9): what a DNA Splicer cannot use is dimmed: the partner's Pokémon
+      if (this.partyUiMode === PartyUiMode.SPLICE && isPartnersPokemon(party[p])) {
+        partySlot.setAlpha(SPLICE_DIMMED);
+      }
     }
   }
 
@@ -1528,6 +1538,19 @@ export class PartyUiHandler extends MessageUiHandler {
         break;
       case PartyUiMode.DISCARD:
         this.showText(i18next.t("partyUiHandler:partyDiscard"), 0);
+        break;
+      case PartyUiMode.SPLICE:
+        // Co-op (D9): a DNA Splicer fuses two of the player's own Pokémon; the screen says so before the first pick
+        if (isCoop()) {
+          this.showText(
+            this.transferMode
+              ? coopText("spliceSecond", "Now pick another of yours to fuse with it.")
+              : coopText("spliceFirst", "Pick two of your own Pokémon to fuse. Your partner's can't be used."),
+            0,
+          );
+          break;
+        }
+        this.showText(i18next.t("partyUiHandler:choosePokemon"), 0);
         break;
       default:
         this.showText(i18next.t("partyUiHandler:choosePokemon"), 0);
@@ -1739,16 +1762,19 @@ export class PartyUiHandler extends MessageUiHandler {
         if (globalScene.getPlayerParty().length >= 2 && editable && (!isCoop() || ownCount() >= 2)) {
           this.options.splice(1, 0, PartyOption.SWITCH);
         }
-        if (editable && globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")) {
-          if (pokemon.isFusion()) {
+        if (globalScene.phaseManager.getCurrentPhase().is("SelectModifierPhase")) {
+          if (editable && pokemon.isFusion()) {
             this.options.push(PartyOption.UNSPLICE);
           }
-          if (!isCoop() || ownCount() > 1) {
+          // Co-op (D28, amended): a partner's Pokémon may be released too, as long as its owner keeps one
+          if (isCoop() ? canReleaseInCoop(pokemon) : editable) {
             this.options.push(PartyOption.RELEASE);
           }
-          const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
-          for (let i = 0; i < formChangeItemModifiers.length; i++) {
-            this.options.push(PartyOption.FORM_CHANGE_ITEM + i);
+          if (editable) {
+            const formChangeItemModifiers = this.getFormChangeItemsModifiers(pokemon);
+            for (let i = 0; i < formChangeItemModifiers.length; i++) {
+              this.options.push(PartyOption.FORM_CHANGE_ITEM + i);
+            }
           }
         }
         break;
@@ -2253,6 +2279,9 @@ export class PartyUiHandler extends MessageUiHandler {
     this.partySlotsContainer.removeAll(true);
   }
 }
+
+/** Co-op (D9): how faint a partner's Pokémon is on the screen of a DNA Splicer, which may not use it */
+const SPLICE_DIMMED = 0.45;
 
 class PartySlot extends Phaser.GameObjects.Container {
   private selected: boolean;

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { globalScene } from "#app/global-scene";
 import { isDebugBatch } from "#coop/debug/actions";
 import { isMeChoice } from "#coop/me-choice";
 import { isPartyEdit, pokemonOfEdit } from "#coop/party-edit";
@@ -27,11 +28,28 @@ import { isSidePickPayload } from "#coop/turn-commands";
  *
  * @module
  */
+/** @returns Whether a party member is on the field now (no game: none is) */
+function isOnField(pokemonId: number): boolean {
+  try {
+    return globalScene?.getPlayerField().some(pokemon => pokemon?.id === pokemonId) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 export function validateProposal(key: DecisionKey, payload: unknown, author: Seat): boolean {
   const ownership = getCoopSession()?.ownership;
   const ownerOf = (pokemonId: number): Seat | undefined => ownership?.get(pokemonId);
   if (key.kind === "CATCH_RELEASE") {
-    return isCatchReleasePayload(payload) && (payload.release === null || ownerOf(payload.release) === author);
+    if (!isCatchReleasePayload(payload)) {
+      return false;
+    }
+    if (payload.release === null) {
+      return true;
+    }
+    // One of the author's own, or one of a partner's that is not in the battle (D10, amended)
+    const owner = ownerOf(payload.release);
+    return owner !== undefined && (owner === author || !isOnField(payload.release));
   }
   switch (key.kind) {
     case "TRADE_REQUEST":
@@ -48,7 +66,13 @@ export function validateProposal(key: DecisionKey, payload: unknown, author: Sea
     case "TRADE_DONE":
       return isTradeDonePayload(payload);
     case "PARTY_EDIT":
-      return isPartyEdit(payload) && pokemonOfEdit(payload).every(id => ownerOf(id) === author);
+      // a release may be of a partner's Pokémon too (D28, amended): the legality check keeps one for each player
+      return (
+        isPartyEdit(payload)
+        && pokemonOfEdit(payload).every(id =>
+          payload.k === "release" ? ownerOf(id) !== undefined : ownerOf(id) === author,
+        )
+      );
     case "ME_CHOICE":
       // what it may be is the open question's, which both clients check before they apply it (D24)
       return isMeChoice(payload);

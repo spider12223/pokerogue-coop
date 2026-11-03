@@ -5,8 +5,11 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { chatNote } from "#coop/chat";
 import type { PartyEdit } from "#coop/party-edit";
+import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
+import { coopText } from "#coop/text";
 import { SpeciesFormChangeItemTrigger } from "#data/form-change-triggers";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
@@ -43,6 +46,19 @@ export function canEditInCoop(pokemon: PlayerPokemon): boolean {
   return rewardScreen() !== null && session !== null && session.ownership.get(pokemon.id) === session.seat;
 }
 
+/**
+ * @returns Whether this player may release the Pokémon from the reward screen (D28, amended): their own or a partner's,
+ * as long as its owner keeps one
+ */
+export function canReleaseInCoop(pokemon: PlayerPokemon): boolean {
+  const session = getCoopSession();
+  const owner = session?.ownership.get(pokemon.id);
+  if (rewardScreen() === null || session === null || owner === undefined) {
+    return false;
+  }
+  return globalScene.getPlayerParty().filter(member => session.ownership.get(member.id) === owner).length > 1;
+}
+
 /** How many Pokémon this player owns */
 export function ownCount(): number {
   const session = getCoopSession();
@@ -66,8 +82,11 @@ export function proposePartyEdit(edit: PartyEdit): boolean {
   return true;
 }
 
-/** Carry out a sequenced edit (it was checked already, D24): the same on both clients */
-export async function applyPartyEdit(edit: PartyEdit): Promise<void> {
+/**
+ * Carry out a sequenced edit (it was checked already, D24): the same on both clients
+ * @param author - Who made it: the owner of a Pokémon a partner released is told
+ */
+export async function applyPartyEdit(edit: PartyEdit, author?: Seat): Promise<void> {
   const party = globalScene.getPlayerParty();
   const byId = (id: number): PlayerPokemon | undefined => party.find(pokemon => pokemon.id === id);
   switch (edit.k) {
@@ -84,6 +103,16 @@ export async function applyPartyEdit(edit: PartyEdit): Promise<void> {
     case "release": {
       const index = party.findIndex(pokemon => pokemon.id === edit.pokemonId);
       if (index >= 0) {
+        const session = getCoopSession();
+        const owner = session?.ownership.get(edit.pokemonId);
+        if (session !== null && author !== undefined && owner === session.seat && author !== owner) {
+          chatNote(
+            coopText("partnerReleased", "{{name}} released your {{released}}.", {
+              name: session.nameOf(author),
+              released: party[index].getNameToRender(),
+            }),
+          );
+        }
         await globalScene.removePartyMemberModifiers(index);
         party.splice(index, 1)[0].destroy();
         getCoopSession()?.ownership.retain(party.map(pokemon => pokemon.id));

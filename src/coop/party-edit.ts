@@ -97,7 +97,8 @@ export function checkPartyEdit(edit: unknown, author: Seat, party: readonly Part
     if (member === undefined) {
       return "a party edit of a Pokémon that is not in the party";
     }
-    if (member.owner !== author) {
+    // (a release may be of a partner's Pokémon: D28, amended)
+    if (member.owner !== author && edit.k !== "release") {
       return "a party edit of the partner's Pokémon";
     }
   }
@@ -106,9 +107,10 @@ export function checkPartyEdit(edit: unknown, author: Seat, party: readonly Part
     case "swap":
       return edit.a === edit.b ? "a swap of a Pokémon with itself" : null;
     case "release":
-      return party.filter(candidate => candidate.owner === author).length > 1
+      // whoever releases it, its owner keeps at least one
+      return member.owner !== undefined && party.filter(candidate => candidate.owner === member.owner).length > 1
         ? null
-        : "the release of the player's last Pokémon";
+        : "the release of a player's last Pokémon";
     case "unsplice":
       return member.fused ? null : "an unsplice of a Pokémon that is not fused";
     case "formItem":

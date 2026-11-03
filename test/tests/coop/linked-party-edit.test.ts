@@ -98,16 +98,24 @@ describe("Co-op: party edits on the reward screen (D28)", () => {
     expect(r.ctx.game.scene.phaseManager.getCurrentPhase().is("SelectModifierPhase")).toBe(true);
   });
 
-  it("refuses an edit of the other player's Pokémon, and the release of a player's last one", async () => {
+  it("refuses an edit of the other player's Pokémon, but not its release (amended), which keeps its owner one", async () => {
     const r = await atRewards();
     const rejected: string[] = [];
     r.partner.sequencer.onProposalRejected(({ key, reason }) => rejected.push(`${key.kind}:${reason}`));
 
-    partnerEdits(r, { k: "release", pokemonId: own(r, "host")[0].id });
+    partnerEdits(r, { k: "rename", pokemonId: own(r, "host")[0].id, nickname: btoa("Mine") });
     await vi.waitUntil(() => rejected.length === 1, { interval: 5, timeout: 4000 });
     expect(rejected).toEqual(["PARTY_EDIT:invalid"]);
     expect(party(r)).toHaveLength(6);
     expect(r.session.rewardStep).toBe(0);
+
+    // the guest releases one of the host's: it goes, and the host keeps the other two
+    const released = own(r, "host")[0].id;
+    partnerEdits(r, { k: "release", pokemonId: released });
+    await untilStep(1);
+    expect(ids(r)).not.toContain(released);
+    expect(own(r, "host")).toHaveLength(2);
+    expect(r.session.desyncMessage).toBeNull();
   });
 
   it("sends the real client's own edit through the reward screen; it comes back and is carried out", async () => {
@@ -136,7 +144,7 @@ describe("Co-op: party edits on the reward screen (D28)", () => {
     expect(mine.nickname).toBe(btoa("Second"));
   });
 
-  it("offers reorder, release and rename for the player's own Pokémon only", async () => {
+  it("offers reorder and rename for the player's own Pokémon only, and release for either's", async () => {
     const r = await atRewards();
     const { ui } = r.ctx.game.scene;
     await ui.setMode(UiMode.PARTY, PartyUiMode.CHECK, -1, () => {});
@@ -162,8 +170,9 @@ describe("Co-op: party edits on the reward screen (D28)", () => {
     expect(mine).toEqual(expect.arrayContaining([PartyOption.SWITCH, PartyOption.RELEASE, PartyOption.RENAME]));
     const theirs = await optionsAt(ids(r).indexOf(own(r, "guest")[2].id));
     expect(theirs).not.toContain(PartyOption.SWITCH);
-    expect(theirs).not.toContain(PartyOption.RELEASE);
     expect(theirs).not.toContain(PartyOption.RENAME);
     expect(theirs).toContain(PartyOption.SUMMARY);
+    // a partner's Pokémon may be released (amended): its owner has three
+    expect(theirs).toContain(PartyOption.RELEASE);
   });
 });

@@ -689,7 +689,7 @@ export class SelectModifierPhase extends BattlePhase {
         if (decision.author === mySeat()) {
           this.pendingEdit = null;
         }
-        await applyPartyEdit(decision.payload as PartyEdit);
+        await applyPartyEdit(decision.payload as PartyEdit, decision.author);
         continue;
       }
       if (!isRewardAction(decision.payload)) {

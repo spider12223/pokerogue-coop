@@ -62,16 +62,17 @@ describe("who may make which edit", () => {
     expect(checkPartyEdit({ k: "formItem", pokemonId: 4, item: 7, active: true }, "guest", PARTY)).toBeNull();
   });
 
-  it("never the partner's, not even in a swap with one of their own", () => {
-    expect(checkPartyEdit({ k: "release", pokemonId: 2 }, "host", PARTY)).toMatch(/partner's/);
+  it("never the partner's, not even in a swap with one of their own; but a release may be of either's (amended)", () => {
     expect(checkPartyEdit({ k: "swap", a: 1, b: 2 }, "host", PARTY)).toMatch(/partner's/);
     expect(checkPartyEdit({ k: "rename", pokemonId: 1, nickname: "" }, "guest", PARTY)).toMatch(/partner's/);
+    expect(checkPartyEdit({ k: "release", pokemonId: 2 }, "host", PARTY)).toBeNull();
   });
 
-  it("keeps the player's last Pokémon", () => {
+  it("keeps each player's last Pokémon, whoever releases it", () => {
     expect(checkPartyEdit({ k: "release", pokemonId: 2 }, "guest", PARTY)).toBeNull();
     const oneLeft = PARTY.filter(member => member.id !== 4);
     expect(checkPartyEdit({ k: "release", pokemonId: 2 }, "guest", oneLeft)).toMatch(/last/);
+    expect(checkPartyEdit({ k: "release", pokemonId: 2 }, "host", oneLeft)).toMatch(/last/);
   });
 
   it("refuses what makes no sense for that Pokémon", () => {
@@ -85,9 +86,10 @@ describe("who may make which edit", () => {
 
   it("is checked as a sequenced decision on both clients (D24), and nobody takes it over", () => {
     expect(checkDecisionLegal(view(), key("PARTY_EDIT", "0:0"), { k: "swap", a: 1, b: 3 }, "host")).toBeNull();
-    expect(checkDecisionLegal(view(), key("PARTY_EDIT", "0:0"), { k: "release", pokemonId: 2 }, "host")).toMatch(
-      /partner's/,
-    );
+    expect(
+      checkDecisionLegal(view(), key("PARTY_EDIT", "0:0"), { k: "rename", pokemonId: 2, nickname: "" }, "host"),
+    ).toMatch(/partner's/);
+    expect(checkDecisionLegal(view(), key("PARTY_EDIT", "0:0"), { k: "release", pokemonId: 2 }, "host")).toBeNull();
     expect(takeoverPlan({ kind: "PARTY_EDIT", ref: "0:0" })).toEqual({ mode: "payload", payload: null });
   });
 });

@@ -322,7 +322,7 @@ describe("Co-op: trading (D11)", () => {
     it("says it is waiting for the partner after Done, and when the partner is done first", async () => {
       const r = await start();
       const phase = await toTradeScreen(r);
-      expect(screen(r).describe().status).toMatch(/^Pick yours/);
+      expect(screen(r).describe().status).toMatch(/^1\. Pick one of your Pokémon/);
 
       phase.actions().done(true);
       await vi.waitUntil(() => phase.state.done.host, { timeout: 3000 });
@@ -331,7 +331,7 @@ describe("Co-op: trading (D11)", () => {
       // taking it back brings the help again
       phase.actions().done(false);
       await vi.waitUntil(() => !phase.state.done.host, { timeout: 3000 });
-      expect(screen(r).describe().status).toMatch(/^Pick yours/);
+      expect(screen(r).describe().status).toMatch(/^1\. Pick one of your Pokémon/);
 
       r.partner.propose(tradeDoneKey(wave(r), phase.state.step, "guest"), { done: true });
       await vi.waitUntil(() => phase.state.done.guest, { timeout: 3000 });

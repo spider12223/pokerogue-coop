@@ -57,6 +57,17 @@ export function notYourPokemonText(pokemon: Pokemon): string {
   });
 }
 
+/** @returns A Pokémon's name with its owner's, for a partner's: "Alex's Pidgey" */
+export function ownersPokemonName(pokemon: Pokemon): string {
+  const session = getCoopSession();
+  const owner = session?.ownership.get(pokemon.id);
+  const pokemonName = getPokemonNameWithAffix(pokemon, false);
+  if (session === null || owner === undefined) {
+    return pokemonName;
+  }
+  return coopText("ownersPokemon", "{{owner}}'s {{pokemonName}}", { owner: session.nameOf(owner), pokemonName });
+}
+
 /**
  * @returns The seat that commands a party member: its owner (in a run of three continued with two, a present player for the
  * absent one's, D40)

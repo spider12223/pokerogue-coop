@@ -43,7 +43,10 @@ The host's Pokémon fight on the left, the guest's on the right.
 - **Balls and running away** use the whole side's turn, so the partner is asked first ("let them throw?"). If you both choose
   a Ball (or a Ball and Run) in the same turn, the host picks which one happens.
 - **Catching:** the catch goes to whoever threw the Ball. Each player holds up to three Pokémon: with three already, you
-  release one of yours or let the catch go.
+  release one of yours, or one of your friend's that is not in the battle (then the catch is theirs, and they are told),
+  or let the catch go.
+- **Aiming at your friend's Pokémon:** if you point an attack at your friend's Pokémon, the game asks first, so a stray
+  button press doesn't hit them.
 - **A wipe:** when both sides are out of Pokémon, the host chooses **Retry the wave** (both of you start that wave again from
   its beginning) or **End the run**.
 
@@ -51,11 +54,12 @@ The host's Pokémon fight on the left, the guest's on the right.
 
 - **Rewards:** you take turns picking the free reward, the host first. Either of you can buy from the shop at any time, and
   move held items between your own Pokémon.
-- **Your party:** on the reward screen you can reorder, rename or release your own Pokémon (keep at least one).
-- **Trading:** press **Trade** on the reward screen; the trade screen opens after it. Pick one of yours and one of your
-  friend's, then **Propose**; your friend accepts or declines. Pick only one of yours to **Give** it away for free (you always
+- **Your party:** on the reward screen you can reorder or rename your own Pokémon, and release yours or your friend's
+  (everyone keeps at least one; your friend is told).
+- **Trading:** press **Trade** on the reward screen; the trade screen opens after it and says each step at the bottom.
+  Pick one of yours and one of your friend's, then **Propose**; your friend accepts or declines. Pick only one of yours to **Give** it away for free (you always
   keep at least one). Both press **Done** to go on.
-- **DNA Splicers** fuse two of your own Pokémon only.
+- **DNA Splicers** fuse two of your own Pokémon only: your friend's are dimmed on that screen.
 
 ## Three players (Beta)
 
