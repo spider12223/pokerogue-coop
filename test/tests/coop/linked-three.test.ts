@@ -8,7 +8,7 @@ import { writeDebugOverrides } from "#coop/debug/overrides";
 import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
 import { partyEditKey } from "#coop/party-edit";
 import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions";
-import { endCoopSession, requireCoopSession } from "#coop/session";
+import { endCoopSession, getCoopSession, requireCoopSession } from "#coop/session";
 import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
@@ -66,6 +66,27 @@ describe("Co-op: a linked battle of three (D40)", () => {
     });
     return run;
   }
+
+  it("Save and Quit at the command menu in a game of three: the title opens over no screen of the run (D20)", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await openUi(r.ctx, "CommandPhase");
+    const { ui } = r.ctx.game.scene;
+    expect(ui.mode).toBe(UiMode.COMMAND);
+    expect(ui.getMessageHandler().message.text).not.toBe("");
+    // The menu over the command menu, then its Save and Quit
+    await ui.setOverlayMode(UiMode.MENU);
+    const menu = ui.getHandler() as unknown as { config: { options: { label: string; handler: () => boolean }[] } };
+    const saveAndQuit = menu.config.options.find(option => /save.*quit/i.test(option.label))!;
+    const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
+    saveAndQuit.handler();
+    expect(await toTitle).toBe("TitlePhase");
+
+    expect(getCoopSession()).toBeNull();
+    expect(ui.handlers[UiMode.COMMAND].active).toBe(false);
+    expect(ui.modeChain).not.toContain(UiMode.COMMAND);
+    expect(ui.getMessageHandler().message.text).toBe("");
+  });
 
   it("each player commands the Pokémon of their own slot, and all three act in the turn", async () => {
     const r = await start();
