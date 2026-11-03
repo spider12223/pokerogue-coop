@@ -254,6 +254,26 @@ describe("Co-op: Mystery Encounters in a linked run (D29)", () => {
     await advance(r, ["SelectModifierPhase"]);
   });
 
+  it("the mini-game is one Pokémon against Wobbuffet: no other Pokémon is on the field, so nobody else gets a turn (D29)", async () => {
+    const r = await encounter(MysteryEncounterType.FUN_AND_GAMES, "guest", firstAnswer({ k: "who", seat: "guest" }));
+    const { scene } = r.ctx.game;
+    // the game costs money
+    scene.money = 1_000_000;
+    await openUi(r.ctx, "MysteryEncounterPhase");
+    await pickOption(r, 0);
+    await until(r, "showed the party", () => scene.ui.mode === UiMode.PARTY);
+    const party = scene.ui.getHandler() as PartyUiHandler;
+    const mine = own(r, "guest")[0];
+    party.setCursor(scene.getPlayerParty().indexOf(mine));
+    party.processInput(Button.ACTION);
+    party.processInput(Button.ACTION);
+    await advance(r, ["CommandPhase"]);
+    // only the one who goes: the host's lead is not on the field, and has no command to choose
+    expect(scene.getPlayerField().map(pokemon => pokemon.id)).toEqual([mine.id]);
+    expect(scene.currentBattle.playerSlots).toBe(1);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
   it("who goes: the one who goes picks among their own Pokémon", async () => {
     const r = await encounter(MysteryEncounterType.FUN_AND_GAMES, "guest", firstAnswer({ k: "who", seat: "guest" }));
     const { scene } = r.ctx.game;

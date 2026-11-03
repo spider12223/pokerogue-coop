@@ -100,8 +100,14 @@ export function coopSeatFull(seat: Seat): boolean {
 
 // #region Battles (D29)
 
-/** Every encounter battle is a double in co-op, unless the party is down to one Pokémon (a one-Pokémon encounter) */
+/**
+ * Every encounter battle is a double in co-op, but a one-Pokémon encounter's, and one with the party down to one Pokémon
+ */
 export function coopEncounterDouble(): boolean {
+  const encounter = globalScene.currentBattle?.mysteryEncounter;
+  if (encounter != null && isOnePokemonEncounter(encounter.encounterType)) {
+    return false;
+  }
   return isCoop() && globalScene.getPlayerParty().length >= 2;
 }
 
@@ -532,6 +538,9 @@ export async function askWhoGoes(type: MysteryEncounterType): Promise<Seat | nul
   );
   if (choice.seat !== null) {
     session.meChooser = choice.seat;
+    // These stay singles: the one Pokémon who goes is the only one on the field, so no other player gets a turn. An
+    // encounter that makes its own battle (Fun and Games) keeps the wave's co-op double otherwise
+    globalScene.currentBattle.double = false;
     goerSetUps.get(type)?.(fightersOf(choice.seat));
   }
   return choice.seat;
