@@ -241,6 +241,28 @@ describe("Co-op: the decisions of the battle go through the sequencer (D2, D7, D
         targets: [BattlerIndex.ENEMY],
       });
     });
+
+    it("a question closed from outside (a take over, a reload) does not lock the next target screen", async () => {
+      const r = await start({ names: { mine: "Sam", theirs: "Alex" } });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      const handler = ui.handlers[UiMode.TARGET_SELECT] as TargetSelectUiHandler;
+      // The question is open on the target screen
+      await ui.setMode(UiMode.TARGET_SELECT, 0, MoveId.BITE, () => {});
+      handler.setCursor(BattlerIndex.PLAYER_2);
+      handler.processInput(Button.ACTION);
+      await vi.waitUntil(() => ui.mode === UiMode.CONFIRM, { interval: 10, timeout: 4000 });
+      // ... and something else closes every screen, as a take over does (`showTookOver`)
+      ui.clearScreensUnder();
+      await ui.setMode(UiMode.MESSAGE);
+
+      // The next target screen takes the press
+      const chosen: BattlerIndex[][] = [];
+      await ui.setMode(UiMode.TARGET_SELECT, 0, MoveId.BITE, (targets: BattlerIndex[]) => chosen.push(targets));
+      handler.setCursor(BattlerIndex.ENEMY);
+      handler.processInput(Button.ACTION);
+      expect(chosen).toEqual([[BattlerIndex.ENEMY]]);
+    });
   });
 
   describe("Ball and Run need the partner's accept (D8)", () => {

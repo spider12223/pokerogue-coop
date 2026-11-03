@@ -114,6 +114,9 @@ export function makeDraggable(
   };
 
   const onDown = (event: PointerEvent): void => {
+    // The click that ends a drag comes before any new press: one that never came (a drag let go away from the handle)
+    // must not eat this press's click
+    swallowClick = false;
     const handle = event.currentTarget as HTMLElement;
     if (event.button !== 0 || isControlIn(handle, event.target)) {
       return;

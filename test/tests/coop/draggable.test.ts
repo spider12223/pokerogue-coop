@@ -96,6 +96,18 @@ describe("Co-op: a box the player drags around the screen", () => {
     expect(clicks).toHaveBeenCalledTimes(1);
   });
 
+  it("a drag the browser ends without a click does not eat the next real click", () => {
+    const clicks = vi.fn();
+    handle.addEventListener("click", clicks);
+    drag = makeDraggable(root, [handle], KEY);
+    // a drag that ends away from the handle: some browsers send no click for it
+    dragBy(60, 0);
+    // later, a plain press and its click
+    dragBy(0, 0);
+    handle.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    expect(clicks).toHaveBeenCalledTimes(1);
+  });
+
   it("a press on a button inside the handle is that button's, not a drag", () => {
     drag = makeDraggable(root, [handle], KEY);
     pointer("pointerdown", 150, 60, button);

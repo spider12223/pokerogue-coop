@@ -49,6 +49,8 @@ export class TargetSelectUiHandler extends UiHandler {
     }
 
     super.show(args);
+    // Co-op (D8, amended): a question about a teammate's Pokémon that something else closed (a take over, a reload) is over
+    this.asking = false;
 
     [this.fieldIndex, this.move, this.targetSelectCallback] = args;
     const user = globalScene.getPlayerField()[this.fieldIndex];

@@ -404,6 +404,10 @@ async function applyDebugAction(session: CoopSession, action: DebugAction): Prom
           await enemy.updateInfo(true);
         } else if (action.what === "heal") {
           heal(enemy);
+          // (a boss gets its health bars back with its HP)
+          if (enemy.bossSegments > 0) {
+            enemy.bossSegmentIndex = enemy.bossSegments - 1;
+          }
           await enemy.updateInfo(true);
         } else if (action.v > 0) {
           setLevel(enemy, action.v);

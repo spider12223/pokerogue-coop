@@ -17,6 +17,7 @@ import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
 import { BiomeId } from "#enums/biome-id";
 import { MoveId } from "#enums/move-id";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
 import { PokeballType } from "#enums/pokeball";
 import { PokemonType } from "#enums/pokemon-type";
@@ -31,6 +32,7 @@ import {
   type LinkedRun,
   type LinkedScenario,
   openLinkedRun,
+  openScreen,
   pickerSkips,
   rewardScreen,
   winWave,
@@ -280,6 +282,97 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(battle.trainer?.config.trainerType).toBe(TrainerType.YOUNGSTER);
     expect(r.ctx.game.scene.arena.biomeId).toBe(BiomeId.BEACH);
     expect(r.session.debugState.biome).toBeNull();
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  /** Win wave 1 at once and skip its reward screen: the next wave is made */
+  async function winFirstWave(r: LinkedRun): Promise<void> {
+    queueDebug({ t: "win" });
+    queueTurnCommands(r.ctx);
+    await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+    await openUi(r.ctx, "SelectModifierPhase");
+    pickerSkips(r);
+  }
+
+  it("“win” in a trainer battle: the trainer's Pokémon that wait are out too, and the wave is won", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(10) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug({
+      t: "plan",
+      wave: 2,
+      plan: { ...emptyWavePlan(), battle: "trainer", trainer: TrainerType.ACE_TRAINER },
+    });
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.ctx.game.scene.currentBattle.battleType).toBe(BattleType.TRAINER);
+    expect(r.ctx.game.scene.getEnemyParty().length).toBeGreaterThan(2);
+
+    queueDebug({ t: "win" });
+    queueTurnCommands(r.ctx);
+    expect(await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"])).toBe("SelectModifierPhase");
+    expect(r.ctx.game.scene.currentBattle.waveIndex).toBe(2);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("“Full HP” on a boss brings back its health bars too, after “1 HP” broke them", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(10) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug({ t: "plan", wave: 2, plan: { ...emptyWavePlan(), battle: "wild", boss: 3, level: 5 } });
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const boss = r.ctx.game.scene.getEnemyField().find(enemy => enemy.isActive(true))!;
+    expect(boss.bossSegments).toBe(3);
+
+    queueDebug({ t: "enemy", e: null, what: "hp1", v: 0 }, { t: "enemy", e: null, what: "heal", v: 0 });
+    // (our side does nothing this turn: Splash)
+    queueTurnCommands(r.ctx);
+    await advanceTo(r.ctx, ["TurnStartPhase"]);
+    expect(boss.hp).toBe(boss.getMaxHp());
+    expect(boss.bossSegmentIndex).toBe(boss.bossSegments - 1);
+  });
+
+  it("a planned Mystery Encounter is the next wave, whatever the wave", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(10) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug({
+      t: "plan",
+      wave: 2,
+      plan: { ...emptyWavePlan(), battle: "me", encounter: MysteryEncounterType.DEPARTMENT_STORE_SALE },
+    });
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["MysteryEncounterPhase", "CommandPhase"]);
+    const battle = r.ctx.game.scene.currentBattle;
+    expect(battle.waveIndex).toBe(2);
+    expect(battle.battleType).toBe(BattleType.MYSTERY_ENCOUNTER);
+    expect(battle.mysteryEncounter?.encounterType).toBe(MysteryEncounterType.DEPARTMENT_STORE_SALE);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the host's items on the guest's reward screen: redrawn on both, and the guest still picks", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    // screen 0 is the host's: skipped; screen 1, the guest's, is the one changed
+    expect(await winWave(r)).toBe(true);
+    pickerSkips(r);
+    expect(await winWave(r)).toBe(true);
+    expect(openScreen().picker).toBe("guest");
+    const before = r.ctx.game.scene.phaseManager.getCurrentPhase();
+    queueDebug({ t: "rewards", items: ["MASTER_BALL", "POTION", "RARE_CANDY", "LEFTOVERS"] });
+    await vi.waitUntil(() => r.ctx.game.scene.phaseManager.getCurrentPhase() !== before, {
+      interval: 5,
+      timeout: 4000,
+    });
+    await openUi(r.ctx, "SelectModifierPhase");
+    const after = rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] };
+    expect(after.typeOptions.map(option => option.type.id)).toEqual([
+      "MASTER_BALL",
+      "POTION",
+      "RARE_CANDY",
+      "LEFTOVERS",
+    ]);
+    expect(openScreen().picker).toBe("guest");
+    // the guest picks the Potion's place (skips), and the run goes on
+    pickerSkips(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
     expect(r.session.desyncMessage).toBeNull();
   });
 

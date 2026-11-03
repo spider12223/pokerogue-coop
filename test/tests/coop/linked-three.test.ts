@@ -4,10 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { writeDebugOverrides } from "#coop/debug/overrides";
+import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
+import { partyEditKey } from "#coop/party-edit";
 import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions";
 import { endCoopSession, requireCoopSession } from "#coop/session";
 import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
 import { BattlerIndex } from "#enums/battler-index";
+import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
@@ -20,6 +24,7 @@ import {
   rewardScreen,
   untilStep,
 } from "#test/helpers/coop-linked";
+import type { ConfirmUiHandler } from "#ui/confirm-ui-handler";
 import type { CoopTradeUiHandler } from "#ui/coop-trade-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -133,6 +138,72 @@ describe("Co-op: a linked battle of three (D40)", () => {
       await untilStep(step + 1);
     }
     expect(pickers).toEqual(["host", "guest", "guest2"]);
+  });
+
+  it("aiming at the second guest's Pokémon asks first in a game of three too (D8, amended)", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const { game } = r.ctx;
+    const said: string[] = [];
+    const showText = game.scene.ui.showText.bind(game.scene.ui);
+    vi.spyOn(game.scene.ui, "showText").mockImplementation((text, ...rest) => {
+      said.push(text);
+      showText(text, ...rest);
+    });
+    game.move.select(MoveId.BITE, 0, BattlerIndex.PLAYER_3);
+    game.onNextPrompt("SelectTargetPhase", UiMode.CONFIRM, () => {
+      const handler = game.scene.ui.getHandler() as ConfirmUiHandler;
+      (handler as unknown as { unblockInput(): void }).unblockInput();
+      handler.setCursor(0);
+      handler.processInput(Button.ACTION);
+    });
+    await advanceTo(r.ctx, ["TurnStartPhase"]);
+    expect(said.some(text => text.startsWith("Use Bite on"))).toBe(true);
+    expect(game.scene.currentBattle.turnCommands[BattlerIndex.PLAYER]).toMatchObject({
+      targets: [BattlerIndex.PLAYER_3],
+    });
+  });
+
+  it("the host's debug menu works in a game of three: the batch goes with the turn (D42)", async () => {
+    const r = await start();
+    (r.session as { debug: boolean }).debug = true;
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const target = r.ctx.game.scene.getPlayerParty().find(p => r.session.ownership.get(p.id) === "guest2")!;
+    queueDebug({ t: "level", p: target.id, v: 42 }, { t: "money", v: 777 });
+    queueTurnCommands(r.ctx);
+    await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+    expect(target.level).toBe(42);
+    expect(r.ctx.game.scene.money).toBeGreaterThanOrEqual(777);
+    expect(r.session.desyncMessage).toBeNull();
+    clearDebugQueue();
+    writeDebugOverrides(null, 0);
+  });
+
+  it("a guest releases another guest's Pokémon from the reward screen; its owner keeps one (D28, amended)", async () => {
+    const r = await start();
+    await toRewardScreen(r);
+    await openUi(r.ctx, "SelectModifierPhase");
+    await vi.waitUntil(() => requireCoopSession().rewardPickCount === 1, { interval: 10, timeout: 8000 });
+    const wave = r.ctx.game.scene.currentBattle.waveIndex;
+    const owned = (seat: string) =>
+      r.ctx.game.scene.getPlayerParty().filter(pokemon => r.session.ownership.get(pokemon.id) === seat);
+    const released = owned("guest2").find(pokemon => !pokemon.isOnField()) ?? owned("guest2")[1];
+    const { screen, step } = openScreen();
+    r.partners.get("guest")!.propose(partyEditKey(wave, screen, step), { k: "release", pokemonId: released.id });
+    await untilStep(step + 1);
+    expect(owned("guest2").map(pokemon => pokemon.id)).not.toContain(released.id);
+    expect(owned("guest2")).toHaveLength(1);
+
+    // its last one cannot go
+    const rejected: string[] = [];
+    r.partners.get("guest")!.sequencer.onProposalRejected(({ key, reason }) => rejected.push(`${key.kind}:${reason}`));
+    r.partners
+      .get("guest")!
+      .propose(partyEditKey(wave, screen, step + 1), { k: "release", pokemonId: owned("guest2")[0].id });
+    await vi.waitUntil(() => rejected.length === 1, { interval: 10, timeout: 4000 });
+    expect(rejected).toEqual(["PARTY_EDIT:invalid"]);
+    expect(owned("guest2")).toHaveLength(1);
+    expect(r.session.desyncMessage).toBeNull();
   });
 
   it("a trade of three: the guests trade with each other; the host watches, then all three are done (D40)", async () => {
