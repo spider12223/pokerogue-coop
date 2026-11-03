@@ -23,7 +23,7 @@ import { UiMode } from "#enums/ui-mode";
 import { Unlockables } from "#enums/unlockables";
 import { SelectBiomePhase } from "#phases/select-biome-phase";
 import * as ribbonMethods from "#system/ribbon-methods";
-import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";
+import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
 import {
   answerEndScreen,
   answerSideAction,
@@ -97,6 +97,30 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
     });
     return choices;
   }
+
+  describe("back to the title screen (D20)", () => {
+    it("Save and Quit at the command menu: the title opens over no screen of the run, and the battle's line is gone", async () => {
+      const r = await start();
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const { ui } = r.ctx.game.scene;
+      await openUi(r.ctx, "CommandPhase");
+      expect(ui.mode).toBe(UiMode.COMMAND);
+      expect(ui.getMessageHandler().message.text).not.toBe("");
+      // The menu over the command menu, then its Save and Quit
+      await ui.setOverlayMode(UiMode.MENU);
+      const menu = ui.getHandler() as unknown as { config: { options: { label: string; handler: () => boolean }[] } };
+      const saveAndQuit = menu.config.options.find(option => /save.*quit/i.test(option.label))!;
+      const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
+      saveAndQuit.handler();
+      expect(await toTitle).toBe("TitlePhase");
+
+      expect(getCoopSession()).toBeNull();
+      // nothing of the run is left on the screen: not the command menu under the menu, not the battle's line
+      expect(ui.handlers[UiMode.COMMAND].active).toBe(false);
+      expect(ui.modeChain).not.toContain(UiMode.COMMAND);
+      expect(ui.getMessageHandler().message.text).toBe("");
+    });
+  });
 
   describe("the biome after a wave (D10)", () => {
     /** Starting in a biome that leads to several, with a Map: the biome after wave 10 is chosen */

@@ -170,13 +170,27 @@ export function leaveCoop(): void {
 }
 
 /**
+ * Every screen of the run comes off: the ones under the screen on top (the command menu under the game's menu, the battle
+ * under a confirm), the chain back to them, and the battle's line in the message box. The title screen clears only the
+ * screen on top, and a plain `reset()` none (D20)
+ */
+export function clearRunScreens(): void {
+  const { ui } = globalScene;
+  ui.clearScreensUnder();
+  ui.resetModeChain();
+  ui.getMessageHandler().clearText();
+}
+
+/**
  * Back to the title screen, from wherever the run was: the session ends and the game starts over from the title, with a line
  * that says why if there is one.
  */
 export function returnToTitle(message: string | null): void {
   leaveCoop();
   const { ui } = globalScene;
+  clearRunScreens();
   const go = (): void => {
+    clearRunScreens();
     globalScene.reset();
     globalScene.phaseManager.toTitleScreen();
     globalScene.phaseManager.shiftPhase();
