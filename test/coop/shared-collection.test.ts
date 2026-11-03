@@ -242,6 +242,60 @@ describe("the save of a player who changed a Pokémon only the partner caught", 
     expect(savesCleanly(ownAccountData(own))).toBe(true);
   });
 
+  it("whatever the screen changes on any Pokémon, with one partner or two, the player's own save stays valid", () => {
+    // Bulbasaur: both caught it. Squirtle: only the player. Charmander: only a partner, no passive. Mew: only a partner,
+    // passive unlocked. Pikachu: only the second partner (a game of three)
+    const species = [1, 7, 4, 151, 25];
+    const own: CollectionHolder = {
+      dexData: { 1: dexEntry(0b101n), 7: dexEntry(0b101n), 4: dexEntry(0n), 151: dexEntry(0n), 25: dexEntry(0n) },
+      starterData: {
+        1: starterEntry({ abilityAttr: 1, candyCount: 40 }),
+        7: starterEntry({ abilityAttr: 1, candyCount: 10 }),
+        4: starterEntry(),
+        151: starterEntry(),
+        25: starterEntry(),
+      },
+    };
+    const partner: CollectionHolder = {
+      dexData: { 1: dexEntry(0b1n), 7: dexEntry(0n), 4: dexEntry(0b1n), 151: dexEntry(0b1111n), 25: dexEntry(0n) },
+      starterData: {
+        1: starterEntry({ abilityAttr: 4 }),
+        7: starterEntry(),
+        4: starterEntry({ abilityAttr: 1 }),
+        151: starterEntry({ abilityAttr: 1, passiveAttr: Passive.UNLOCKED | Passive.ENABLED, valueReduction: 1 }),
+        25: starterEntry(),
+      },
+    };
+    const second: CollectionHolder = {
+      dexData: { 1: dexEntry(0n), 7: dexEntry(0n), 4: dexEntry(0n), 151: dexEntry(0n), 25: dexEntry(0b1n) },
+      starterData: {
+        1: starterEntry(),
+        7: starterEntry(),
+        4: starterEntry(),
+        151: starterEntry(),
+        25: starterEntry({ abilityAttr: 2 }),
+      },
+    };
+    for (const partners of [[partner], [partner, second]]) {
+      const fresh = structuredClone(own);
+      poolCollection(fresh, partners.map(captureCollection));
+      for (const id of species) {
+        // Every change the starter select (and the Pokédex page opened from it) can make to an entry
+        const entry = fresh.starterData[id];
+        entry.moveset = [33, 45, 22, 73];
+        entry.valueReduction++;
+        entry.passiveAttr |= Passive.UNLOCKED;
+        entry.passiveAttr ^= Passive.ENABLED;
+        entry.candyCount += 3;
+        entry.friendship += 5;
+      }
+      expect(savesCleanly(ownAccountData(fresh)), `with ${partners.length} partner(s)`).toBe(true);
+      // the player's own Pokémon kept what was changed on them
+      expect(ownAccountData(fresh).starterData[7].moveset).toEqual([33, 45, 22, 73]);
+      unpoolCollection();
+    }
+  });
+
   it("still saves a moveset changed on the player's own Pokémon", () => {
     const { own, partner } = accounts();
     const { starterData } = own;
