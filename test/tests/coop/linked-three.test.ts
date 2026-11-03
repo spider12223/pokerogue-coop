@@ -6,6 +6,7 @@
 
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
+import { meChoiceKey } from "#coop/me-choice";
 import { partyEditKey } from "#coop/party-edit";
 import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions";
 import { endCoopSession, getCoopSession, requireCoopSession } from "#coop/session";
@@ -13,8 +14,11 @@ import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
+import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
+import type { MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
 import {
   controllers,
@@ -26,6 +30,7 @@ import {
 } from "#test/helpers/coop-linked";
 import type { ConfirmUiHandler } from "#ui/confirm-ui-handler";
 import type { CoopTradeUiHandler } from "#ui/coop-trade-ui-handler";
+import type { PartyUiHandler } from "#ui/party-ui-handler";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -66,6 +71,62 @@ describe("Co-op: a linked battle of three (D40)", () => {
     });
     return run;
   }
+
+  /** A run of three whose first wave is this encounter, its screen open (D29) */
+  async function encounterOfThree(type: MysteryEncounterType): Promise<LinkedRunOfThree> {
+    run = await openLinkedRunOfThree(phaserGame, {
+      species: SIX,
+      starterOwners: ["host", "host", "guest", "guest", "guest2", "guest2"],
+      policy: { auto: ["TURN_COMMANDS", "FAINT_SWITCH", "LEARN_MOVE", "EVOLUTION_CANCEL"] },
+      configure: game =>
+        game.override
+          .startingLevel(40)
+          .startingWave(33)
+          .mysteryEncounterChance(100)
+          .mysteryEncounter(type)
+          .disableTrainerWaves(),
+    });
+    await advanceTo(run.ctx, ["MysteryEncounterPhase"]);
+    await openUi(run.ctx, "MysteryEncounterPhase");
+    return run;
+  }
+
+  /** Wait for `done`; a timeout says where the game is */
+  async function until(r: LinkedRunOfThree, what: string, done: () => boolean): Promise<void> {
+    try {
+      await vi.waitUntil(done, { interval: 10, timeout: 4000 });
+    } catch {
+      const { scene } = r.ctx.game;
+      throw new Error(
+        `never ${what}: phase ${scene.phaseManager.getCurrentPhase().phaseName}, mode ${UiMode[scene.ui.mode]}, question ${JSON.stringify(r.session.meQuestion)}, step ${r.session.meStep}, desync ${r.session.desyncMessage}`,
+      );
+    }
+  }
+
+  /** `advanceTo`, with where the game is if it stalls */
+  async function advance(r: LinkedRunOfThree, targets: Parameters<typeof advanceTo>[1]): Promise<void> {
+    try {
+      await advanceTo(r.ctx, targets);
+    } catch (error) {
+      const { scene } = r.ctx.game;
+      throw new Error(
+        `${(error as Error).message}: mode ${UiMode[scene.ui.mode]}, question ${JSON.stringify(r.session.meQuestion)}, step ${r.session.meStep}, window ${r.session.openWindow.map(key => `${key.kind}:${key.ref}`)}`,
+      );
+    }
+  }
+
+  /** The host answers who goes on its screen: the `n`-th of the players offered */
+  async function hostSends(r: LinkedRunOfThree, n: number): Promise<void> {
+    const { ui } = r.ctx.game.scene;
+    await until(r, "asked who goes", () => r.session.meQuestion?.k === "who" && ui.mode === UiMode.OPTION_SELECT);
+    for (let i = 0; i < n; i++) {
+      ui.getHandler().processInput(Button.DOWN);
+    }
+    ui.getHandler().processInput(Button.ACTION);
+  }
+
+  const ownedBy = (r: LinkedRunOfThree, seat: string): PlayerPokemon[] =>
+    r.ctx.game.scene.getPlayerParty().filter(pokemon => r.session.ownership.get(pokemon.id) === seat);
 
   it("Save and Quit at the command menu in a game of three: the title opens over no screen of the run (D20)", async () => {
     const r = await start();
@@ -275,6 +336,68 @@ describe("Co-op: a linked battle of three (D40)", () => {
     expect(phase.state.finished).toBe(false);
     guest2.propose(tradeDoneKey(wave, 4, "guest2"), { done: true });
     await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the Expert Pokémon Breeder in a game of three: any of the three can go, and the choices are their two (D29, D40)", async () => {
+    const r = await encounterOfThree(MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER);
+    const { scene } = r.ctx.game;
+    await until(r, "asked who goes", () => r.session.meQuestion?.k === "who");
+    // each player holds two in a game of three: each of them may go
+    expect(r.session.meQuestion?.seats).toEqual(["host", "guest", "guest2"]);
+    await hostSends(r, 0);
+    await until(r, "showed the options", () => r.session.meQuestion?.k === "option");
+    const encounter = scene.currentBattle.mysteryEncounter!;
+    const mine = ownedBy(r, "host").map(pokemon => pokemon.id);
+    // the two choices are the host's own two, and no third
+    expect(encounter.options).toHaveLength(2);
+    expect([encounter.misc.pokemon1.id, encounter.misc.pokemon2.id].sort()).toEqual([...mine].sort());
+    const phase = scene.phaseManager.getCurrentPhase() as unknown as MysteryEncounterPhase;
+    await until(r, "picked the first", () => phase.coopPick?.(0) === true);
+    await advance(r, ["CommandPhase"]);
+    // only the one who goes is on the field
+    expect(scene.getPlayerField().map(pokemon => pokemon.id)).toEqual([encounter.misc.pokemon1.id]);
+    expect(scene.currentBattle.playerSlots).toBe(1);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the Expert Pokémon Breeder in a game of three: the host sends the second guest, who picks one of their two (D29, D40)", async () => {
+    const r = await encounterOfThree(MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER);
+    const { scene } = r.ctx.game;
+    await hostSends(r, 2);
+    await until(r, "asked the second guest", () => r.session.meQuestion?.k === "option");
+    expect(r.session.meChooser).toBe("guest2");
+    const encounter = scene.currentBattle.mysteryEncounter!;
+    const theirs = ownedBy(r, "guest2").map(pokemon => pokemon.id);
+    expect(encounter.options).toHaveLength(2);
+    expect([encounter.misc.pokemon1.id, encounter.misc.pokemon2.id].sort()).toEqual([...theirs].sort());
+    r.partners.get("guest2")!.propose(meChoiceKey(scene.currentBattle.waveIndex, r.session.meStep - 1), {
+      k: "option",
+      index: 1,
+    });
+    await advance(r, ["CommandPhase"]);
+    expect(scene.getPlayerField().map(pokemon => pokemon.id)).toEqual([encounter.misc.pokemon2.id]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("Fun and Games in a game of three: the one who goes is alone on the field (D29, D40)", async () => {
+    const r = await encounterOfThree(MysteryEncounterType.FUN_AND_GAMES);
+    const { scene } = r.ctx.game;
+    // the game costs money
+    scene.money = 1_000_000;
+    await hostSends(r, 0);
+    await until(r, "showed the options", () => r.session.meQuestion?.k === "option");
+    const phase = scene.phaseManager.getCurrentPhase() as unknown as MysteryEncounterPhase;
+    await until(r, "picked to play", () => phase.coopPick?.(0) === true);
+    await until(r, "showed the party", () => scene.ui.mode === UiMode.PARTY);
+    const party = scene.ui.getHandler() as PartyUiHandler;
+    const mine = ownedBy(r, "host")[0];
+    party.setCursor(scene.getPlayerParty().indexOf(mine));
+    party.processInput(Button.ACTION);
+    party.processInput(Button.ACTION);
+    await advance(r, ["CommandPhase"]);
+    expect(scene.getPlayerField().map(pokemon => pokemon.id)).toEqual([mine.id]);
+    expect(scene.currentBattle.playerSlots).toBe(1);
     expect(r.session.desyncMessage).toBeNull();
   });
 });

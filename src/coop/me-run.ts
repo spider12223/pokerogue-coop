@@ -466,7 +466,10 @@ export async function coopConfirm(ask: () => Promise<boolean>): Promise<boolean>
 
 // #region One-Pokémon encounters (D29)
 
-/** The encounters that only one Pokémon takes part in, and how many Pokémon able to fight the one who goes needs */
+/**
+ * The encounters that only one Pokémon takes part in, and how many Pokémon able to fight the one who goes needs: at most as
+ * many as a player holds (two in a game of three, D40)
+ */
 const ONE_POKEMON_ENCOUNTERS = new Map<MysteryEncounterType, number>([
   [MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER, 3],
   [MysteryEncounterType.FUN_AND_GAMES, 1],
@@ -499,10 +502,10 @@ function fightersOf(seat: Seat): PlayerPokemon[] {
  * @returns Who goes (the encounter is then set up with their Pokémon, and they make its choices), or `null` for nobody
  */
 export async function askWhoGoes(type: MysteryEncounterType): Promise<Seat | null> {
-  const needed = ONE_POKEMON_ENCOUNTERS.get(type) ?? 1;
-  // (each of the three, in a game of three: D40)
-  const seats = seatsFor(requireCoopSession().players).filter(seat => fightersOf(seat).length >= needed);
   const session = requireCoopSession();
+  const needed = Math.min(ONE_POKEMON_ENCOUNTERS.get(type) ?? 1, startersPerSeat(session.players));
+  // (each of the three, in a game of three: D40)
+  const seats = seatsFor(session.players).filter(seat => fightersOf(seat).length >= needed);
   const choice = await meDecide(
     { k: "who", seats },
     () =>

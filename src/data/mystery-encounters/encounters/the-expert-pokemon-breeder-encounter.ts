@@ -665,12 +665,14 @@ function doPostEncounterCleanup() {
 }
 
 /**
- * The 3 Pokémon the player can battle with (the 3 of `pool` that can fight, with the least friendship), and the dialogue
+ * The Pokémon the player can battle with (up to 3 of `pool` that can fight, with the least friendship), and the dialogue
  * and egg rewards of each
+ * @returns How many there are
  */
-function setUpBreederChoices(encounter: MysteryEncounter, pool: readonly PlayerPokemon[]): void {
+function setUpBreederChoices(encounter: MysteryEncounter, pool: readonly PlayerPokemon[]): number {
   const partyCopy = pool.filter(p => p.isAllowedInBattle()).sort((a, b) => a.friendship - b.friendship);
-  const chosen = [partyCopy[0], partyCopy[1], partyCopy[2]];
+  // (two in a co-op game of three, where each player holds two: D40)
+  const chosen = partyCopy.slice(0, 3);
   chosen.forEach((pokemon, i) => encounter.setDialogueToken(`pokemon${i + 1}Name`, pokemon.getNameToRender()));
 
   const misc: Record<string, unknown> = {};
@@ -706,9 +708,10 @@ function setUpBreederChoices(encounter: MysteryEncounter, pool: readonly PlayerP
   });
 
   encounter.misc = misc;
+  return chosen.length;
 }
 
-// Co-op (D29): only one Pokémon takes part; the 3 choices are of the player who goes
+// Co-op (D29): only one Pokémon takes part; the choices are of the player who goes (3, or 2 in a game of three: D40)
 registerGoerSetUp(MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER, pool => {
   const encounter = globalScene.currentBattle.mysteryEncounter!;
   // the tokens of the eggs of the choices that were set up for the whole party go
@@ -716,5 +719,8 @@ registerGoerSetUp(MysteryEncounterType.THE_EXPERT_POKEMON_BREEDER, pool => {
     delete encounter.dialogueTokens[`pokemon${n}RareEggs`];
     delete encounter.dialogueTokens[`pokemon${n}CommonEggs`];
   }
-  setUpBreederChoices(encounter, pool);
+  const choices = setUpBreederChoices(encounter, pool);
+  // One choice per Pokémon of theirs (the one who goes has at least two). A new list: the options are shared
+  const [first, second, ...more] = TheExpertPokemonBreederEncounter.options;
+  encounter.options = [first, second, ...more.slice(0, choices - 2)];
 });

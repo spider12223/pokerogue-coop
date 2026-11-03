@@ -1095,8 +1095,9 @@ count from the host's `HELLO`.
 - **Between waves:** the reward picker rotates host, guest, guest2, and the waiting players are told who picks. A trade
   names who it is with (`TradeProposePayload.to`): the owner of the Pokémon asked for, or, for a gift, the player chosen on
   the screen ("Give to …"); only that player answers, and the third watches until it is settled. The trade screen ends when
-  all three are done. In a one-Pokémon Mystery Encounter the host can send any of the three. A guest's checkpoints are
-  compared with the host's each on their own (D13).
+  all three are done. In a one-Pokémon Mystery Encounter the host can send any of the three: The Expert Pokémon Breeder
+  needs two Pokémon able to fight, not three (a player holds two), and its choices are those two. A guest's checkpoints
+  are compared with the host's each on their own (D13).
 - **Absent players:** after the AFK timer either waiting player may take over; the texts name who is waited for. A
   player's own answer that comes late still wins over another's take-over that waits for its time. A guest who left (their
   connection dropped, or they ended their session) is not waited for: the host is offered to take over their decisions at
