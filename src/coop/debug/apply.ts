@@ -8,11 +8,12 @@ import { PLAYER_PARTY_MAX_SIZE } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { DebugAction, DebugBatch } from "#coop/debug/actions";
+import { isKnownItem, makeItemType } from "#coop/debug/catalog";
 import { writeDebugOverrides } from "#coop/debug/overrides";
+import { type DebugWhere, debugBatchApplied } from "#coop/debug/queue";
 import type { Seat } from "#coop/protocol";
 import { type CoopSession, requireCoopSession } from "#coop/session";
 import { writesForPokemon } from "#coop/sim-account";
-import { modifierTypes } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
 import type { Gender } from "#data/gender";
 import { CustomPokemonData } from "#data/pokemon-data";
@@ -36,7 +37,10 @@ import { randSeedItem } from "#utils/common";
  * party) is skipped on every client alike.
  * @module
  */
-export async function applyDebugBatch(batch: DebugBatch): Promise<void> {
+/**
+ * @param where - Where it takes effect (a turn, or a reward screen): the host's change log says so
+ */
+export async function applyDebugBatch(batch: DebugBatch, where?: DebugWhere): Promise<void> {
   const session = requireCoopSession();
   for (const action of batch.actions) {
     try {
@@ -49,6 +53,9 @@ export async function applyDebugBatch(batch: DebugBatch): Promise<void> {
   writeDebugOverrides(session.debugState, globalScene.currentBattle?.waveIndex ?? 0);
   globalScene.updateModifiers(true, true);
   globalScene.updateMoneyText();
+  if (session.isHost && where !== undefined) {
+    debugBatchApplied(batch, where);
+  }
 }
 
 function partyMember(id: number): PlayerPokemon | null {
@@ -117,21 +124,13 @@ async function setSpecies(pokemon: Pokemon, speciesId: number, form: number): Pr
   await refresh(pokemon, true);
 }
 
-/** A held item for a Pokémon, or an item of the whole team when `pokemon` is `null` */
-function giveItem(pokemon: PlayerPokemon | null, name: string, count: number): void {
-  if (!Object.hasOwn(modifierTypes, name)) {
+/** A held item for a Pokémon, or an item of the whole team when `pokemon` is `null`: any item of the catalog, exact */
+function giveItem(pokemon: PlayerPokemon | null, id: string, count: number): void {
+  const type = makeItemType(id);
+  if (type === null) {
     return;
   }
-  const func = modifierTypes[name as keyof typeof modifierTypes];
-  let type = func();
-  if (type.is("ModifierTypeGenerator")) {
-    const generated = type.generateType(globalScene.getPlayerParty());
-    if (generated === null) {
-      return;
-    }
-    type = generated;
-  }
-  const modifier = type.withIdFromFunc(func).newModifier(pokemon ?? undefined);
+  const modifier = type.newModifier(pokemon ?? undefined);
   if (pokemon !== null && modifier instanceof PokemonHeldItemModifier) {
     modifier.pokemonId = pokemon.id;
     modifier.stackCount = Math.min(count, modifier.getMaxStackCount());
@@ -348,6 +347,17 @@ async function applyDebugAction(session: CoopSession, action: DebugAction): Prom
       }
       break;
     }
+    case "drop": {
+      // (the item at that place of the list, if it is still that item: the same on every client)
+      const held = globalScene.findModifiers(
+        modifier => modifier instanceof PokemonHeldItemModifier && modifier.pokemonId === action.p,
+      );
+      const modifier = held[action.index];
+      if (modifier !== undefined && modifier.type.id === action.key) {
+        globalScene.removeModifier(modifier);
+      }
+      break;
+    }
     case "heal":
       for (const pokemon of globalScene.getPlayerParty()) {
         if (action.p === null || pokemon.id === action.p) {
@@ -377,7 +387,11 @@ async function applyDebugAction(session: CoopSession, action: DebugAction): Prom
       }
       break;
     case "rewards":
-      state.rewards = action.items === null ? null : [...action.items];
+      {
+        // (an id that names no item of this build is left out, alike on every client)
+        const items = action.items?.filter(isKnownItem) ?? [];
+        state.rewards = items.length === 0 ? null : items;
+      }
       break;
     case "jump":
       state.jump = action.v !== null && action.v > wave ? action.v : null;

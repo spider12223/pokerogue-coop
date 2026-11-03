@@ -74,7 +74,7 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "ui",
     note: "dev builds only: how long the phase trace has not moved; it only reads the game",
   },
-  "src/coop/debug/panel.ts": {
+  "src/coop/debug/sections.ts": {
     counts: { "Math.random": 1 },
     why: "run-seed",
     note: "the host's debug menu draws the seed of a Pokémon it adds or randomizes; the seed travels in the DEBUG batch and every client makes the same from it (D42)",

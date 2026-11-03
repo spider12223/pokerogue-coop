@@ -5,6 +5,7 @@
  */
 
 import { activeOverrides, defaultOverrides } from "#app/overrides";
+import { parseItemId } from "#coop/debug/item-id";
 import type { DebugState } from "#coop/debug/state";
 import { BattleType } from "#enums/battle-type";
 
@@ -65,7 +66,14 @@ function wantedOverrides(state: DebugState, wave: number): ManagedOverrides {
     out.MYSTERY_ENCOUNTER_OVERRIDE = plan.encounter;
   }
   if (state.rewards !== null) {
-    out.ITEM_REWARD_OVERRIDE = state.rewards.map(name => ({ name })) as ManagedOverrides["ITEM_REWARD_OVERRIDE"];
+    // An exact item of a family (an evolution item, a Mega Stone...) is the family's override with its kind
+    out.ITEM_REWARD_OVERRIDE = state.rewards.flatMap(id => {
+      const item = parseItemId(id);
+      if (item === null) {
+        return [];
+      }
+      return item.arg === null ? [{ name: item.key }] : [{ name: item.key, type: item.arg }];
+    }) as ManagedOverrides["ITEM_REWARD_OVERRIDE"];
   }
   out.WAIVE_SHOP_FEES_OVERRIDE = modes.freeShop;
   out.WAIVE_ROLL_FEE_OVERRIDE = modes.freeRerolls;

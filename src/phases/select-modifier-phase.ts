@@ -676,7 +676,7 @@ export class SelectModifierPhase extends BattlePhase {
         // The host's cheats (D42), carried out on every client; the screen's items it chose show at once
         const batch = decision.payload;
         if (isDebugBatch(batch) && batch.actions.length > 0) {
-          await applyDebugBatch(batch);
+          await applyDebugBatch(batch, { wave: globalScene.currentBattle.waveIndex, turn: null });
           if (!this.closed && batch.actions.some(action => action.t === "rewards" && action.items !== null)) {
             this.debugRedraw();
             return;

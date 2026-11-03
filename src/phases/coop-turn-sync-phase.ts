@@ -224,7 +224,7 @@ export class CoopTurnSyncPhase extends Phase {
       const batch = (await debugWait).payload;
       session.openWindow = session.openWindow.filter(open => open !== debugKey);
       if (isDebugBatch(batch) && batch.actions.length > 0) {
-        await applyDebugBatch(batch);
+        await applyDebugBatch(batch, { wave, turn });
       }
     }
     await this.settleSideAction(participants);

@@ -7,11 +7,17 @@
 import { activeOverrides, defaultOverrides } from "#app/overrides";
 import { overridesAreDefaults } from "#coop/build-info";
 import { type DebugAction, isDebugAction, isDebugBatch, MAX_DEBUG_ACTIONS } from "#coop/debug/actions";
+import { isItemId, itemId, parseItemId } from "#coop/debug/item-id";
 import { identityOverrides, writeDebugOverrides } from "#coop/debug/overrides";
 import {
+  cancelDebugChange,
   clearDebugQueue,
+  debugBatchApplied,
+  debugChanges,
   debugSendsNow,
   queueDebug,
+  queueDebugChange,
+  requeueDebug,
   setDebugSink,
   takeDebugBatch,
   waitingDebug,
@@ -46,6 +52,7 @@ const EVERY_KIND: DebugAction[] = [
   { t: "move", p: 1, slot: 3, v: 0 },
   { t: "item", p: 1, item: "LEFTOVERS", count: 3 },
   { t: "item", p: null, item: "EXP_SHARE", count: 1 },
+  { t: "drop", p: 1, index: 2, key: "LEFTOVERS" },
   { t: "heal", p: null },
   { t: "add", seat: "guest2", species: 25, form: 0, level: 50, shiny: false, variant: 0, seed: 12_345 },
   { t: "remove", p: 1 },
@@ -86,6 +93,8 @@ describe("Co-op debug menu: batches (D42)", () => {
       { t: "shiny", p: 1, shiny: true, variant: 3 },
       { t: "add", seat: "guest3", species: 25, form: 0, level: 5, shiny: false, variant: 0, seed: 1 },
       { t: "item", p: 1, item: "leftovers; drop", count: 1 },
+      { t: "drop", p: 1, index: -1, key: "LEFTOVERS" },
+      { t: "drop", p: 1, index: 0, key: "left overs" },
       { t: "mode", mode: "exp", v: 0 },
       { t: "mode", mode: "constructor", v: true },
       { t: "status", side: "enemy", v: 7 },
@@ -190,6 +199,102 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
     expect(isCoopSaveBlock({ ...block, debug: saved })).toBe(true);
     expect(isCoopSaveBlock({ ...block, debug: { ...saved, jump: -1 } })).toBe(false);
     expect(isCoopSaveBlock(block)).toBe(true);
+  });
+});
+
+describe("Co-op debug menu: exact items (D42, amended)", () => {
+  afterEach(() => writeDebugOverrides(null, 0));
+
+  it("an item is its key, or its key and which one of the family", () => {
+    expect(itemId("RARE_CANDY")).toBe("RARE_CANDY");
+    expect(itemId("EVOLUTION_ITEM", 12)).toBe("EVOLUTION_ITEM:12");
+    expect(itemId("SPECIES_STAT_BOOSTER", "LIGHT_BALL")).toBe("SPECIES_STAT_BOOSTER:LIGHT_BALL");
+    expect(itemId("MYSTERY_ENCOUNTER_SHUCKLE_JUICE", -15)).toBe("MYSTERY_ENCOUNTER_SHUCKLE_JUICE:-15");
+    expect(parseItemId("EVOLUTION_ITEM:12")).toEqual({ key: "EVOLUTION_ITEM", arg: 12 });
+    expect(parseItemId("SPECIES_STAT_BOOSTER:LIGHT_BALL")).toEqual({ key: "SPECIES_STAT_BOOSTER", arg: "LIGHT_BALL" });
+    expect(parseItemId("MYSTERY_ENCOUNTER_SHUCKLE_JUICE:-15")).toEqual({
+      key: "MYSTERY_ENCOUNTER_SHUCKLE_JUICE",
+      arg: -15,
+    });
+    expect(parseItemId("RARE_CANDY")).toEqual({ key: "RARE_CANDY", arg: null });
+    for (const bad of ["", "rare_candy", "EVOLUTION_ITEM:", "EVOLUTION_ITEM:1:2", "EVOLUTION_ITEM:light", "A B", 7]) {
+      expect(isItemId(bad), String(bad)).toBe(false);
+    }
+  });
+
+  it("a batch may give or offer an exact item", () => {
+    const exact: DebugAction[] = [
+      { t: "item", p: 1, item: "ATTACK_TYPE_BOOSTER:9", count: 1 },
+      { t: "item", p: 1, item: "RARE_FORM_CHANGE_ITEM:3", count: 1 },
+      { t: "rewards", items: ["EVOLUTION_ITEM:12", "TM_ULTRA:89", "RARE_CANDY"] },
+    ];
+    for (const action of exact) {
+      expect(isDebugAction(JSON.parse(JSON.stringify(action))), JSON.stringify(action)).toBe(true);
+    }
+    expect(isDebugAction({ t: "rewards", items: ["EVOLUTION_ITEM:x y"] })).toBe(false);
+  });
+
+  it("the next reward screen's exact items go to the game's item override with their kind", () => {
+    const state = emptyDebugState();
+    state.rewards = ["EVOLUTION_ITEM:12", "SPECIES_STAT_BOOSTER:LIGHT_BALL", "MASTER_BALL"];
+    writeDebugOverrides(state, 4);
+    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual([
+      { name: "EVOLUTION_ITEM", type: 12 },
+      { name: "SPECIES_STAT_BOOSTER", type: "LIGHT_BALL" },
+      { name: "MASTER_BALL" },
+    ]);
+  });
+});
+
+describe("Co-op debug menu: the change log (D42, amended)", () => {
+  afterEach(() => {
+    setDebugSink(null);
+    clearDebugQueue();
+  });
+
+  it("a change replaces the pending change to the same thing; the others keep their order", () => {
+    queueDebugChange("Pikachu: level 50", "level:1", { t: "level", p: 1, v: 50 });
+    queueDebugChange("Wave won", null, { t: "win" });
+    queueDebugChange("Pikachu: level 70", "level:1", { t: "level", p: 1, v: 70 });
+    expect(debugChanges().map(change => change.note)).toEqual(["Wave won", "Pikachu: level 70"]);
+    expect(takeDebugBatch().actions).toEqual([{ t: "win" }, { t: "level", p: 1, v: 70 }]);
+  });
+
+  it("a pending change can be cancelled; one already sent cannot", () => {
+    const first = queueDebugChange("Team healed", null, { t: "heal", p: null });
+    const second = queueDebugChange("Money: 5", "money", { t: "money", v: 5 });
+    expect(cancelDebugChange(first.id)).toBe(true);
+    expect(waitingDebug()).toEqual([{ t: "money", v: 5 }]);
+    takeDebugBatch();
+    expect(cancelDebugChange(second.id)).toBe(false);
+    expect(debugChanges().map(change => change.state)).toEqual(["sent"]);
+  });
+
+  it("a change of several actions travels whole; a sent batch is applied where it took effect", () => {
+    const everyone = queueDebugChange(
+      "Everyone: level 100",
+      null,
+      { t: "level", p: 1, v: 100 },
+      { t: "level", p: 2, v: 100 },
+    );
+    const batch = takeDebugBatch();
+    expect(batch.actions).toHaveLength(2);
+    debugBatchApplied(JSON.parse(JSON.stringify(batch)), { wave: 7, turn: 3 });
+    const applied = debugChanges().find(change => change.id === everyone.id);
+    expect(applied?.state).toBe("applied");
+    expect(applied?.where).toEqual({ wave: 7, turn: 3 });
+  });
+
+  it("a batch that could not be sent is pending again, at the front", () => {
+    queueDebugChange("Wave won", null, { t: "win" });
+    const batch = takeDebugBatch();
+    queueDebugChange("Money: 9", "money", { t: "money", v: 9 });
+    requeueDebug(batch);
+    expect(debugChanges().map(change => [change.note, change.state])).toEqual([
+      ["Wave won", "pending"],
+      ["Money: 9", "pending"],
+    ]);
+    expect(waitingDebug()).toEqual([{ t: "win" }, { t: "money", v: 9 }]);
   });
 });
 

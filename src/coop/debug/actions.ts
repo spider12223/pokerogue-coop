@@ -37,6 +37,8 @@ export type DebugAction =
   | { t: "tera"; p: number; v: number }
   | { t: "move"; p: number; slot: number; v: number }
   | { t: "item"; p: number | null; item: string; count: number }
+  // a held item taken away: the one at `index` of the Pokémon's held items, if it is still of the item `key`
+  | { t: "drop"; p: number; index: number; key: string }
   | { t: "heal"; p: number | null }
   | {
       t: "add";
@@ -132,6 +134,10 @@ export function isDebugAction(value: unknown): value is DebugAction {
       return isId(a["p"]) && isInt(a["slot"], 0, 3) && isInt(a["v"], 0, 10_000);
     case "item":
       return isIdOrNull(a["p"]) && isItemName(a["item"]) && isInt(a["count"], 1, 99);
+    case "drop":
+      return (
+        isId(a["p"]) && isInt(a["index"], 0, 500) && typeof a["key"] === "string" && /^[A-Z0-9_]{1,48}$/.test(a["key"])
+      );
     case "heal":
       return isIdOrNull(a["p"]);
     case "add":

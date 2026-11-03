@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { isItemId } from "#coop/debug/item-id";
+
 /**
  * What the host's debug menu (DECISIONS D42) keeps between turns: the plans for later waves, the next reward screen, a wave
  * jump, a biome, and the modes that stay on. Every client keeps the same state: it changes only through the host's
@@ -113,13 +115,9 @@ export function isWavePlan(value: unknown): value is WavePlan {
   );
 }
 
+/** @returns Whether the value is a list of the next reward screen's items: exact items (`debug/item-id.ts`) */
 export function isRewardNames(value: unknown): value is string[] {
-  return (
-    Array.isArray(value)
-    && value.length > 0
-    && value.length <= MAX_PLANNED_REWARDS
-    && value.every(name => typeof name === "string" && /^[A-Z0-9_]{1,40}$/.test(name))
-  );
+  return Array.isArray(value) && value.length > 0 && value.length <= MAX_PLANNED_REWARDS && value.every(isItemId);
 }
 
 export function isDebugModes(value: unknown): value is DebugModes {

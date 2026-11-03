@@ -4,10 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { ownerOf } from "#coop/control";
 import type { DebugBatch } from "#coop/debug/actions";
+import { itemCatalog, makeItemType, partyMembersFor } from "#coop/debug/catalog";
+import { itemId } from "#coop/debug/item-id";
 import { writeDebugOverrides } from "#coop/debug/overrides";
-import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
+import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
+import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
 import { emptyWavePlan } from "#coop/debug/state";
 import { debugTurnKey } from "#coop/decision-keys";
 import type { DecisionKey } from "#coop/protocol";
@@ -15,7 +19,9 @@ import type { Decision } from "#coop/sequencer";
 import { TerrainType } from "#data/terrain";
 import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
+import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
+import { FormChangeItem } from "#enums/form-change-item";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
@@ -26,7 +32,13 @@ import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerType } from "#enums/trainer-type";
 import { WeatherType } from "#enums/weather-type";
-import type { ModifierTypeOption } from "#modifiers/modifier-type";
+import { AttackTypeBoosterModifier, PokemonFormChangeItemModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
+import type {
+  EvolutionItemModifierType,
+  FormChangeItemModifierType,
+  ModifierTypeOption,
+  TmModifierType,
+} from "#modifiers/modifier-type";
 import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
 import {
   type LinkedRun,
@@ -63,6 +75,7 @@ describe("Co-op: the host's debug menu (D42)", () => {
   });
 
   afterEach(() => {
+    stopDebugPanel();
     run?.close();
     run = null;
     clearDebugQueue();
@@ -374,6 +387,224 @@ describe("Co-op: the host's debug menu (D42)", () => {
     pickerSkips(r);
     await advanceTo(r.ctx, ["CommandPhase"]);
     expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the item catalog lists every item of the game's random families one by one, drawing no random number", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const random = Phaser.Math.RND.state();
+    const catalog = itemCatalog();
+    expect(Phaser.Math.RND.state()).toBe(random);
+    const ids = catalog.map(item => item.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of [
+      itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X),
+      itemId("EVOLUTION_ITEM", EvolutionItem.THUNDER_STONE),
+      itemId("ATTACK_TYPE_BOOSTER", PokemonType.FIRE),
+      itemId("BERRY", BerryType.SITRUS),
+      itemId("MINT", Nature.ADAMANT),
+      itemId("TERA_SHARD", PokemonType.STELLAR),
+      itemId("TEMP_STAT_STAGE_BOOSTER", Stat.ATK),
+      itemId("BASE_STAT_BOOSTER", Stat.HP),
+      itemId("RARE_SPECIES_STAT_BOOSTER", "LIGHT_BALL"),
+      "RARE_CANDY",
+      "MEGA_BRACELET",
+    ]) {
+      expect(ids).toContain(id);
+    }
+    // a TM of each move the game has a TM of, in its tier
+    expect(catalog.filter(item => item.family === "tms" && item.id.endsWith(`:${MoveId.EARTHQUAKE}`))).toHaveLength(1);
+    // what the game picks at random stays offered as such
+    expect(catalog.find(item => item.id === "EVOLUTION_ITEM")?.family).toBe("random");
+    expect(catalog.find(item => item.id === itemId("ATTACK_TYPE_BOOSTER", PokemonType.FIRE))?.held).toBe(true);
+    for (const item of catalog.filter(entry => entry.family !== "random")) {
+      expect(item.name, item.id).not.toMatch(/undefined|modifierType:|^$/);
+      expect(makeItemType(item.id), item.id).not.toBeNull();
+    }
+    // who on the team an item is for
+    const party = r.ctx.game.scene.getPlayerParty();
+    const pikachu = party.find(pokemon => pokemon.species.speciesId === SpeciesId.PIKACHU)!;
+    expect(partyMembersFor(itemId("EVOLUTION_ITEM", EvolutionItem.THUNDER_STONE), party)).toEqual([pikachu]);
+    expect(partyMembersFor(itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X), party)).toEqual([]);
+  });
+
+  it("the next reward screen offers the exact items the host chose: a Mega Stone, an evolution item, a TM", async () => {
+    const r = await start();
+    expect(await winWave(r)).toBe(true);
+    const before = r.ctx.game.scene.phaseManager.getCurrentPhase();
+    const wave = r.ctx.game.scene.currentBattle.waveIndex;
+    const earthquake = itemCatalog().find(item => item.family === "tms" && item.id.endsWith(`:${MoveId.EARTHQUAKE}`))!;
+    const change = queueDebugChange("Rewards", "rewards", {
+      t: "rewards",
+      items: [
+        itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X),
+        itemId("EVOLUTION_ITEM", EvolutionItem.FIRE_STONE),
+        earthquake.id,
+      ],
+    });
+    await vi.waitUntil(() => r.ctx.game.scene.phaseManager.getCurrentPhase() !== before, {
+      interval: 5,
+      timeout: 4000,
+    });
+    await openUi(r.ctx, "SelectModifierPhase");
+    const types = (rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] }).typeOptions.map(
+      option => option.type,
+    );
+    expect((types[0] as FormChangeItemModifierType).formChangeItem).toBe(FormChangeItem.CHARIZARDITE_X);
+    expect((types[1] as EvolutionItemModifierType).evolutionItem).toBe(EvolutionItem.FIRE_STONE);
+    expect((types[2] as TmModifierType).moveId).toBe(MoveId.EARTHQUAKE);
+    // the host's change log: applied on that reward screen
+    expect(debugChanges().find(entry => entry.id === change.id)).toMatchObject({
+      state: "applied",
+      where: { wave, turn: null },
+    });
+    pickerSkips(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the host gives exact held items: Charcoal and a Mega Stone; the change log says the turn", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(5) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const target = guestMon(r);
+    const change = queueDebugChange(
+      "Items",
+      null,
+      { t: "item", p: target.id, item: itemId("ATTACK_TYPE_BOOSTER", PokemonType.FIRE), count: 2 },
+      { t: "item", p: target.id, item: itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X), count: 1 },
+    );
+    const turn = r.ctx.game.scene.currentBattle.turn;
+    await playTurn(r);
+    const held = r.ctx.game.scene.findModifiers(
+      modifier => modifier instanceof PokemonHeldItemModifier && modifier.pokemonId === target.id,
+    );
+    const booster = held.find(modifier => modifier instanceof AttackTypeBoosterModifier);
+    expect(booster?.moveType).toBe(PokemonType.FIRE);
+    expect(booster?.stackCount).toBe(2);
+    const stone = held.find(modifier => modifier instanceof PokemonFormChangeItemModifier);
+    expect(stone?.formChangeItem).toBe(FormChangeItem.CHARIZARDITE_X);
+    expect(debugChanges().find(entry => entry.id === change.id)).toMatchObject({
+      state: "applied",
+      where: { wave: 1, turn },
+    });
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("F8 opens the debug window beside the game: both teams live; one click is one change; pending, then applied", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(5) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const popupDoc = document.implementation.createHTMLDocument("");
+    const popup = {
+      document: popupDoc,
+      closed: false,
+      focus: () => {},
+      close: () => {
+        popup.closed = true;
+      },
+    };
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    startDebugPanel();
+    toggleDebugPanel();
+    expect(debugPanelInfo()).toMatchObject({ open: true, kind: "window", section: "pokemon" });
+    const root = popupDoc.getElementById("coopDebug")!;
+    const scene = r.ctx.game.scene;
+    expect(root.querySelectorAll(".cdw-live .cdw-mon")).toHaveLength(
+      scene.getPlayerParty().length + scene.getEnemyField().filter(enemy => enemy.isActive(true)).length,
+    );
+    // One click, one change: the first Pokémon to level 100; a second change to its level replaces the first
+    const first = scene.getPlayerParty()[0];
+    const buttons = (selector: string) => Array.from(root.querySelectorAll<HTMLButtonElement>(selector));
+    buttons(".cdw-who button")
+      .find(node => node.textContent === "Lv 100")!
+      .click();
+    expect(waitingDebug()).toEqual([{ t: "level", p: first.id, v: 100 }]);
+    expect(root.querySelector(".cdw-log .cdw-pending")?.textContent).toContain("100");
+    buttons(".cdw-f button")
+      .find(node => node.textContent === "50")!
+      .click();
+    expect(waitingDebug()).toEqual([{ t: "level", p: first.id, v: 50 }]);
+    // F8 again brings the window forward; it stays open
+    toggleDebugPanel();
+    expect(debugPanelInfo()?.open).toBe(true);
+
+    await playTurn(r);
+    expect(first.level).toBe(50);
+    const applied = root.querySelector(".cdw-log .cdw-applied");
+    expect(applied?.textContent).toContain("50");
+    expect(applied?.querySelector("small")?.textContent).toContain("turn");
+    expect(waitingDebug()).toEqual([]);
+  });
+
+  it("a browser that blocks the window gets it over the game; the catalog puts a Mega Stone on the next reward screen in one click", async () => {
+    await start();
+    vi.spyOn(window, "open").mockReturnValue(null);
+    startDebugPanel();
+    toggleDebugPanel();
+    expect(debugPanelInfo()).toMatchObject({ open: true, kind: "overlay" });
+    const root = document.getElementById("coopDebug")!;
+    expect(root.hidden).toBe(false);
+    showDebugSection("rewards");
+    const megaStone = itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X);
+    const fireStone = itemId("EVOLUTION_ITEM", EvolutionItem.FIRE_STONE);
+    root.querySelector<HTMLButtonElement>('[data-family="forms"]')!.click();
+    root.querySelector<HTMLButtonElement>(`[data-item="${megaStone}"]`)!.click();
+    expect(waitingDebug()).toEqual([{ t: "rewards", items: [megaStone] }]);
+    root.querySelector<HTMLButtonElement>('[data-family="evolution"]')!.click();
+    root.querySelector<HTMLButtonElement>(`[data-item="${fireStone}"]`)!.click();
+    // the list is one change: the newest replaces the one that waited
+    expect(waitingDebug()).toEqual([{ t: "rewards", items: [megaStone, fireStone] }]);
+    expect(debugChanges().filter(entry => entry.state === "pending")).toHaveLength(1);
+    // F8 closes the panel over the game
+    toggleDebugPanel();
+    expect(root.hidden).toBe(true);
+    expect(debugPanelInfo()?.open).toBe(false);
+  });
+
+  it("on an open reward screen, an item picked in the catalog joins the host's items the screen already shows", async () => {
+    const r = await start();
+    expect(await winWave(r)).toBe(true);
+    vi.spyOn(window, "open").mockReturnValue(null);
+    startDebugPanel();
+    toggleDebugPanel();
+    showDebugSection("rewards");
+    const root = document.getElementById("coopDebug")!;
+    const megaStone = itemId("RARE_FORM_CHANGE_ITEM", FormChangeItem.CHARIZARDITE_X);
+    const fireStone = itemId("EVOLUTION_ITEM", EvolutionItem.FIRE_STONE);
+    const redrawn = async (before: unknown): Promise<void> => {
+      await vi.waitUntil(() => r.ctx.game.scene.phaseManager.getCurrentPhase() !== before, {
+        interval: 5,
+        timeout: 4000,
+      });
+      await openUi(r.ctx, "SelectModifierPhase");
+    };
+    let before: unknown = r.ctx.game.scene.phaseManager.getCurrentPhase();
+    root.querySelector<HTMLButtonElement>('[data-family="forms"]')!.click();
+    root.querySelector<HTMLButtonElement>(`[data-item="${megaStone}"]`)!.click();
+    await redrawn(before);
+    // (the window draws the new screen's step)
+    showDebugSection("rewards");
+    before = r.ctx.game.scene.phaseManager.getCurrentPhase();
+    root.querySelector<HTMLButtonElement>('[data-family="evolution"]')!.click();
+    root.querySelector<HTMLButtonElement>(`[data-item="${fireStone}"]`)!.click();
+    expect(debugChanges().at(-1)?.actions).toEqual([{ t: "rewards", items: [megaStone, fireStone] }]);
+    await redrawn(before);
+    const types = (rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] }).typeOptions.map(
+      option => option.type,
+    );
+    expect((types[0] as FormChangeItemModifierType).formChangeItem).toBe(FormChangeItem.CHARIZARDITE_X);
+    expect((types[1] as EvolutionItemModifierType).evolutionItem).toBe(EvolutionItem.FIRE_STONE);
+    pickerSkips(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the Mega Stones come first among the form change items", async () => {
+    await start();
+    const forms = itemCatalog().filter(item => item.family === "forms");
+    expect(forms[0].id.startsWith("RARE_FORM_CHANGE_ITEM:")).toBe(true);
+    const lastMega = forms.findLastIndex(item => item.id.startsWith("RARE_FORM_CHANGE_ITEM:"));
+    const firstOther = forms.findIndex(item => item.id.startsWith("FORM_CHANGE_ITEM:"));
+    expect(lastMega).toBeLessThan(firstOther);
   });
 
   it("as the guest: the host's batch is carried out on this client too", async () => {

@@ -6,7 +6,7 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import {
   type Client,
   newClientContext,
@@ -19,8 +19,9 @@ import {
 } from "./coop-client.ts";
 
 /**
- * The host's debug menu (DECISIONS D42): the host turns it on in the settings, its key (F8) opens the panel over the game;
- * the guest has no panel. A cheat of the host reaches both clients with the next turn.
+ * The host's debug menu (DECISIONS D42, amended): the host turns it on in the settings, its key (F8) opens the debug window
+ * beside the game, connected to it; the guest has none. One click is one change, which reaches both clients with the next
+ * turn; the window's change log says when.
  */
 
 const SHOTS = shotsDir("debug");
@@ -36,9 +37,13 @@ async function shot(client: Client, name: string): Promise<void> {
   await client.page.screenshot({ path: join(SHOTS, `${name}-${client.label}.png`) });
 }
 
+async function windowShot(win: Page, name: string): Promise<void> {
+  await win.screenshot({ path: join(SHOTS, `${name}-window.png`) });
+}
+
 useRelay();
 
-test("the host's debug menu: F8 opens it for the host only; a cheat reaches both clients; the panel and the chat move (D42)", async ({
+test("the host's debug window: F8 opens it beside the game for the host only; one click is one change, it reaches both clients (D42)", async ({
   browser,
 }) => {
   test.setTimeout(600_000);
@@ -63,41 +68,56 @@ test("the host's debug menu: F8 opens it for the host only; a cheat reaches both
   expect(await coop<boolean>(guest, "debugMenu.on")).toBe(true);
   expect(await coop<unknown>(guest, "debugMenu.panel")).toBeNull();
 
-  // F8 opens the panel on the host; on the guest it does nothing
+  // F8 opens the window on the host; on the guest it does nothing
+  const opened = host.page.waitForEvent("popup");
   await host.page.keyboard.press("F8");
+  const win = await opened;
   await guest.page.keyboard.press("F8");
   await expect.poll(() => coop<boolean>(host, "debugMenu.panel.open")).toBe(true);
-  await expect(host.page.locator("#coopDebug")).toBeVisible();
-  await expect(guest.page.locator("#coopDebug")).toHaveCount(0);
-  await host.page.waitForTimeout(400);
-  await shot(host, "01-party");
-  await shot(guest, "01-party");
+  expect(await coop<string>(host, "debugMenu.panel.kind")).toBe("window");
+  expect(await coop<unknown>(guest, "debugMenu.panel")).toBeNull();
+  expect(guest.page.context().pages()).toHaveLength(1);
+  await win.setViewportSize({ width: 1340, height: 900 });
+  const root = win.locator("#coopDebug");
+  await expect(root.locator(".cdw-live .cdw-mon").first()).toBeVisible();
+  await expect(root.locator(".cdw-top .cdw-conn")).toBeVisible();
+  await win.evaluate(() => document.fonts.ready);
+  await win.waitForTimeout(300);
+  await windowShot(win, "01-pokemon");
+  await shot(host, "01-game");
 
-  for (const [tab, name] of [
-    ["Waves", "02-waves"],
-    ["Rewards", "03-rewards"],
-    ["Battle", "04-battle"],
-    ["Fun", "05-fun"],
+  for (const [label, name] of [
+    ["Enemies & Field", "02-enemies"],
+    ["Waves", "03-waves"],
+    ["Rewards & Shop", "04-rewards"],
+    ["Modes", "05-modes"],
   ] as const) {
-    await host.page.locator("#coopDebug .coop-debug-tabs button", { hasText: tab }).click();
-    await host.page.waitForTimeout(200);
-    await shot(host, name);
+    await root.locator(".cdw-tabs button", { hasText: label }).click();
+    await win.waitForTimeout(150);
+    await windowShot(win, name);
   }
-  await host.page.locator("#coopDebug .coop-debug-search").fill("shiny");
-  await host.page.waitForTimeout(200);
-  await shot(host, "06-search");
 
-  // A cheat: the first Pokémon of the party goes to level 100, for both clients, with the turn
-  await host.page.locator("#coopDebug .coop-debug-search").fill("");
-  await host.page.locator("#coopDebug .coop-debug-tabs button", { hasText: "Party" }).click();
-  await host.page
-    .locator("#coopDebug .coop-debug-row", { hasText: "Level" })
-    .locator("button", { hasText: "100" })
-    .click();
+  // The full item catalog: a Mega Stone goes on the next reward screen in one click; the log takes it back
+  await root.locator(".cdw-tabs button", { hasText: "Rewards & Shop" }).click();
+  await root.locator('[data-family="forms"]').click();
+  await root.locator(".cdw-items .cdw-item").first().click();
   await expect.poll(() => coop<number>(host, "debugMenu.panel.waiting")).toBe(1);
-  await shot(host, "07-queued");
-  await host.page.keyboard.press("Escape");
-  await expect.poll(() => coop<boolean>(host, "debugMenu.panel.open")).toBe(false);
+  await expect(root.locator(".cdw-log .cdw-pending")).toHaveCount(1);
+  await windowShot(win, "06-catalog");
+  await root.locator(".cdw-log .cdw-pending .cdw-x").click();
+  await expect.poll(() => coop<number>(host, "debugMenu.panel.waiting")).toBe(0);
+
+  // The search finds cards of every section
+  await root.locator(".cdw-search").fill("shiny");
+  await expect(root.locator(".cdw-section-h").first()).toBeVisible();
+  await windowShot(win, "07-search");
+  await root.locator(".cdw-search").fill("");
+
+  // One click, one change: the first Pokémon of the party to level 100, for both clients, with the turn
+  await root.locator(".cdw-live .cdw-mon").first().click();
+  await root.locator(".cdw-who button", { hasText: "Lv 100" }).click();
+  await expect.poll(() => coop<number>(host, "debugMenu.panel.waiting")).toBe(1);
+  await windowShot(win, "08-pending");
 
   const firstLevel = (client: Client) => coop<number>(client, "party.0.level");
   await Promise.all([
@@ -105,42 +125,28 @@ test("the host's debug menu: F8 opens it for the host only; a cheat reaches both
     playUntil(guest, "the cheat is carried out", async () => (await firstLevel(guest)) === 100, 300_000, false, "own"),
   ]);
   expect(await coop<number>(host, "debugMenu.panel.waiting")).toBe(0);
-  await shot(host, "08-after");
-  await shot(guest, "08-after");
+  await expect(root.locator(".cdw-log .cdw-applied").first()).toContainText("100");
+  await expect(root.locator(".cdw-log .cdw-applied small").first()).toContainText("turn");
+  await windowShot(win, "09-applied");
+  await shot(host, "09-after");
+  await shot(guest, "09-after");
 
-  // The panel and the chat box are dragged by their title bars; the browser keeps where they were dropped
+  // The chat box is still dragged by its title bar; the browser keeps where it was dropped (D38)
   const page = host.page;
-  const dragBy = async (selector: string, dx: number, dy: number): Promise<void> => {
-    const handle = (await page.locator(selector).boundingBox())!;
-    const x = handle.x + 40;
-    const y = handle.y + handle.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + dx, y + dy, { steps: 8 });
-    await page.mouse.up();
-  };
-  await page.keyboard.press("F8");
-  await expect.poll(() => coop<boolean>(host, "debugMenu.panel.open")).toBe(true);
-  const panelBefore = (await page.locator("#coopDebug").boundingBox())!;
-  // (not as far as where the chat box opens: a press there would be on the panel)
-  await dragBy("#coopDebug .coop-debug-head", 300, 0);
-  const panelAfter = (await page.locator("#coopDebug").boundingBox())!;
-  expect(panelAfter.x - panelBefore.x).toBeGreaterThan(250);
-  expect(await page.evaluate(() => localStorage.getItem("coopDebugPos"))).not.toBeNull();
-
   await page.locator("#coopChat .coop-chat-toggle").click();
   await expect.poll(() => coop<boolean>(host, "chat.open")).toBe(true);
   const chatBefore = (await page.locator("#coopChat").boundingBox())!;
-  await dragBy("#coopChat .coop-chat-head", -700, 250);
+  const handle = (await page.locator("#coopChat .coop-chat-head").boundingBox())!;
+  await page.mouse.move(handle.x + 40, handle.y + handle.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handle.x + 40 - 700, handle.y + handle.height / 2 + 250, { steps: 8 });
+  await page.mouse.up();
   const chatAfter = (await page.locator("#coopChat").boundingBox())!;
   expect(chatBefore.x - chatAfter.x).toBeGreaterThan(500);
   expect(await page.evaluate(() => localStorage.getItem("coopChatPos"))).not.toBeNull();
-  await page.waitForTimeout(300);
-  await shot(host, "09-moved");
 
-  // A double click on the title bar puts the panel back
-  await page.locator("#coopDebug .coop-debug-title").dblclick();
-  const panelBack = (await page.locator("#coopDebug").boundingBox())!;
-  expect(Math.abs(panelBack.x - panelBefore.x)).toBeLessThan(2);
-  expect(await page.evaluate(() => localStorage.getItem("coopDebugPos"))).toBeNull();
+  // The game's page goes: the window says so, and how to connect again
+  await page.reload();
+  await expect(win.locator(".cdw-disconnected")).toBeVisible();
+  await windowShot(win, "10-disconnected");
 });

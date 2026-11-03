@@ -1171,8 +1171,30 @@ like any other run.
   the next reward screen's items once that screen is made; a jump and a biome once used. The build identity (D1) leaves
   out what the menu wrote, so a rejoining player still matches.
 - **Only forward:** a jump goes to a later wave only (the keys of the waves played are used).
-- **Moving it:** the panel is dragged by its title bar (`src/coop/draggable.ts`, as the chat box: D38); the spot is kept in
-  the browser (`localStorage`, `coopDebugPos`), kept inside the window, and a double click on the title bar puts it back.
+- **Amended (the debug window):** the panel over the game became a **window of its own** that the debug key opens
+  (`window.open` from the key press, drawn by the game's page: same origin, no page or protocol of its own), so the game
+  keeps running beside it. Its key brings it forward; the game's page going (a reload) leaves it saying so, and the next
+  page's key draws it anew. A browser that blocks the window gets the same layout as a large panel over the game (Esc
+  closes it).
+  - *Layout:* both teams and the field live on the left (read from this client's game, drawn again when they change);
+    quick buttons, a search over every section, and five sections in the middle (Pokémon, Enemies & Field, Waves,
+    Rewards & Shop, Modes); the change log on the right.
+  - *One step per change:* a pick from a list, a number on Enter, a button applies; no "+" then "Save". A list (a wave's
+    enemies, the next rewards) is sent whole on every change.
+  - *Change log:* each change waits as **pending** (it can be taken back), is **sent** with the next turn's batch (or the
+    reward step's), and is **applied** when the host carries that batch out, with its wave and turn (or the reward
+    screen). A pending change to the same thing (a key such as `level:<id>`) is replaced by the newer one. The log is the
+    host's own; nothing of it travels.
+  - *Exact items:* an item is named by an id (`src/coop/debug/item-id.ts`): the game's key (`RARE_CANDY`), or a random
+    family's key and which one (`EVOLUTION_ITEM:12`, `RARE_FORM_CHANGE_ITEM:3`, `RARE_SPECIES_STAT_BOOSTER:LIGHT_BALL`).
+    The catalog lists every exact item of every family (`catalog.ts`); a family's key alone stays as "the game picks".
+    The reward screen's items go to `ITEM_REWARD_OVERRIDE` with their kind (`type`), as the game's own override does;
+    a held or team item is made the same way. An id that names no item of this build is left out on every client.
+    Mega Stones are offered with or without the Mega Bracelet: a held stone works either way (the bracelet only gates
+    the random reward pool: `modifier-type.ts` `FormChangeItemModifierTypeGenerator`).
+  - *Held items:* a new action takes one away (`drop`: the Pokémon, the place in its held items, and the item's key;
+    skipped if that place no longer holds that item).
+  - The old panel's drag (`coopDebugPos`) is gone; the chat box still moves (D38).
 
 ## See also
 

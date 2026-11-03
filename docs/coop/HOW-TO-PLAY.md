@@ -88,21 +88,32 @@ Three friends can play one run together. It is a Beta: turn it on with **Setting
 
 ## Debug menu (for messing around)
 
-The host can cheat: **Settings → General → Co-op Debug Menu (Host)**, then **F8** opens a panel over the game (the key can
-be changed in **Menu > Settings > Keyboard**). Only the host sees it; friends only see what happens.
+The host can cheat: **Settings → General → Co-op Debug Menu (Host)**, then **F8** opens the **debug window**: a window
+of its own, connected to your game (the key can be changed in **Menu > Settings > Keyboard**). Put it beside the game or
+on a second screen; the game keeps running. Only the host has it; friends only see what happens.
 
-- **Party:** level, IVs, nature, any ability or passive, friendship, species, fusion, shiny, gender, Tera type, moves,
-  held items, heal, give a Pokémon to another player, remove one, or add any Pokémon to anyone.
+- **Left:** both teams and the field, live: HP, status, boss bars, who owns which Pokémon, the weather. Click a Pokémon to
+  edit it.
+- **Top:** quick buttons (win the wave, heal the team, everyone to level 100, +10k money, 99 Master Balls, enemies to
+  1 HP, free shop, no damage) and a search box that finds any option.
+- **Pokémon:** level, IVs, nature, any ability or passive, friendship, species, fusion, shiny, gender, Tera type, moves,
+  held items (give any, take one away), heal, give a Pokémon to another player, remove one, or add any Pokémon to anyone.
+- **Enemies & Field:** knock out, 1 HP, full HP or the level of an enemy (or all of them), stat stages, status, weather,
+  terrain.
 - **Waves:** choose what a later wave is (wild, trainer, Mystery Encounter), which Pokémon come and at what level,
   boss bars, shiny; jump ahead to a later wave; pick the next biome.
-- **Rewards:** choose up to 8 items (any item of the game) for the next reward screen, which then offers all of them (on
-  a reward screen, it changes at once); free shop and rerolls, money, Poké Balls.
-- **Battle and fun:** win the wave, knock out or weaken enemies, stat stages, status, weather, terrain, no damage for your
-  team, one-hit knockouts, EXP and money multipliers, everyone shiny, random species.
+- **Rewards & Shop:** the **whole item catalog**, every exact item: each Mega Stone, evolution item, TM, berry, mint,
+  Tera Shard and so on. Click up to 8 for the next reward screen (on a reward screen, it changes at once). The items that
+  fit your team come first. Mega Stones work when held even without a Mega Bracelet; the bracelet only lets the game roll
+  them by itself, and the window offers it. Also free shop and rerolls, money, Poké Balls, team items.
+- **Modes:** no damage for your team, one-hit knockouts, shiny enemies, every enemy's level, EXP and money multipliers,
+  everyone shiny, random species.
 
-A cheat happens with the next turn (or at once on a reward screen); the line at the bottom of the panel says what is
-waiting. The search box finds an option in any tab. Drag the panel by its title bar to put it anywhere; double-click the
-title bar to put it back. A cheated run counts for your accounts like any other.
+**One click is one change**: picking from a list applies, a number applies on Enter. Changes happen with the next turn
+(or at once on a reward screen). The **change log** on the right shows what is pending (× takes it back) and what was
+applied, and on which turn; changing the same thing twice keeps only the newest. If the game reloads, the window says so:
+press F8 in the game to connect it again. If your browser blocks pop-ups, the same opens over the game instead (Esc
+closes it). A cheated run counts for your accounts like any other.
 
 ## Mystery Encounters
 
@@ -171,7 +182,7 @@ server collects logs. It contains your display names and what you chose in the r
 | Ping what your cursor is on (your friend sees it) | **P** | the button of "Cycle Gender" (left trigger) | **!** button |
 | Emote wheel | **Q** | the button of "Cycle Ability" (right trigger) | emote button |
 | Chat with your partner | **H** (Enter sends, Esc closes) | | **Chat** button, top right |
-| Debug menu (host, when on) | **F8** (Esc closes) | | |
+| Debug window (host, when on) | **F8** | | |
 
 The keys can be changed in **Menu > Settings > Keyboard**.
 

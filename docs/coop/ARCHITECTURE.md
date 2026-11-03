@@ -328,10 +328,14 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
 ## The host's debug menu (D42)
 
 `src/coop/debug/`: `state.ts` (the run's plans and modes, and what they write into `activeOverrides`), `actions.ts` (the
-actions of a `DEBUG` batch and their checks), `apply.ts` (carrying a batch out), `queue.ts` (the host's waiting cheats;
-an open reward step is its sink), `hooks.ts` (where the game reads the state: `newBattle`, `addEnemyPokemon`, the
-Mystery Encounter check, the biome, the reward options, damage, EXP and money) and `panel.ts` (the host's HTML panel).
-The batch rides in the turn's window (`CoopTurnSyncPhase`) and in each reward step's window (`rewardWindow`).
+actions of a `DEBUG` batch and their checks), `apply.ts` (carrying a batch out; the host marks it applied in the log),
+`queue.ts` (the host's change log: pending changes, the batches sent, the applied ones; an open reward step is its sink),
+`item-id.ts` and `catalog.ts` (exact item ids and every item of the game), `hooks.ts` (where the game reads the state:
+`newBattle`, `addEnemyPokemon`, the Mystery Encounter check, the biome, the reward options, damage, EXP and money).
+The debug window: `window.ts` (its own browser window, or the panel over the game), `styles.ts`, `dom.ts` (one-step
+controls), `live.ts` (both teams and the field), `sections.ts` (the five sections and the quick buttons), `view.ts`
+(what it shows) and `panel.ts` (drawing it: the live side on change, a section never under the cursor or a box being
+typed in). The batch rides in the turn's window (`CoopTurnSyncPhase`) and in each reward step's window (`rewardWindow`).
 
 ## Games of three (D40)
 
