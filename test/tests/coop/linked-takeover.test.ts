@@ -13,9 +13,10 @@ import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import { EvolutionPhase } from "#phases/evolution-phase";
-import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";
+import { advanceTo, openUi, queueTurnCommands, runPhase } from "#test/helpers/coop-harness";
 import {
   answerSideAction,
+  attackCommand,
   ballThrowingPartner,
   type LinkedRun,
   type LinkedScenario,
@@ -321,6 +322,48 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
     expect(texts.some(text => text.includes("Alex took over for you"))).toBe(true);
     expect(decisions.find(d => d.key.kind === "LEARN_MOVE")).toMatchObject({ author: "guest", takeover: true });
     expect(hostPokemon.getMoveset().some(move => move.moveId === MoveId.SWIFT)).toBe(false);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("closes the command menu of a guest whose turn the host chose, and says who chose it (D17)", async () => {
+    const seat = "guest";
+    const r = await start({ seat });
+    const { game } = r.ctx;
+    const texts = textsOf(r);
+    // to this player's own command menu: the phase of the partner's slot ends at once
+    for (;;) {
+      await advanceTo(r.ctx, ["CommandPhase"]);
+      const phase = game.scene.phaseManager.getCurrentPhase();
+      if (
+        ownerOf(game.scene.getPlayerField()[(phase as unknown as { getFieldIndex(): number }).getFieldIndex()]) === seat
+      ) {
+        break;
+      }
+      await runPhase(r.ctx, phase);
+    }
+    // this player has its Pokémon's command menu up, and is away: nothing is pressed on this client from here on
+    await openUi(r.ctx, "CommandPhase");
+    expect(game.scene.ui.mode).toBe(UiMode.COMMAND);
+    const slot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === seat);
+    const pokemon = game.scene.getPlayerField()[slot];
+    const { waveIndex, turn } = game.scene.currentBattle;
+
+    // the host chose for its own Pokémon and waits for this one's; after a while its player takes over for it
+    const key = turnCommandsKey(waveIndex, turn, pokemon.id);
+    for (const each of game.scene.getPlayerField()) {
+      r.partner.expect(turnCommandsKey(waveIndex, turn, each.id));
+    }
+    const hostSlot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "host");
+    r.partner.propose(
+      turnCommandsKey(waveIndex, turn, game.scene.getPlayerField()[hostSlot].id),
+      attackCommand(game, hostSlot),
+    );
+    r.partner.takeOver(key, attackCommand(game, slot));
+
+    // the menu closes by itself, and the turn the guest chose for it is played
+    await advanceTo(r.ctx, ["TurnEndPhase"]);
+    expect(game.scene.currentBattle.turn).toBe(turn);
+    expect(texts.some(text => text.startsWith("Alex chose for") && text.endsWith("while you were away."))).toBe(true);
     expect(r.session.desyncMessage).toBeNull();
   });
 });

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { tookOverText } from "#coop/afk";
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
 import { meChoiceKey } from "#coop/me-choice";
@@ -399,5 +400,15 @@ describe("Co-op: a linked battle of three (D40)", () => {
     expect(scene.getPlayerField().map(pokemon => pokemon.id)).toEqual([mine.id]);
     expect(scene.currentBattle.playerSlots).toBe(1);
     expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("names the one who took over, of the two others, in the line of a take over (D17, D40)", async () => {
+    run = await openLinkedRunOfThree(phaserGame, {
+      species: SIX,
+      starterOwners: ["host", "host", "guest", "guest", "guest2", "guest2"],
+      seatNames: { host: "Sam", guest: "Alex", guest2: "Kim" },
+    });
+    expect(tookOverText("guest2")).toBe("Kim took over for you.");
+    expect(tookOverText("guest")).toBe("Alex took over for you.");
   });
 });

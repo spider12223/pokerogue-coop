@@ -255,6 +255,8 @@ export function applyResync(session: CoopSession, message: ResyncMessage): void 
   getCosmeticView()?.clearCursor();
   // The mismatch is in the checkpoint log of the old epoch: the report takes it from there
   const lastMismatch = mismatchInfoOf(session);
+  // Who came back, for what the reload says (D20): taken by every reload, so that a later one does not say it again
+  const back = link.takeWhoCameBack();
   session.beginEpoch(link.epoch);
   link.beginEpoch(message.epoch, message.seq + 1);
   if (isStop(message)) {
@@ -279,7 +281,7 @@ export function applyResync(session: CoopSession, message: ResyncMessage): void 
     coopLog().warn("resync", "clearing the screen before the reload failed", error);
   });
   const phaseManager = globalScene.phaseManager;
-  phaseManager.coopRestartWith(phaseManager.create("CoopResyncPhase", message));
+  phaseManager.coopRestartWith(phaseManager.create("CoopResyncPhase", message, back));
 }
 
 /** This client ends the session: it leaves the room, forgets the seat and goes to the title screen (D20) */

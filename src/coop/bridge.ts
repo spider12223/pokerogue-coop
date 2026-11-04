@@ -221,7 +221,7 @@ export async function coopDecide<P>(request: BridgeRequest<P>): Promise<Decision
     }
     if (mine && decision.takeover === true && decision.author !== session.seat) {
       // The partner decided for this player while they were still choosing: the question goes away (D17)
-      await showTookOver();
+      await showTookOver(decision.author);
     }
     return decision;
   } finally {

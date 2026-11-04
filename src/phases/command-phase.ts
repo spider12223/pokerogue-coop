@@ -43,6 +43,9 @@ export class CommandPhase extends FieldPhase {
    */
   private isSwitch = false;
 
+  /** Co-op (D17): stop listening for a take over of this Pokémon's command (the phase ends, chosen or taken over) */
+  private stopWatchingTakeover: () => void = () => undefined;
+
   /** The battler of this slot: its key in the turn's commands (the third slot of a game of three is `PLAYER_3`, D40) */
   private get battler(): BattlerIndex {
     return playerBattlerOf(this.fieldIndex);
@@ -232,6 +235,10 @@ export class CommandPhase extends FieldPhase {
       return;
     }
 
+    if (isLinked()) {
+      this.watchForTakeover();
+    }
+
     if (
       globalScene.currentBattle.isBattleMysteryEncounter()
       && globalScene.currentBattle.mysteryEncounter?.skipToFightInput
@@ -241,6 +248,39 @@ export class CommandPhase extends FieldPhase {
     } else {
       globalScene.ui.setMode(UiMode.COMMAND, this.fieldIndex);
     }
+  }
+
+  /**
+   * Co-op (D17): the partner took over this Pokémon's command while its player still has the menu up, as with every other
+   * screen a take over closes (`coopDecide`): the menu closes and the phase ends. The command that runs is the sequenced
+   * one, and `CoopTurnSyncPhase` says who chose it.
+   */
+  private watchForTakeover(): void {
+    const link = getLink();
+    if (link === null) {
+      return;
+    }
+    const { waveIndex, turn } = globalScene.currentBattle;
+    // (any attempt of the turn: a second round after a refused Ball or Run is `<id>:<attempt>`)
+    const pokemonId = String(this.getPokemon().id);
+    this.stopWatchingTakeover = link.sequencer.onDecision(({ key, author, takeover }) => {
+      if (
+        takeover !== true
+        || author === mySeat()
+        || key.kind !== "TURN_COMMANDS"
+        || key.wave !== waveIndex
+        || key.turn !== turn
+        || String(key.ref).split(":")[0] !== pokemonId
+      ) {
+        return;
+      }
+      this.stopWatchingTakeover();
+      if (globalScene.phaseManager.getCurrentPhase() === this) {
+        // a menu opened from the command menu (the moves, the party, the balls) goes with it
+        globalScene.ui.clearScreensUnder();
+        this.end();
+      }
+    });
   }
 
   /**
@@ -751,6 +791,7 @@ export class CommandPhase extends FieldPhase {
   }
 
   end() {
+    this.stopWatchingTakeover();
     globalScene.ui.setMode(UiMode.MESSAGE).then(() => super.end());
   }
 }

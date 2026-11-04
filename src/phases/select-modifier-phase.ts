@@ -664,7 +664,7 @@ export class SelectModifierPhase extends BattlePhase {
       if (decision.takeover === true && decision.author !== mySeat()) {
         // The partner chose for this player, who was away (D17). Said on the screen: a reroll or a lock keeps it open, so it
         // must not give way to the message box
-        this.rewardHandler()?.setCoopLabel(tookOverText());
+        this.rewardHandler()?.setCoopLabel(tookOverText(decision.author));
       }
       if (decision.key.kind === "TRADE_REQUEST") {
         // Either player asked for a trade after this screen (D11): the screen stays as it is, the button says so

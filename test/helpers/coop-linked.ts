@@ -218,6 +218,18 @@ export class ScriptedPartner {
     this.answered.clear();
   }
 
+  /**
+   * As the host: its simulation is at this decision too (its turn waits for the commands), so it sequences what comes for
+   * it, the guest's proposal or its own take over (D17). The real client's open window does this as it opens.
+   */
+  expect(key: DecisionKey): void {
+    const id = keyId(key);
+    if (!this.expected.has(id)) {
+      this.expected.add(id);
+      this.sequencer.awaitDecision(key).catch(() => undefined);
+    }
+  }
+
   /** Propose as the partner with the takeover flag (D17) */
   takeOver(key: DecisionKey, payload: unknown): void {
     this.answered.add(keyId(key));
@@ -277,10 +289,8 @@ export class ScriptedPartner {
     const auto = [...(this.policy.auto ?? []), "RETRY"];
     for (const key of this.session.openWindow) {
       const id = keyId(key);
-      if (this.seat === "host" && !this.expected.has(id)) {
-        // the host sequences what the guest proposes once its simulation is at the decision too
-        this.expected.add(id);
-        this.sequencer.awaitDecision(key).catch(() => undefined);
+      if (this.seat === "host") {
+        this.expect(key);
       }
       if (this.answered.has(id) || !auto.includes(key.kind)) {
         continue;
@@ -520,7 +530,11 @@ export const LINKED_SHARED_THREE: SharedRun = {
  */
 export async function openLinkedRunOfThree(
   phaserGame: Phaser.Game,
-  scenario: Omit<LinkedScenario, "seat" | "names"> & { policies?: Partial<Record<Seat, PartnerPolicy>> },
+  scenario: Omit<LinkedScenario, "seat" | "names"> & {
+    policies?: Partial<Record<Seat, PartnerPolicy>>;
+    /** Each player's display name (D1, D40); default: the link's default for all three */
+    seatNames?: Record<Seat, string>;
+  },
 ): Promise<LinkedRunOfThree> {
   const client: ClientConfig = {
     seat: "host",
@@ -551,12 +565,19 @@ export async function openLinkedRunOfThree(
       ["guest2", new ReliableTransport(hub.channel("guest2"), reliable)],
     ] as const),
   );
+  const names = scenario.seatNames;
   const link = new CoopLink({
     seat: "host",
     fanout,
     players: 3,
     relay: new QuietRelay() as unknown as RelayWsTransport,
     sequencer: { validatePayload: validateProposal },
+    ...(names === undefined
+      ? {}
+      : {
+          names: { mine: names.host, theirs: `${names.guest} & ${names.guest2}` },
+          peerNames: { guest: names.guest, guest2: names.guest2 },
+        }),
   });
   session.link = link;
   if (scenario.afkTimers !== undefined) {

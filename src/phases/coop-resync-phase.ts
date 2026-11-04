@@ -7,10 +7,11 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { reportBridgeError } from "#coop/bridge";
+import type { Seat } from "#coop/protocol";
 import type { ResyncPayload } from "#coop/resync";
 import { beforeReload, showReloadFailed } from "#coop/resync-run";
 import { queueRewardResume } from "#coop/reward-resume";
-import { getCoopSession, requireCoopSession } from "#coop/session";
+import { type CoopSession, getCoopSession, requireCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { BattleType } from "#enums/battle-type";
 import { UiMode } from "#enums/ui-mode";
@@ -27,7 +28,14 @@ const NOTICE_MS = 1200;
 export class CoopResyncPhase extends Phase {
   public readonly phaseName = "CoopResyncPhase";
 
-  constructor(private readonly message: ResyncPayload) {
+  /**
+   * @param back - Who came back since this client's last reload (`CoopLink.takeWhoCameBack`), for what a rejoin's notice
+   * says (D20)
+   */
+  constructor(
+    private readonly message: ResyncPayload,
+    private readonly back: readonly Seat[] = [],
+  ) {
     super();
   }
 
@@ -58,13 +66,11 @@ export class CoopResyncPhase extends Phase {
   private noticeText(): string {
     const session = requireCoopSession();
     const wave = this.message.wave;
+    if (this.message.reason === "rejoin") {
+      return resyncNotice(this.message, this.atRewards(), this.back, session);
+    }
     if (this.atRewards()) {
       switch (this.message.reason) {
-        case "rejoin":
-          return coopText("resyncRejoinRewards", "{{partner}} is back. Back to the rewards of wave {{wave}}.", {
-            partner: session.partnerName,
-            wave,
-          });
         case "resume":
           return coopText("resyncResumeRewards", "Back to the rewards of wave {{wave}}.", { wave });
         case "retry":
@@ -78,11 +84,6 @@ export class CoopResyncPhase extends Phase {
       }
     }
     switch (this.message.reason) {
-      case "rejoin":
-        return coopText("resyncRejoin", "{{partner}} is back. Resuming wave {{wave}} from its start.", {
-          partner: session.partnerName,
-          wave,
-        });
       case "resume":
         return coopText("resyncResume", "Resuming wave {{wave}} from its start.", { wave });
       case "retry":
@@ -151,4 +152,33 @@ export class CoopResyncPhase extends Phase {
     session.reloading = false;
     this.end();
   }
+}
+
+/**
+ * What the reload after a return says (D20): the player who came back is told they are back; the others are told who came
+ * back, by seat in a game of three (D40). With nobody known to have come back, only where the run goes on.
+ * @param back - Who came back since this client's last reload, its own seat too
+ */
+export function resyncNotice(
+  message: Pick<ResyncPayload, "wave">,
+  atRewards: boolean,
+  back: readonly Seat[],
+  session: Pick<CoopSession, "seat" | "nameOf">,
+): string {
+  const { wave } = message;
+  const where = atRewards
+    ? coopText("resyncResumeRewards", "Back to the rewards of wave {{wave}}.", { wave })
+    : coopText("resyncResume", "Resuming wave {{wave}} from its start.", { wave });
+  if (back.includes(session.seat)) {
+    return `${coopText("resyncYouAreBack", "You're back.")} ${where}`;
+  }
+  const others = back.map(seat => session.nameOf(seat));
+  if (others.length === 0) {
+    return where;
+  }
+  const who =
+    others.length === 1
+      ? coopText("resyncIsBack", "{{partner}} is back.", { partner: others[0] })
+      : coopText("resyncAreBack", "{{partners}} are back.", { partners: others.join(" & ") });
+  return `${who} ${where}`;
 }

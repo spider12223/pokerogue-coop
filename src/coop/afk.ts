@@ -215,23 +215,27 @@ export class AfkWatcher {
 
 /**
  * "{partner} took over." for the player whose decision was made for them (D17): every screen they had open for it closes.
+ * @param taker - Who took over (in a game of three, either of the others: D40)
  * @returns Resolves once the line has been read, so that what comes next does not draw over it
  */
-export async function showTookOver(): Promise<void> {
+export async function showTookOver(taker: Seat): Promise<void> {
   const { ui } = globalScene;
   ui.clearScreensUnder();
   await ui.setMode(UiMode.MESSAGE);
   await new Promise<void>(resolve => {
-    ui.showText(tookOverText(), null, resolve, 1800);
+    ui.showText(tookOverText(taker), null, resolve, 1800);
     // A line shown over this one drops its callback: the decision must not wait for it
     globalScene.time.delayedCall(3500, resolve);
   });
 }
 
-/** "{partner} took over for you." */
-export function tookOverText(): string {
+/**
+ * "{partner} took over for you."
+ * @param taker - Who took over: named by seat, as a game of three has two others (D40)
+ */
+export function tookOverText(taker: Seat): string {
   return coopText("tookOver", "{{partner}} took over for you.", {
-    partner: getCoopSession()?.partnerName ?? "Your partner",
+    partner: getCoopSession()?.nameOf(taker) ?? "Your partner",
   });
 }
 

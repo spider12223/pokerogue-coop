@@ -149,6 +149,8 @@ describe("CoopLink of three (D40)", () => {
     relay.emit({ t: "relay:peerBack", seat: "guest" });
     relay.emit({ t: "relay:peerBack", seat: "guest2" });
     await settle();
+    // present from the start: nobody came back
+    expect(host.takeWhoCameBack()).toEqual([]);
     // the second guest drops: it is away, and nothing is sent to it
     relay.emit({ t: "relay:peerLeft", seat: "guest2", holdMs: 60_000 });
     expect(host.present("guest2")).toBe(false);
@@ -162,6 +164,8 @@ describe("CoopLink of three (D40)", () => {
     await until(() => host.present("guest2"), "the returned guest is present");
     expect(host.needsResync).toBe(true);
     expect(host.reloadWaitsForWaveStart).toBe(true);
+    // the reload says who came back: the second guest, not the first (D40)
+    expect(host.takeWhoCameBack()).toEqual(["guest2"]);
     // the reload lets them in: nothing waits any more
     host.sendResync({ epoch: 1, seq: 0, wave: 2, reason: "rejoin", save: "{}" });
     expect(host.needsResync).toBe(false);

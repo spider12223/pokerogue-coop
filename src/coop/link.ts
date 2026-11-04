@@ -139,6 +139,9 @@ export class CoopLink {
   private readonly reliableOptions: ReliableOptions | undefined;
   /** Host of three: guests who came back and shook hands again; they come in with the next reload (D40) */
   private readonly returned = new Set<Seat>();
+  /** The seats seen leaving (a relay notice), and the ones that came back since this client's last reload, its own too (D20) */
+  private readonly away = new Set<Seat>();
+  private readonly whoCameBack = new Set<Seat>();
   /** The display name of each seat this link knows */
   private readonly seatNames: Partial<Record<Seat, string>>;
   /** Whether each other seat is connected, in a game of three (D40) */
@@ -200,6 +203,8 @@ export class CoopLink {
     context?: RelinkContext;
     /** How to get this client's own seat back after its connection dropped (D20) */
     connection?: LinkConnection;
+    /** This client took its seat back (its tab was reloaded or reopened, D20): it is one who came back */
+    cameBack?: boolean;
   }) {
     this.seat = options.seat;
     this.players = options.players ?? 2;
@@ -212,6 +217,9 @@ export class CoopLink {
     this.scheduler = options.scheduler ?? systemScheduler;
     this.context = options.context ?? null;
     this.connection = options.connection ?? null;
+    if (options.cameBack === true) {
+      this.whoCameBack.add(this.seat);
+    }
     this.name = cleanName(options.names?.mine ?? DEFAULT_NAME);
     this.theirName = cleanName(options.names?.theirs ?? DEFAULT_NAME);
     this.partnerOfTwo = partnerDisplayName(this.name, this.theirName);
@@ -334,6 +342,23 @@ export class CoopLink {
    */
   get needsResync(): boolean {
     return this.resyncNeeded || this.returned.size > 0;
+  }
+
+  /**
+   * Who came back since this client's last reload: this client's own seat if its tab or its connection did, and the seats
+   * it saw leave and come back. The reload that is applied says who (D20); this forgets them.
+   */
+  takeWhoCameBack(): Seat[] {
+    const seats = [...this.whoCameBack];
+    this.whoCameBack.clear();
+    return seats;
+  }
+
+  /** A seat this client saw leave is there again */
+  private backAgain(seat: Seat): void {
+    if (this.away.delete(seat)) {
+      this.whoCameBack.add(seat);
+    }
   }
 
   /**
@@ -761,6 +786,7 @@ export class CoopLink {
     }
     switch (event.t) {
       case "relay:peerLeft":
+        this.away.add(otherSeat(this.seat));
         // Nothing sent from now on reaches the new pairing: what was unacknowledged waits, and is dropped by the reset (D20)
         this.anyonePresent = false;
         this.reliable?.detach();
@@ -768,6 +794,7 @@ export class CoopLink {
         this.emitEnd("peerLeft");
         break;
       case "relay:paired":
+        this.backAgain(otherSeat(this.seat));
         void this.relink();
         break;
       case "relay:peerGone":
@@ -795,6 +822,11 @@ export class CoopLink {
       case "relay:peerBack":
       case "relay:peerGone":
         if (event.seat !== undefined) {
+          if (event.t === "relay:peerBack") {
+            this.backAgain(event.seat);
+          } else {
+            this.away.add(event.seat);
+          }
           if (event.t === "relay:peerBack" && this.seat === "host" && event.seat !== "host") {
             // A guest came back (D40): shake hands with them again; they are present once that is through
             void this.relinkGuest(event.seat);
@@ -1011,6 +1043,7 @@ export class CoopLink {
           relay.close();
           return;
         }
+        this.whoCameBack.add(this.seat);
         this.unwatchRelay();
         this.relay = relay;
         this.watchRelay();
@@ -1081,6 +1114,8 @@ export interface HostRoom {
   readonly joinedSeats: ReadonlySet<Seat>;
   /** A guest took a seat of a room of three (D40) */
   onJoined(listener: (seat: Seat) => void): Unsubscribe;
+  /** The host took the seat back (a room of three it came back to, D40): the link made of it is one who came back (D20) */
+  readonly rejoined?: boolean;
   cancel(): void;
 }
 
@@ -1195,6 +1230,8 @@ export interface RejoinedRoom {
   readonly webSocketFactory?: WebSocketFactory | undefined;
   /** Resolves when both seats are connected (the partner is there already, or comes back); rejects if the room closed */
   readonly paired: Promise<void>;
+  /** A seat taken back: the link made of it is one who came back (D20) */
+  readonly rejoined: true;
   cancel(): void;
 }
 
@@ -1213,6 +1250,7 @@ export function hostRoomOfThree(room: RejoinedRoom): HostRoom {
     ...(room.webSocketFactory === undefined ? {} : { webSocketFactory: room.webSocketFactory }),
     partner: Promise.resolve(),
     joinedSeats: new Set<Seat>(["guest", "guest2"]),
+    rejoined: true,
     onJoined: () => () => undefined,
     cancel: () => room.cancel(),
   };
@@ -1255,6 +1293,7 @@ export async function rejoinRoom(
     url,
     webSocketFactory: options.webSocketFactory,
     paired,
+    rejoined: true,
     cancel: () => {
       reliable.close();
       relay.close();
@@ -1347,6 +1386,7 @@ function establishHostOfThree(
         code: room.identity.code,
         names: { mine: hostName, theirs: guests.map(seat => through.get(seat)!.name).join(" & ") },
         hub,
+        cameBack: room.rejoined === true,
         ...(room.reliableOptions === undefined ? {} : { reliableOptions: room.reliableOptions }),
         // The host takes its seat back when its own connection drops (D20)
         connection: {
@@ -1498,6 +1538,7 @@ export async function establishHost(
     reliable: room.reliable,
     relay: room.relay,
     code: room.identity.code,
+    cameBack: room.rejoined === true,
     names: { mine: options.name ?? DEFAULT_NAME, theirs: result.name },
     context: {
       build,
@@ -1570,6 +1611,7 @@ export async function establishGuest(
     players: result.hello.players,
     relay: room.relay,
     code: room.identity.code,
+    cameBack: "rejoined" in room && room.rejoined,
     names: { mine: options.name ?? DEFAULT_NAME, theirs: result.hello.name },
     context: {
       build,

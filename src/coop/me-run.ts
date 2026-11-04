@@ -253,7 +253,8 @@ function chooserFilter(chooser: Seat, filter?: PokemonSelectFilter): PokemonSele
       return chooser === mySeat()
         ? notYourPokemonText(pokemon)
         : coopText("meChooseTheirs", "Choose one of {{partner}}'s Pokémon.", {
-            partner: requireCoopSession().partnerName,
+            // whose they are, by seat: a game of three has two others (D40)
+            partner: requireCoopSession().nameOf(owner),
           });
     }
     return filter?.(pokemon) ?? null;

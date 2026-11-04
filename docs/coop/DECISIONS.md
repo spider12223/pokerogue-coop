@@ -480,7 +480,10 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   choosing" and the player can ping. At **90 s** it offers **Take over**: the player makes that one decision for the
   partner, proposed with `takeover: true` (D2).
 - The sequencer accepts whichever proposal arrives first. If the partner then answers, its proposal is rejected and its
-  screen closes with "{partner} took over".
+  screen closes with "{partner} took over". The screen of the player whose decision was taken over closes as soon as
+  the decision reaches them, without a press: the command menu too (`CommandPhase` listens for it), whose turn then
+  says "{partner} chose for {Pokémon} while you were away." In a game of three the line names the one who took over
+  (D40).
 - The timers can be changed only in dev and test builds (`window.__coop.setAfkTimers`).
 - Take over applies to every decision that goes through the bridge (`takeoverPlan` in `src/coop/takeover.ts`):
 
@@ -568,6 +571,9 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   reload yet, so the host waits for the first wave's save; the starter select is a safe point, so a guest whose `START`
   was lost is brought into the run by that reload. A partner who left for good, or a closed room, ends it; leaving tells
   the relay.
+- The reload after a return says who came back: "You're back." to the player whose tab or connection came back, and
+  "{name} is back." to the others (by seat in a game of three, D40). Each link keeps who came back since its last reload:
+  its own seat when it took the seat back or its connection did, and a seat it saw leave and come back.
 - A guest that rejoined, or joined a continued run, waits for the reload like one in a decision: the reconnect screen,
   and End session. A screen whose partner is back offers End session too, after three times the wait. A socket that
   drops while a rejoin waits for the partner keeps the seat (a reload tries again); only the relay closing the room ends

@@ -110,6 +110,29 @@ describe("CoopLink: the partner comes and goes (D20)", () => {
     expect(again.partnerName).toBe("Sam");
   });
 
+  it("knows who came back: the one who stays is told the partner, the tab that came back is told itself (D20)", async () => {
+    const { host, guest, code, guestToken } = await connect();
+    expect(host.takeWhoCameBack()).toEqual([]);
+    guest.close();
+    await until(() => !host.partnerPresent, "the host to see the guest leave");
+    const again = await reloadedGuest(code, guestToken);
+    await until(() => host.partnerPresent && host.needsResync, "the host to be told the guest is back");
+    expect(host.takeWhoCameBack()).toEqual(["guest"]);
+    expect(again.takeWhoCameBack()).toEqual(["guest"]);
+    // taken: the next reload says nothing of it again
+    expect(host.takeWhoCameBack()).toEqual([]);
+  });
+
+  it("knows who came back when a connection drops: the one whose connection it was (D20)", async () => {
+    const { host, guest } = await connect();
+    relayOf(guest).close(4999, "drop");
+    await until(() => !guest.partnerPresent, "the guest to notice");
+    await until(() => guest.partnerPresent && guest.needsResync, "the guest to be back", 6000);
+    await until(() => host.partnerPresent && host.needsResync, "the host to be told", 6000);
+    expect(guest.takeWhoCameBack()).toEqual(["guest"]);
+    expect(host.takeWhoCameBack()).toEqual(["guest"]);
+  });
+
   it("keeps the seat of the one who left for as long as the other stays", async () => {
     const { host, guest, code, guestToken } = await connect();
     guest.close();
