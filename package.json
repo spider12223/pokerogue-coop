@@ -21,6 +21,7 @@
     "test:merge-reports": "MERGE_REPORTS=1 vitest run --merge-reports=test-results --silent='passed-only' --configLoader runner",
     "e2e": "pnpm e2e:full",
     "e2e:quick": "playwright test test/e2e/smoke.spec.ts test/e2e/coop-battle.spec.ts",
+    "shot": "node test/shots/shot.ts",
     "e2e:full": "playwright test",
     "test:coop": "pnpm test:coop:node && pnpm test:coop:game",
     "test:coop:node": "vitest run --config vitest.coop.config.ts",

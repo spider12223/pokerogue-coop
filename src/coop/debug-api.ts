@@ -18,6 +18,7 @@ import { getCoopName, setCoopName } from "#coop/display-name";
 import { pingKeyName } from "#coop/hotkey-names";
 import { openEmoteWheel, pingNow } from "#coop/hotkeys";
 import { getJoinCode, getStarterLobby } from "#coop/lobby";
+import type { MeQuestion } from "#coop/me-choice";
 import { type PaceInfo, paceInfo } from "#coop/pace-run";
 import type { PhaseTraceEntry } from "#coop/phase-trace";
 import { keyId, type Seat, type SeatRecord } from "#coop/protocol";
@@ -127,6 +128,11 @@ export interface CoopDebugApi {
   readonly field: { slot: number; pokemonId: number; owner: Seat | null }[];
   /** The trade screen, while it is open (D11) */
   readonly trade: ReturnType<CoopTradeUiHandler["describe"]> | null;
+  /**
+   * The mystery encounter of the wave (D29): what is asked right now (`null` between questions), who answers it, and how
+   * many decisions of the encounter were made; `null` in a wave without one
+   */
+  readonly me: { question: MeQuestion | null; chooser: Seat; step: number } | null;
   /** The reward screen that is open, or `null` */
   readonly reward: CoopDebugReward | null;
   /** The party, in party order */
@@ -208,6 +214,11 @@ export interface CoopDebugApi {
   moveRewardCursor(row: number, cursor: number): boolean;
   /** Put the cursor of the open party menu on a party member, as the arrows would */
   movePartyCursor(partyIndex: number): boolean;
+  /**
+   * Put the cursor of the screen that is open on its entry `index`, as the arrows would: an option list, a mystery
+   * encounter's options, the party. @returns Whether the screen has a cursor
+   */
+  setCursor(index: number): boolean;
   /** Press a button as the player would: `UP`, `DOWN`, `LEFT`, `RIGHT`, `ACTION`, `CANCEL`, `SUBMIT`, ... */
   press(button: keyof typeof Button): boolean;
   /** Type a join code into the open join form and submit it */
@@ -349,6 +360,13 @@ function api(): CoopDebugApi {
       const handler = globalScene?.ui?.handlers?.[UiMode.COOP_TRADE] as CoopTradeUiHandler | undefined;
       return handler?.active ? handler.describe() : null;
     },
+    get me() {
+      const session = getCoopSession();
+      if (session === null || globalScene?.currentBattle?.mysteryEncounter == null) {
+        return null;
+      }
+      return { question: session.meQuestion, chooser: session.meChooser, step: session.meStep };
+    },
     get party() {
       const session = getCoopSession();
       return (globalScene?.getPlayerParty?.() ?? []).map(pokemon => ({
@@ -485,6 +503,14 @@ function api(): CoopDebugApi {
         return false;
       }
       handler.setCursor(partyIndex);
+      return true;
+    },
+    setCursor: index => {
+      const handler = globalScene.ui.getHandler() as { setCursor?: (cursor: number) => boolean };
+      if (typeof handler.setCursor !== "function") {
+        return false;
+      }
+      handler.setCursor(index);
       return true;
     },
     press: button => globalScene.ui.processInput(Button[button]),

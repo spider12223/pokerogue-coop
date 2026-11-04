@@ -295,6 +295,7 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
 | `pnpm test:coop` | Both of the above |
 | `pnpm test:ste` | The long runs, START-TO-ETERNATUS (a few minutes; or `COOP_STE=1` with any Vitest command) |
 | `pnpm e2e` | Playwright, two browsers against the real relay (`pnpm e2e:quick` for the smoke and battle specs) |
+| `pnpm shot <scenario>` | Screenshots of one co-op interaction from every player, headless (`pnpm shot --list`) |
 | `pnpm test` | The whole game test suite, upstream's tests included, which must stay green |
 
 - **Node tests** (`test/coop/`) cover the pure modules: the protocol, the transports, the sequencer (including a stress
@@ -324,6 +325,11 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
   them through `window.__coop`. `playwright.config.ts` starts the dev server; with `E2E_BASE_URL` the specs run against
   a game that is already running, such as a container built with `COOP_E2E=1`. Screenshots go to
   `test-results/screenshots/`.
+- **Screenshots of one interaction** (`test/shots/`, `pnpm shot`): two or three headless players are brought to a
+  screen (overrides, the starter select, the relay) and every step of it is shot from every player, side by side, into
+  a temp folder with an `index.html`. A catalog of scenarios (joining, battles, rewards, shop, trade, the run's end,
+  chat, take over, a reload, the debug window, every Mystery Encounter) takes variables (`--players`, `--seat`,
+  `--option`, `--goer`, ...); `test/shots/README.md` says how to add a scenario or a variable.
 
 ## The host's debug menu (D42)
 
