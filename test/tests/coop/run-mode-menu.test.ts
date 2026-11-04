@@ -6,7 +6,7 @@
 
 import { GameMode } from "#app/game-mode";
 import * as buildInfo from "#coop/build-info";
-import { COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
 import { localAccountId, matchBuild, showCoopTitleMenu } from "#coop/lobby";
 import { endCoopSession } from "#coop/session";
 import { removeCoopSlot } from "#coop/wave-save";
@@ -74,7 +74,9 @@ describe("Co-op: Classic or Endless (D39)", () => {
 
   afterEach(() => {
     endCoopSession();
-    removeCoopSlot();
+    for (let file = 1; file <= COOP_SLOT_FILES; file++) {
+      removeCoopSlot(file);
+    }
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
@@ -145,32 +147,32 @@ describe("Co-op: Classic or Endless (D39)", () => {
       accountIds: { host: localAccountId(), guest: "1:2" },
       session: "{}",
     } as const;
-    writeCoopSlot(localStorage, { ...slot, runMode: "endless" });
-    expect(readCoopSlot(localStorage)?.runMode).toBe("endless");
+    writeCoopSlot(localStorage, { ...slot, runMode: "endless" }, 1);
+    expect(readCoopSlot(localStorage, 1)?.runMode).toBe("endless");
     showCoopTitleMenu(CALLBACKS);
     await tick();
     expect(labels()[0]).toBe("Continue (Endless, wave 340)");
 
-    writeCoopSlot(localStorage, slot);
-    expect(readCoopSlot(localStorage)).not.toBeNull();
+    writeCoopSlot(localStorage, slot, 1);
+    expect(readCoopSlot(localStorage, 1)).not.toBeNull();
     game.scene.ui.getHandler().clear();
     showCoopTitleMenu(CALLBACKS);
     await tick();
     expect(labels()[0]).toBe("Continue (wave 340)");
 
     // a damaged kind is a damaged slot
-    writeCoopSlot(localStorage, { ...slot, runMode: "daily" as never });
-    expect(readCoopSlot(localStorage)).toBeNull();
+    writeCoopSlot(localStorage, { ...slot, runMode: "daily" as never }, 1);
+    expect(readCoopSlot(localStorage, 1)).toBeNull();
 
     // a challenge run (D41) says so, and keeps its challenges for the partner's handshake
-    writeCoopSlot(localStorage, { ...slot, runMode: "challenge", challenges: [{ id: 3, value: 1, severity: 0 }] });
+    writeCoopSlot(localStorage, { ...slot, runMode: "challenge", challenges: [{ id: 3, value: 1, severity: 0 }] }, 1);
     game.scene.ui.getHandler().clear();
     showCoopTitleMenu(CALLBACKS);
     await tick();
     expect(labels()[0]).toBe("Continue (Challenge, wave 340)");
-    expect(readCoopSlot(localStorage)?.challenges).toEqual([{ id: 3, value: 1, severity: 0 }]);
+    expect(readCoopSlot(localStorage, 1)?.challenges).toEqual([{ id: 3, value: 1, severity: 0 }]);
     // without them it is damaged
-    writeCoopSlot(localStorage, { ...slot, runMode: "challenge" });
-    expect(readCoopSlot(localStorage)).toBeNull();
+    writeCoopSlot(localStorage, { ...slot, runMode: "challenge" }, 1);
+    expect(readCoopSlot(localStorage, 1)).toBeNull();
   });
 });

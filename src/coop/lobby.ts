@@ -57,6 +57,7 @@ import { hideReconnectScreen } from "#coop/reconnect-ui";
 import { relayUrlFor } from "#coop/relay-url";
 import { askAndReport, setReportButtonVisible } from "#coop/report-button";
 import { installResync, registerBeforeReload, registerLeaveHandler } from "#coop/resync-run";
+import { pickCoopFile, savedCoopRuns } from "#coop/save-files";
 import { forgetSeat, saveSeat } from "#coop/seat-store";
 import { type CoopSession, endCoopSession, getCoopSession, startCoopSession } from "#coop/session";
 import { CollectionExchange, captureCollection, poolCollection, unpoolCollection } from "#coop/shared-collection";
@@ -65,7 +66,7 @@ import { setTouchEmoteVisible } from "#coop/touch-emote";
 import { findMatch, type MatchRole } from "#coop/transport/match-ws";
 import { RelayError } from "#coop/transport/relay-ws";
 import { validateProposal } from "#coop/validate";
-import { coopStore, currentCoopSlot } from "#coop/wave-save";
+import { coopStore } from "#coop/wave-save";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
@@ -101,14 +102,14 @@ const COLLECTION_TIMEOUT_MS = 15_000;
 let joinCode: string | null = null;
 /** Stops the resync of the session (D13) */
 let stopResync: (() => void) | null = null;
-/** What "Continue" does (D21): `rejoin.ts` sets it, so that this module does not import it */
-let continueHandler: ((callbacks: CoopTitleCallbacks) => void) | null = null;
+/** What "Continue" does with the save file picked (D21): `rejoin.ts` sets it, so that this module does not import it */
+let continueHandler: ((callbacks: CoopTitleCallbacks, file: number) => void) | null = null;
 /** The code of the last join that did not go through, for the join form to start with */
 let lastFailedCode: string | null = null;
 /** Stops the co-op log's recording of the session (D26) */
 let stopCoopLog: (() => void) | null = null;
 
-export function registerContinueHandler(handler: (callbacks: CoopTitleCallbacks) => void): void {
+export function registerContinueHandler(handler: (callbacks: CoopTitleCallbacks, file: number) => void): void {
   continueHandler = handler;
 }
 
@@ -322,23 +323,26 @@ const COOP_MENU_SCALE = 5 / 6;
 
 /** "Host / Join / Cancel" */
 export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
-  const slot = continueHandler === null ? null : currentCoopSlot();
+  // The host's saved runs, one per save file (D19, D21)
+  const saved = continueHandler === null ? [] : savedCoopRuns().filter(slot => slot !== null);
+  // A new run asks which file it goes in, unless no file has a run: then the first (D19)
+  const inFile = (go: (file: number) => void): void =>
+    saved.length === 0 ? go(1) : pickCoopFile("new", go, () => showCoopTitleMenu(callbacks));
   const options: OptionSelectItem[] = [
-    ...(slot === null || continueHandler === null
+    ...(saved.length === 0 || continueHandler === null
       ? []
       : [
           {
             label:
-              // (a run of three says so, D40)
-              slot.accountIds.guest2 === undefined
-                ? slot.runMode === "endless"
-                  ? coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave })
-                  : slot.runMode === "challenge"
-                    ? coopText("continueChallengeRun", "Continue (Challenge, wave {{wave}})", { wave: slot.wave })
-                    : coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave })
-                : coopText("continueThreeRun", "Continue (3 players, wave {{wave}})", { wave: slot.wave }),
+              saved.length === 1
+                ? continueLabel(saved[0])
+                : coopText("continueRuns", "Continue ({{count}} saved runs)", { count: saved.length }),
             handler: () => {
-              continueHandler?.(callbacks);
+              pickCoopFile(
+                "continue",
+                file => continueHandler?.(callbacks, file),
+                () => showCoopTitleMenu(callbacks),
+              );
               return true;
             },
           },
@@ -355,22 +359,13 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
           askRunMode(
             callbacks,
             runMode =>
-              confirmOverwrite(
-                callbacks,
-                slot,
-                saved =>
-                  coopText(
-                    "hostOverwrites",
-                    "A new game will replace your saved co-op run (wave {{wave}}). Host a new game anyway?",
-                    { wave: saved.wave },
-                  ),
-                () =>
-                  runMode === "challenge"
-                    ? openCoopChallengePick(
-                        challenges => void hostGame(callbacks, runMode, undefined, players, challenges),
-                        () => kind(players),
-                      )
-                    : void hostGame(callbacks, runMode, undefined, players),
+              inFile(file =>
+                runMode === "challenge"
+                  ? openCoopChallengePick(
+                      challenges => void hostGame(callbacks, runMode, undefined, players, challenges, file),
+                      () => kind(players),
+                    )
+                  : void hostGame(callbacks, runMode, undefined, players, undefined, file),
               ),
             threePlayers ? host : undefined,
             true,
@@ -391,20 +386,8 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
           {
             label: coopText("findPartner", "Find a partner"),
             handler: () => {
-              // As for hosting: the player may end up hosting, and a new run takes the saved one's place (D19)
-              askRunMode(callbacks, runMode =>
-                confirmOverwrite(
-                  callbacks,
-                  slot,
-                  saved =>
-                    coopText(
-                      "matchOverwrites",
-                      "A new game may replace your saved co-op run (wave {{wave}}). Find a partner anyway?",
-                      { wave: saved.wave },
-                    ),
-                  () => void findPartner(callbacks, runMode),
-                ),
-              );
+              // As for hosting: the player may end up hosting, and the run then goes in the file picked here (D19)
+              askRunMode(callbacks, runMode => inFile(file => void findPartner(callbacks, runMode, file)));
               return true;
             },
           },
@@ -572,29 +555,19 @@ function hostWaitingText(code: string): string {
  * A new run takes the place of the saved one at its first wave (D19): with a saved run, the player is asked first, as a solo
  * New Game over a saved run asks
  */
-function confirmOverwrite(
-  callbacks: CoopTitleCallbacks,
-  slot: CoopSlot | null,
-  question: (saved: CoopSlot) => string,
-  go: () => void,
-): void {
-  if (slot === null) {
-    go();
-    return;
+/** The Continue entry of a saved run, when it is the only one: its kind and wave (a run of three says so, D40) */
+function continueLabel(slot: CoopSlot): string {
+  if (slot.accountIds.guest2 !== undefined) {
+    return coopText("continueThreeRun", "Continue (3 players, wave {{wave}})", { wave: slot.wave });
   }
-  const { ui } = globalScene;
-  ui.showText(question(slot), null, () =>
-    ui.setModeWithoutClear(UiMode.CONFIRM, {
-      yesHandler: () => {
-        ui.clearText();
-        go();
-      },
-      noHandler: () => {
-        ui.clearText();
-        showCoopTitleMenu(callbacks);
-      },
-    }),
-  );
+  switch (slot.runMode) {
+    case "endless":
+      return coopText("continueEndlessRun", "Continue (Endless, wave {{wave}})", { wave: slot.wave });
+    case "challenge":
+      return coopText("continueChallengeRun", "Continue (Challenge, wave {{wave}})", { wave: slot.wave });
+    default:
+      return coopText("continueRun", "Continue (wave {{wave}})", { wave: slot.wave });
+  }
 }
 
 export function showFailure(error: unknown, callbacks: CoopTitleCallbacks, message?: string): void {
@@ -687,6 +660,8 @@ export function beginSession(
     challenges?: readonly CoopChallenge[];
     /** The host's debug menu is on (D42) */
     debug?: boolean;
+    /** The host's co-op save file of the run (D19) */
+    file?: number;
   } = {},
 ): CoopSession {
   const session = startCoopSession({
@@ -699,6 +674,7 @@ export function beginSession(
     ...(init.runMode === undefined ? {} : { runMode: init.runMode }),
     ...(init.challenges === undefined ? {} : { challenges: init.challenges }),
     ...(init.debug === true ? { debug: true } : {}),
+    ...(init.file === undefined ? {} : { file: init.file }),
   });
   session.link = link;
   // The seat token, so that a reloaded or reopened tab takes the seat back by itself (D20)
@@ -713,6 +689,8 @@ export function beginSession(
       relayUrl,
       savedAt: Date.now(),
       partnerName: link.partnerName,
+      // what a reloaded host resumes (D19, D20)
+      ...(seat === "host" ? { file: session.file } : {}),
     });
   }
   attachCheckpointExchange(session, link);
@@ -820,6 +798,8 @@ async function hostGame(
   players: PlayerCount = 2,
   /** A challenge run's challenges (D41) */
   challenges?: CoopChallenge[],
+  /** The host's co-op save file the run goes in (D19) */
+  file = 1,
 ): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
@@ -912,6 +892,7 @@ async function hostGame(
       runMode,
       ...(challenges === undefined ? {} : { challenges }),
       debug: settings.general.coopDebugMenu,
+      file,
     });
     await enterLobby(session, established.link, callbacks);
   } catch (error) {
@@ -1093,7 +1074,12 @@ function endRoom(room: HostRoom): void {
  * @param runMode - The kind of run (D39): only a partner who chose the same is found
  * @param again - Why it searches again, said before the clock
  */
-async function findPartner(callbacks: CoopTitleCallbacks, runMode: CoopRunMode, again?: string): Promise<void> {
+async function findPartner(
+  callbacks: CoopTitleCallbacks,
+  runMode: CoopRunMode,
+  file: number,
+  again?: string,
+): Promise<void> {
   const { ui } = globalScene;
   if (!overridesAreDefaults()) {
     showFailure(new Error("overrides in effect"), callbacks);
@@ -1172,7 +1158,7 @@ async function findPartner(callbacks: CoopTitleCallbacks, runMode: CoopRunMode, 
   }
   coopLog().info("lobby", "found a partner", { role: role.role });
   const searchAgain = (why: string): void => {
-    void findPartner(callbacks, runMode, why);
+    void findPartner(callbacks, runMode, file, why);
   };
   if (role.role === "guest") {
     search.cancel();
@@ -1204,15 +1190,22 @@ async function findPartner(callbacks: CoopTitleCallbacks, runMode: CoopRunMode, 
     searchAgain(coopText("matchPartnerLeft", "Your partner left. Looking again…"));
     return;
   }
-  await hostGame(callbacks, runMode, {
-    room,
-    waiting: coopText("matchWaiting", "Found a partner! Waiting for them to connect…"),
-    why: "for a match",
-    // nobody types this code: the relay gave it to the partner
-    copy: false,
-    partnerWaitMs: MATCH_PARTNER_WAIT_MS,
-    onNoPartner: () => searchAgain(coopText("matchNoShow", "Your partner did not connect. Looking again…")),
-  });
+  await hostGame(
+    callbacks,
+    runMode,
+    {
+      room,
+      waiting: coopText("matchWaiting", "Found a partner! Waiting for them to connect…"),
+      why: "for a match",
+      // nobody types this code: the relay gave it to the partner
+      copy: false,
+      partnerWaitMs: MATCH_PARTNER_WAIT_MS,
+      onNoPartner: () => searchAgain(coopText("matchNoShow", "Your partner did not connect. Looking again…")),
+    },
+    2,
+    undefined,
+    file,
+  );
 }
 
 /** Ask for this player's name (D1), then come back to the co-op menu. */
@@ -1261,13 +1254,15 @@ export function hostAgain(
   partner: string,
   runMode: CoopRunMode = "classic",
   challenges?: CoopChallenge[],
+  /** The save file of the run that ended: the new one goes in it (D19) */
+  file = 1,
 ): Promise<void> {
   const waiting = coopText("againWaiting", "Waiting for {{partner}} to join the new game (code {{code}})…", {
     partner,
     code: room.identity.code,
   });
   // (a room of three when both guests of a game of three want to play again, D40)
-  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, room.seats, challenges);
+  return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, room.seats, challenges, file);
 }
 
 /** Host: start a game without the menus (the debug API and the end-to-end test use it) */

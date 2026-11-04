@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { isCoopFile } from "#coop/coop-slot";
 import type { Seat } from "#coop/protocol";
 
 /**
@@ -37,6 +38,8 @@ export interface SeatRecord {
   savedAt: number;
   /** What the partner is called (D1), to say who is awaited before the handshake tells it again */
   partnerName?: string;
+  /** The host's co-op save file of the run (D19): what a reloaded host resumes. A record from before has none: file 1 */
+  file?: number;
 }
 
 export const SEAT_KEY_PREFIX = "coopSeat:";
@@ -59,6 +62,7 @@ export function isSeatRecord(value: unknown): value is SeatRecord {
     && typeof record["relayUrl"] === "string"
     && typeof record["savedAt"] === "number"
     && (record["partnerName"] === undefined || typeof record["partnerName"] === "string")
+    && (record["file"] === undefined || isCoopFile(record["file"]))
   );
 }
 

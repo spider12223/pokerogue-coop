@@ -34,7 +34,15 @@ const LINE_MS = 2500;
 
 /** What the title screen starts after the run; module state, so it outlives `globalScene.reset()` */
 type Pending =
-  | { seat: "host"; room: HostRoom; partner: string; runMode: CoopRunMode; challenges?: CoopChallenge[] }
+  | {
+      seat: "host";
+      room: HostRoom;
+      partner: string;
+      runMode: CoopRunMode;
+      challenges?: CoopChallenge[];
+      /** The save file of the run that ended: the new one goes in it (D19) */
+      file: number;
+    }
   | { seat: "guest"; code: string };
 let pending: Pending | null = null;
 
@@ -177,6 +185,8 @@ export function askPlayAgain(): Promise<void> {
         );
       if (session.isHost) {
         const players: PlayerCount = ofThree && wanting().length === 2 ? 3 : 2;
+        // the new run goes in the save file of the one that ended (D19)
+        const { file } = session;
         const names = ofThree
           ? wanting()
               .map(seat => session.nameOf(seat))
@@ -192,8 +202,8 @@ export function askPlayAgain(): Promise<void> {
             // The new game is the same kind of run (D39), with the same challenges (D41)
             const mode = globalScene.gameMode;
             pending = mode.isChallenge
-              ? { seat: "host", room, partner: names, runMode: "challenge", challenges: challengesOn(mode) }
-              : { seat: "host", room, partner: names, runMode: mode.isEndless ? "endless" : "classic" };
+              ? { seat: "host", room, partner: names, runMode: "challenge", challenges: challengesOn(mode), file }
+              : { seat: "host", room, partner: names, runMode: mode.isEndless ? "endless" : "classic", file };
             link.sendLobby({ t: "againCode", code: room.identity.code });
             // The guest leaves the old room as soon as it has the code; until then that room carries it
             timer = setTimeout(() => finish(null), LEAVE_WAIT_MS);
@@ -306,9 +316,7 @@ export function startPlayAgain(callbacks: CoopTitleCallbacks): boolean {
     return false;
   }
   if (next.seat === "host") {
-    void (next.challenges === undefined
-      ? playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode)
-      : playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode, next.challenges));
+    void playAgainNetwork.host(callbacks, next.room, next.partner, next.runMode, next.challenges, next.file);
   } else {
     void playAgainNetwork.join(next.code, callbacks);
   }

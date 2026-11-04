@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
 import type { HostRoom } from "#coop/link";
 import { playAgainNetwork, startPlayAgain } from "#coop/play-again";
 import type { CoopChallenge } from "#coop/protocol";
+import { removeCoopSlot } from "#coop/wave-save";
 import { Challenges } from "#enums/challenges";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
@@ -55,6 +57,9 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
   });
 
   afterEach(() => {
+    for (let file = 1; file <= COOP_SLOT_FILES; file++) {
+      removeCoopSlot(file);
+    }
     run?.close();
     run = null;
     // nothing is left for the next title screen
@@ -67,10 +72,15 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     seat: LinkedScenario["seat"],
     endless = false,
     challenges?: CoopChallenge[],
+    file?: number,
   ): Promise<LinkedRun> {
     run = await openLinkedRun(phaserGame, {
       seat,
-      scenario: { endless, ...(challenges === undefined ? {} : { challenges }) },
+      scenario: {
+        endless,
+        ...(challenges === undefined ? {} : { challenges }),
+        ...(file === undefined ? {} : { file }),
+      },
       species: SIX,
       starterOwners: ["host", "guest", "host", "guest", "host", "guest"],
       configure: game => game.override.startingLevel(40),
@@ -103,9 +113,13 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
   }
 
   it("host: both want to; the host makes the room, sends its code, and waits in it at the title screen", async () => {
-    const r = await start("host");
+    // (the run is saved in the third of the host's save files, D19)
+    const r = await start("host", false, undefined, 3);
     const shown = spyOnTexts(r);
     expect(await playToRunEnd(r)).toBe(false);
+    // its wave saves went in that file, and in no other
+    expect(readCoopSlot(localStorage, 3)).not.toBeNull();
+    expect(readCoopSlot(localStorage, 1)).toBeNull();
     // the partner answers before this client's end screen asks: the answer is kept
     r.partner.sendLobby({ t: "again", want: true });
     const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
@@ -124,10 +138,12 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     // the guest leaves the old room with the code: the host goes on
     r.partner.bye();
     expect(await toTitle).toBe("TitlePhase");
+    // the run is over: its file is free for the new one
+    expect(readCoopSlot(localStorage, 3)).toBeNull();
 
     expect(startPlayAgain(callbacks)).toBe(true);
-    // the new game is the same kind of run as this one (D39)
-    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "classic");
+    // the new game is the same kind of run as this one (D39), and goes in the same save file (D19)
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "classic", undefined, 3);
     expect(stand.joinGame).not.toHaveBeenCalled();
     // once only
     expect(startPlayAgain(callbacks)).toBe(false);
@@ -147,7 +163,7 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     r.partner.bye();
     expect(await toTitle).toBe("TitlePhase");
     expect(startPlayAgain(callbacks)).toBe(true);
-    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "endless");
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "endless", undefined, 1);
   });
 
   it("host of a challenge run: the new game has the same challenges (D41)", async () => {
@@ -165,11 +181,26 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     r.partner.bye();
     expect(await toTitle).toBe("TitlePhase");
     expect(startPlayAgain(callbacks)).toBe(true);
-    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "challenge", [inverse]);
+    expect(stand.hostAgain).toHaveBeenCalledWith(callbacks, room, "Alex", "challenge", [inverse], 1);
   });
 
   it("guest: it waits for the host's answer, then for the code, and joins the new room", async () => {
     const r = await start("guest");
+    // a run this player hosts with someone else, in its own first save file (D19; the game's start clears the storage, so it is written after)
+    writeCoopSlot(
+      localStorage,
+      {
+        version: COOP_SLOT_VERSION,
+        savedAt: 1,
+        wave: 9,
+        epoch: 0,
+        seq: 0,
+        names: { host: "Sam", guest: "Kim" },
+        accountIds: { host: "5:6", guest: "7:8" },
+        session: "{}",
+      },
+      1,
+    );
     const shown = spyOnTexts(r);
     expect(await playToRunEnd(r)).toBe(false);
     const toTitle = advanceTo(r.ctx, ["TitlePhase"]);
@@ -185,6 +216,8 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     expect(startPlayAgain(callbacks)).toBe(true);
     expect(stand.joinGame).toHaveBeenCalledWith("ABC234", callbacks);
     expect(stand.createRoom).not.toHaveBeenCalled();
+    // the end of a run it joined leaves this player's own saved run alone
+    expect(readCoopSlot(localStorage, 1)?.wave).toBe(9);
   });
 
   it("the partner goes back to the title: this player is told, and nothing starts", async () => {

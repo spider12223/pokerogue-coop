@@ -221,6 +221,8 @@ export interface Scenario {
   endless?: boolean;
   /** A challenge run with these challenges (D41) instead of a classic one */
   challenges?: CoopChallenge[];
+  /** The host's co-op save file the run is saved in (D19); default the first */
+  file?: number;
   /** The money the run starts with (the harness starts the run without the starter screen, which would set it) */
   startingMoney?: number;
   /** From this wave on, the first wild wave with two enemies gets a Master Ball thrown at the second one left (D10) */
@@ -1204,6 +1206,7 @@ export async function openCoopRun(
     players: scenario.players ?? 2,
     starterOwners:
       scenario.starterOwners ?? (scenario.players === 3 ? defaultStarterOwners(2, 3) : defaultStarterOwners()),
+    ...(scenario.file === undefined ? {} : { file: scenario.file }),
   });
 
   session.onCheckpoint = checkpoint => {

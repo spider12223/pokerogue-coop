@@ -29,6 +29,26 @@ import type { KeyValueStore } from "#coop/seat-store";
 /** The key of the slot. It does not start with `sessionData`, so no solo slot, import or export ever meets it. */
 export const COOP_SLOT_KEY = "coopSlot";
 
+/** How many co-op save files a browser keeps for the runs it hosts (D19, amended): as many as the solo slots */
+export const COOP_SLOT_FILES = 5;
+
+/** Whether `file` is one of the co-op save files, `1` to {@linkcode COOP_SLOT_FILES} */
+export function isCoopFile(file: unknown): file is number {
+  return Number.isInteger(file) && (file as number) >= 1 && (file as number) <= COOP_SLOT_FILES;
+}
+
+/**
+ * The storage key of a co-op save file. The first keeps the key of the one slot there was, so a run saved before there
+ * were files is file 1 (and a build from before still finds it).
+ * @throws `RangeError` for a file that is not one of them
+ */
+export function coopSlotKey(file: number): string {
+  if (!isCoopFile(file)) {
+    throw new RangeError(`co-op: there is no save file ${file}`);
+  }
+  return file === 1 ? COOP_SLOT_KEY : `${COOP_SLOT_KEY}${file}`;
+}
+
 export const COOP_SLOT_VERSION = 1;
 
 export interface CoopSlot {
@@ -88,22 +108,24 @@ export function isCoopSlot(value: unknown): value is CoopSlot {
 }
 
 /**
- * Write the slot.
+ * Write the slot into a save file.
  * @returns Whether it was written (storage can be full)
  */
-export function writeCoopSlot(store: KeyValueStore, slot: CoopSlot): boolean {
+export function writeCoopSlot(store: KeyValueStore, slot: CoopSlot, file: number): boolean {
+  const key = coopSlotKey(file);
   try {
-    store.setItem(COOP_SLOT_KEY, JSON.stringify(slot));
+    store.setItem(key, JSON.stringify(slot));
     return true;
   } catch {
     return false;
   }
 }
 
-/** @returns The slot, or `null` if there is none or it is damaged (a damaged one is removed) */
-export function readCoopSlot(store: KeyValueStore): CoopSlot | null {
+/** @returns The slot of a save file, or `null` if there is none or it is damaged (a damaged one is removed) */
+export function readCoopSlot(store: KeyValueStore, file: number): CoopSlot | null {
+  const key = coopSlotKey(file);
   try {
-    const text = store.getItem(COOP_SLOT_KEY);
+    const text = store.getItem(key);
     // (a store that has none answers `null`; the mock of the tests answers `undefined`)
     if (text == null) {
       return null;
@@ -112,10 +134,10 @@ export function readCoopSlot(store: KeyValueStore): CoopSlot | null {
     if (isCoopSlot(parsed)) {
       return parsed;
     }
-    store.removeItem(COOP_SLOT_KEY);
+    store.removeItem(key);
   } catch {
     try {
-      store.removeItem(COOP_SLOT_KEY);
+      store.removeItem(key);
     } catch {
       // nothing more to do
     }
@@ -123,10 +145,25 @@ export function readCoopSlot(store: KeyValueStore): CoopSlot | null {
   return null;
 }
 
-/** The run is over (victory, game over): its slot goes. Leaving it behind would offer a finished run to continue. */
-export function clearCoopSlot(store: KeyValueStore): void {
+/** @returns Every save file's slot, file 1 first: `null` for an empty (or damaged) one */
+export function readCoopSlots(store: KeyValueStore): (CoopSlot | null)[] {
+  return Array.from({ length: COOP_SLOT_FILES }, (_, i) => readCoopSlot(store, i + 1));
+}
+
+/** @returns The first save file with no run in it, or `null` if every one has one */
+export function firstFreeCoopFile(store: KeyValueStore): number | null {
+  const index = readCoopSlots(store).indexOf(null);
+  return index === -1 ? null : index + 1;
+}
+
+/**
+ * The run of a save file is over (victory, game over) or deleted: it goes. Leaving it behind would offer a finished run to
+ * continue.
+ */
+export function clearCoopSlot(store: KeyValueStore, file: number): void {
+  const key = coopSlotKey(file);
   try {
-    store.removeItem(COOP_SLOT_KEY);
+    store.removeItem(key);
   } catch {
     // nothing to clear
   }

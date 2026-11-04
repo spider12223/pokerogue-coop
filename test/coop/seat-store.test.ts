@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { COOP_SLOT_KEY, type CoopSlot, clearCoopSlot, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
+import {
+  COOP_SLOT_FILES,
+  COOP_SLOT_KEY,
+  type CoopSlot,
+  clearCoopSlot,
+  coopSlotKey,
+  firstFreeCoopFile,
+  readCoopSlot,
+  readCoopSlots,
+  writeCoopSlot,
+} from "#coop/coop-slot";
 import {
   forgetAllSeats,
   forgetSeat,
@@ -95,6 +105,17 @@ describe("seat tokens in local storage (D20)", () => {
   });
 });
 
+describe("the seat of a host remembers its save file (D19, D20)", () => {
+  it("keeps the file a reloaded host resumes, and drops a record whose file is not one of the five", () => {
+    const store = new MemoryStore();
+    const record = { code: "ABC234", seat: "host" as const, token: "t", relayUrl: "ws://r", savedAt: 1, file: 3 };
+    saveSeat(store, record);
+    expect(newestSeat(store)).toEqual(record);
+    store.setItem("coopSeat:XYZ789", JSON.stringify({ ...record, code: "XYZ789", savedAt: 2, file: 9 }));
+    expect(newestSeat(store)?.code).toBe("ABC234");
+  });
+});
+
 describe("the co-op slot of the host (D19)", () => {
   const slot: CoopSlot = {
     version: 1,
@@ -109,11 +130,11 @@ describe("the co-op slot of the host (D19)", () => {
 
   it("round-trips", () => {
     const store = new MemoryStore();
-    expect(readCoopSlot(store)).toBeNull();
-    expect(writeCoopSlot(store, slot)).toBe(true);
-    expect(readCoopSlot(store)).toEqual(slot);
-    clearCoopSlot(store);
-    expect(readCoopSlot(store)).toBeNull();
+    expect(readCoopSlot(store, 1)).toBeNull();
+    expect(writeCoopSlot(store, slot, 1)).toBe(true);
+    expect(readCoopSlot(store, 1)).toEqual(slot);
+    clearCoopSlot(store, 1);
+    expect(readCoopSlot(store, 1)).toBeNull();
   });
 
   it("keeps a run of three: the third seat's name and account, and how many played (D40)", () => {
@@ -124,10 +145,10 @@ describe("the co-op slot of the host (D19)", () => {
       accountIds: { host: "1:2", guest: "3:4", guest2: "5:6" },
       players: 3,
     };
-    expect(writeCoopSlot(store, three)).toBe(true);
-    expect(readCoopSlot(store)).toEqual(three);
-    expect(writeCoopSlot(store, { ...three, players: 4 as never })).toBe(true);
-    expect(readCoopSlot(store)).toBeNull();
+    expect(writeCoopSlot(store, three, 1)).toBe(true);
+    expect(readCoopSlot(store, 1)).toEqual(three);
+    expect(writeCoopSlot(store, { ...three, players: 4 as never }, 1)).toBe(true);
+    expect(readCoopSlot(store, 1)).toBeNull();
   });
 
   it("lives under a key no solo slot has", () => {
@@ -140,25 +161,90 @@ describe("the co-op slot of the host (D19)", () => {
     store.setItem("sessionData_Guest", "solo 0");
     store.setItem("sessionData1_Guest", "solo 1");
     const before = [...store.data.entries()];
-    writeCoopSlot(store, slot);
-    clearCoopSlot(store);
+    writeCoopSlot(store, slot, 1);
+    clearCoopSlot(store, 1);
     expect([...store.data.entries()]).toEqual(before);
   });
 
   it("drops a damaged slot instead of offering it", () => {
     const store = new MemoryStore();
     store.setItem(COOP_SLOT_KEY, "{broken");
-    expect(readCoopSlot(store)).toBeNull();
+    expect(readCoopSlot(store, 1)).toBeNull();
     expect(store.getItem(COOP_SLOT_KEY)).toBeNull();
     store.setItem(COOP_SLOT_KEY, JSON.stringify({ ...slot, session: "" }));
-    expect(readCoopSlot(store)).toBeNull();
+    expect(readCoopSlot(store, 1)).toBeNull();
     store.setItem(COOP_SLOT_KEY, JSON.stringify({ ...slot, version: 99 }));
-    expect(readCoopSlot(store)).toBeNull();
+    expect(readCoopSlot(store, 1)).toBeNull();
   });
 
   it("does not fail where the storage is full", () => {
     const store = new MemoryStore();
     store.failWrites = true;
-    expect(writeCoopSlot(store, slot)).toBe(false);
+    expect(writeCoopSlot(store, slot, 1)).toBe(false);
+  });
+
+  describe("five files (D19, amended)", () => {
+    const at = (wave: number): CoopSlot => ({ ...slot, wave });
+
+    it("keeps each under its own key; the first under the key of the one slot there was", () => {
+      expect(COOP_SLOT_FILES).toBe(5);
+      expect([1, 2, 3, 4, 5].map(coopSlotKey)).toEqual([
+        "coopSlot",
+        "coopSlot2",
+        "coopSlot3",
+        "coopSlot4",
+        "coopSlot5",
+      ]);
+      const store = new MemoryStore();
+      for (const file of [1, 2, 3, 4, 5]) {
+        expect(writeCoopSlot(store, at(10 * file), file)).toBe(true);
+      }
+      expect([1, 2, 3, 4, 5].map(file => readCoopSlot(store, file)?.wave)).toEqual([10, 20, 30, 40, 50]);
+    });
+
+    it("finds a run saved before there were files as file 1", () => {
+      const store = new MemoryStore();
+      store.setItem(COOP_SLOT_KEY, JSON.stringify(slot));
+      expect(readCoopSlot(store, 1)).toEqual(slot);
+      expect(readCoopSlots(store)).toEqual([slot, null, null, null, null]);
+    });
+
+    it("reads every file in order, an empty one as null, and gives the first free one", () => {
+      const store = new MemoryStore();
+      expect(firstFreeCoopFile(store)).toBe(1);
+      writeCoopSlot(store, at(1), 1);
+      writeCoopSlot(store, at(3), 3);
+      expect(readCoopSlots(store).map(file => file?.wave ?? null)).toEqual([1, null, 3, null, null]);
+      expect(firstFreeCoopFile(store)).toBe(2);
+      for (const file of [2, 4, 5]) {
+        writeCoopSlot(store, at(file), file);
+      }
+      expect(firstFreeCoopFile(store)).toBeNull();
+    });
+
+    it("clears one file and leaves the others", () => {
+      const store = new MemoryStore();
+      writeCoopSlot(store, at(1), 1);
+      writeCoopSlot(store, at(2), 2);
+      clearCoopSlot(store, 2);
+      expect(readCoopSlots(store).map(file => file?.wave ?? null)).toEqual([1, null, null, null, null]);
+    });
+
+    it("drops a damaged file, not the others", () => {
+      const store = new MemoryStore();
+      writeCoopSlot(store, at(1), 1);
+      store.setItem(coopSlotKey(4), "{broken");
+      expect(readCoopSlot(store, 4)).toBeNull();
+      expect(store.getItem(coopSlotKey(4))).toBeNull();
+      expect(readCoopSlot(store, 1)?.wave).toBe(1);
+    });
+
+    it("has no file but the five", () => {
+      const store = new MemoryStore();
+      for (const file of [0, 6, 1.5, -1]) {
+        expect(() => coopSlotKey(file)).toThrow(RangeError);
+        expect(() => readCoopSlot(store, file)).toThrow(RangeError);
+      }
+    });
   });
 });

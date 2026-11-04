@@ -7,7 +7,7 @@
 import { saveKey } from "#app/constants";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import * as appConstants from "#constants/app-constants";
-import { COOP_SLOT_VERSION, writeCoopSlot } from "#coop/coop-slot";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, writeCoopSlot } from "#coop/coop-slot";
 import { importInCoopText, sessionImportHint, systemImportNotes, systemImportRefusalText } from "#coop/import-account";
 import { localAccountId, showCoopTitleMenu } from "#coop/lobby";
 import { endCoopSession, startCoopSession } from "#coop/session";
@@ -61,7 +61,9 @@ describe("Co-op: importing a pokerogue.net account", () => {
 
   afterEach(() => {
     endCoopSession();
-    removeCoopSlot();
+    for (let file = 1; file <= COOP_SLOT_FILES; file++) {
+      removeCoopSlot(file);
+    }
     document.getElementById("saveFile")?.remove();
   });
 
@@ -376,16 +378,20 @@ describe("Co-op: importing a pokerogue.net account", () => {
     it("stays: the import keeps this browser's IDs, which the run is found again by (D21), and the player is told", () => {
       const json = accountJson();
       json["gameVersion"] = version;
-      writeCoopSlot(localStorage, {
-        version: COOP_SLOT_VERSION,
-        savedAt: 1,
-        wave: 7,
-        epoch: 0,
-        seq: 0,
-        names: { host: "Sam", guest: "Alex" },
-        accountIds: { host: localAccountId(), guest: "1:2" },
-        session: "{}",
-      });
+      writeCoopSlot(
+        localStorage,
+        {
+          version: COOP_SLOT_VERSION,
+          savedAt: 1,
+          wave: 7,
+          epoch: 0,
+          seq: 0,
+          names: { host: "Sam", guest: "Alex" },
+          accountIds: { host: localAccountId(), guest: "1:2" },
+          session: "{}",
+        },
+        1,
+      );
       const { result, data } = accepted(exportFile(json));
       expect(`${data.trainerId}:${data.secretId}`).toBe(localAccountId());
       const notes = systemImportNotes(result);

@@ -46,6 +46,15 @@ describe("Co-op: the last-used display name", () => {
     };
   }
 
+  /**
+   * Open the co-op menu at a test's start. The scene is shared with the test files that ran before (`GameManager` reuses
+   * it), and one may have left a menu of its own open, which `choose` would take for the co-op menu
+   */
+  async function openCoopMenu(): Promise<void> {
+    showCoopTitleMenu({ onConnected: () => undefined, onCancel: () => undefined });
+    await tick();
+  }
+
   /** Open the co-op menu, and choose the option whose label has `text` with the menu's own input (as a player does) */
   async function choose(text: string): Promise<void> {
     if (game.scene.ui.mode !== UiMode.OPTION_SELECT) {
@@ -81,6 +90,7 @@ describe("Co-op: the last-used display name", () => {
   it("is the one the co-op menu shows and the name form opens with", async () => {
     game = new GameManager(phaserGame);
     setCoopName("Robin");
+    await openCoopMenu();
     await choose("Your name");
 
     expect(game.scene.ui.mode).toBe(UiMode.COOP_NAME_FORM);
@@ -91,6 +101,7 @@ describe("Co-op: the last-used display name", () => {
   it("saving a name brings the co-op menu back, with the new name on it (it was a blank screen)", async () => {
     game = new GameManager(phaserGame);
     setCoopName("Robin");
+    await openCoopMenu();
     await choose("Your name");
     (game.scene.ui.getHandler() as CoopNameFormUiHandler).submitName("Sam");
     await tick();
@@ -108,6 +119,7 @@ describe("Co-op: the last-used display name", () => {
   it("cancelling the name form or the join form brings the co-op menu back", async () => {
     game = new GameManager(phaserGame);
     setCoopName("Robin");
+    await openCoopMenu();
     for (const option of ["Your name", "Join a game"]) {
       await choose(option);
       const form = game.scene.ui.getHandler() as CoopNameFormUiHandler | CoopJoinFormUiHandler;

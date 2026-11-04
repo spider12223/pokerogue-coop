@@ -2,6 +2,7 @@ import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
 import { leaveCoop } from "#coop/lobby";
 import { askPlayAgain } from "#coop/play-again";
+import { getCoopSession } from "#coop/session";
 import { removeCoopSlot } from "#coop/wave-save";
 import type { EndCardPhase } from "#phases/end-card-phase";
 
@@ -23,13 +24,18 @@ export class PostGameOverPhase extends Phase {
    */
   private endCoopRun(): void {
     const { ui } = globalScene;
+    // The host's save file of the run goes (D19); a guest keeps its own files, of the runs it hosts
+    const session = getCoopSession();
+    const file = session?.isHost ? session.file : null;
     globalScene.gameData
       .saveSystem()
       // The game over faded the screen to black: the end screen is under that until it fades back in
       .then(() => ui.fadeIn(500))
       .then(() => askPlayAgain())
       .then(() => {
-        removeCoopSlot();
+        if (file !== null) {
+          removeCoopSlot(file);
+        }
         leaveCoop();
         globalScene.reset();
         globalScene.phaseManager.unshiftNew("TitlePhase");

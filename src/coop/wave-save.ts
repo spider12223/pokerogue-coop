@@ -28,17 +28,18 @@ export function coopStore(): KeyValueStore | null {
   }
 }
 
-/** @returns The host's co-op slot, or `null` */
+/** @returns The slot of the host's save file this run is saved in (D19), or `null` (no session, or nothing saved yet) */
 export function currentCoopSlot(): CoopSlot | null {
   const store = coopStore();
-  return store === null ? null : readCoopSlot(store);
+  const session = getCoopSession();
+  return store === null || session === null ? null : readCoopSlot(store, session.file);
 }
 
-/** The run is over, or the slot is not wanted any more (D19) */
-export function removeCoopSlot(): void {
+/** The run is over, or its saved run is not wanted any more (D19): its save file goes */
+export function removeCoopSlot(file: number): void {
   const store = coopStore();
   if (store !== null) {
-    clearCoopSlot(store);
+    clearCoopSlot(store, file);
   }
 }
 
@@ -99,10 +100,10 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
       ? { runMode: "challenge", challenges: challengesOn() }
       : { runMode: globalScene.gameMode.isEndless ? "endless" : "classic" }),
   };
-  if (!writeCoopSlot(store, slot)) {
+  if (!writeCoopSlot(store, slot, session.file)) {
     // The slot of an earlier wave must not stay: "Continue" would silently take the run back to it (D19). Without a slot
     // there is nothing to continue, which is what is true
-    clearCoopSlot(store);
+    clearCoopSlot(store, session.file);
     console.warn("co-op: the wave-start save did not fit in local storage; the saved run is removed");
     coopLog().error("save", "the wave-start save did not fit in local storage: the saved run is removed", {
       wave: data.waveIndex,
@@ -118,11 +119,12 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
  */
 export function updateSlotEpoch(epoch: number, seq: number): void {
   const store = coopStore();
-  if (store === null) {
+  const session = getCoopSession();
+  if (store === null || session === null) {
     return;
   }
-  const slot = readCoopSlot(store);
+  const slot = readCoopSlot(store, session.file);
   if (slot !== null && (slot.epoch < epoch || slot.seq < seq)) {
-    writeCoopSlot(store, { ...slot, epoch: Math.max(slot.epoch, epoch), seq: Math.max(slot.seq, seq) });
+    writeCoopSlot(store, { ...slot, epoch: Math.max(slot.epoch, epoch), seq: Math.max(slot.seq, seq) }, session.file);
   }
 }

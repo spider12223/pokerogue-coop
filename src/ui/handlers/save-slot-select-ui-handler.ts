@@ -1,6 +1,7 @@
 import { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { isBeta, isDev } from "#constants/app-constants";
+import type { CoopSaveFiles } from "#coop/save-files";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";
@@ -39,6 +40,8 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
   private uiMode: SaveSlotUiMode;
   private saveSlotSelectCallback: SaveSlotSelectCallback | null;
+  /** Co-op (D19): the host's co-op save files in place of the solo slots, when the screen is opened on them */
+  private coopFiles: CoopSaveFiles | null = null;
 
   private scrollCursor = 0;
 
@@ -92,6 +95,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
     this.uiMode = args[0] as SaveSlotUiMode;
     this.saveSlotSelectCallback = args[1] as SaveSlotSelectCallback;
+    this.coopFiles = (args[2] as CoopSaveFiles | undefined) ?? null;
 
     this.saveSlotSelectContainer.setVisible(true);
     this.populateSessionSlots();
@@ -118,6 +122,10 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
         } else {
           switch (this.uiMode) {
             case SaveSlotUiMode.LOAD: {
+              if (this.coopFiles !== null) {
+                this.showCoopFileMenu(this.coopFiles, cursor, sessionSlot.malformed);
+                break;
+              }
               if (!sessionSlot.malformed) {
                 manageDataOptions.push({
                   label: i18next.t("menu:loadGame"),
@@ -234,8 +242,14 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
                 break;
               }
 
+              const coopFiles = this.coopFiles;
               const overwriteDataOptions: ConfirmModeConfig = {
                 yesHandler: () => {
+                  if (coopFiles !== null) {
+                    // Co-op (D19): the file's run stays until the new run saves its first wave over it
+                    saveAndCallback();
+                    return;
+                  }
                   globalScene.gameData.deleteSession(cursor).then(response => {
                     if (response === false) {
                       globalScene.reset(true);
@@ -253,9 +267,13 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
                 inputDelay: isBeta || isDev ? 300 : 2000,
               };
 
-              ui.showText(i18next.t("saveSlotSelectUiHandler:overwriteData"), null, () => {
-                ui.setOverlayMode(UiMode.CONFIRM, overwriteDataOptions);
-              });
+              ui.showText(
+                coopFiles?.overwriteQuestion ?? i18next.t("saveSlotSelectUiHandler:overwriteData"),
+                null,
+                () => {
+                  ui.setOverlayMode(UiMode.CONFIRM, overwriteDataOptions);
+                },
+              );
               break;
             }
           }
@@ -320,9 +338,69 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
     return success || error;
   }
 
+  /**
+   * Co-op (D19): the menu of a co-op save file, Continue, Delete and Cancel (a file that cannot be read can only be deleted)
+   */
+  private showCoopFileMenu(coopFiles: CoopSaveFiles, cursor: number, malformed: boolean): void {
+    const ui = this.getUi();
+    const originalCallback = this.saveSlotSelectCallback;
+    const options: OptionSelectItem[] = [];
+    if (!malformed) {
+      options.push({
+        label: coopFiles.continueLabel,
+        handler: () => {
+          globalScene.ui.revertMode();
+          originalCallback?.(cursor);
+          return true;
+        },
+        keepOpen: false,
+      });
+    }
+    options.push(
+      {
+        label: i18next.t("saveSlotSelectUiHandler:deleteRun"),
+        handler: () => {
+          ui.revertMode();
+          ui.showText(i18next.t("saveSlotSelectUiHandler:deleteData"), null, () => {
+            ui.setOverlayMode(UiMode.CONFIRM, {
+              yesHandler: () => {
+                coopFiles.remove(cursor);
+                this.clearSessionSlots();
+                this.cursorObj = null;
+                this.populateSessionSlots();
+                this.setScrollCursor(0);
+                this.setCursor(0);
+                ui.revertMode();
+                ui.showText("", 0);
+              },
+              noHandler: () => {
+                ui.revertMode();
+                ui.showText("", 0);
+              },
+              yOffset: 29,
+              inputDelay: isBeta || isDev ? 300 : 2000,
+              canBypassInputDelay: true,
+            } satisfies ConfirmModeConfig);
+          });
+          return true;
+        },
+        keepOpen: false,
+      },
+      {
+        label: i18next.t("menuUiHandler:cancel"),
+        handler: () => {
+          globalScene.ui.revertMode();
+          return true;
+        },
+        keepOpen: true,
+      },
+    );
+    ui.setOverlayMode(UiMode.MENU_OPTION_SELECT, { options } satisfies OptionSelectModeConfig);
+  }
+
   populateSessionSlots() {
     for (let s = 0; s < SESSION_SLOTS_COUNT; s++) {
-      const sessionSlot = new SessionSlot(s);
+      const sessionSlot = new SessionSlot(s, this.coopFiles);
       globalScene.add.existing(sessionSlot);
       this.sessionSlotsContainer.add(sessionSlot);
       this.sessionSlots.push(sessionSlot);
@@ -484,11 +562,14 @@ class SessionSlot extends Phaser.GameObjects.Container {
   private slotWindow: Phaser.GameObjects.NineSlice;
   private loadingLabel: Phaser.GameObjects.Text;
   public saveData: SessionSaveData;
+  /** Co-op (D19): the slot is a co-op save file, read from these */
+  private readonly coopFiles: CoopSaveFiles | null;
 
-  constructor(slotId: number) {
+  constructor(slotId: number, coopFiles: CoopSaveFiles | null = null) {
     super(globalScene, 0, slotId * 76);
 
     this.slotId = slotId;
+    this.coopFiles = coopFiles;
 
     this.setup();
   }
@@ -552,7 +633,10 @@ class SessionSlot extends Phaser.GameObjects.Container {
   async setupWithData(data: SessionSaveData) {
     const hasName = data?.name;
     this.remove(this.loadingLabel, true);
-    if (hasName) {
+    if (this.coopFiles !== null) {
+      // Co-op (D19): who the run is with; a co-op file has no name of its own, and no solo slot is renamed for it
+      this.add(addTextObject(8, 5, this.coopFiles.title(this.slotId), TextStyle.WINDOW));
+    } else if (hasName) {
       const nameLabel = addTextObject(8, 5, data.name, TextStyle.WINDOW);
       this.add(nameLabel);
     } else {
@@ -623,9 +707,14 @@ class SessionSlot extends Phaser.GameObjects.Container {
   }
 
   load(): Promise<boolean> {
+    const coopFiles = this.coopFiles;
+    // Co-op (D19): a co-op save file in place of a solo slot
+    const session =
+      coopFiles === null
+        ? globalScene.gameData.getSession(this.slotId)
+        : Promise.resolve().then(() => coopFiles.load(this.slotId));
     return new Promise<boolean>(resolve => {
-      globalScene.gameData
-        .getSession(this.slotId)
+      session
         .then(async sessionData => {
           // Ignore the results if the view was exited
           if (!this.active) {

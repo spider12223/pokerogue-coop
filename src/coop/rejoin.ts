@@ -7,7 +7,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getLocalBuildIdentity, overridesAreDefaults } from "#coop/build-info";
-import type { CoopSlot } from "#coop/coop-slot";
+import { type CoopSlot, readCoopSlot } from "#coop/coop-slot";
 import { getCoopName } from "#coop/display-name";
 import {
   createRoom,
@@ -42,7 +42,7 @@ import { getCoopSession } from "#coop/session";
 import { coopText } from "#coop/text";
 import { RelayError } from "#coop/transport/relay-ws";
 import { validateProposal } from "#coop/validate";
-import { coopStore, currentCoopSlot, removeCoopSlot } from "#coop/wave-save";
+import { coopStore, removeCoopSlot } from "#coop/wave-save";
 import { UiMode } from "#enums/ui-mode";
 
 /**
@@ -102,6 +102,7 @@ function resumeFromSlot(
   slot: CoopSlot,
   overlay: ReturnType<typeof createSettingsOverlayPort>,
   reason: "resume" | "rejoin",
+  file: number,
 ): void {
   const { link } = established;
   // (a run of three whose guests came back the other way round: their seats are exchanged first, D40)
@@ -111,6 +112,8 @@ function resumeFromSlot(
     accountIds: slot.accountIds,
     runMode: slot.runMode ?? "classic",
     debug: settings.general.coopDebugMenu,
+    // its wave saves go on in the file it came from (D19)
+    file,
   });
   session.waveSave = { wave: slot.wave, epoch: slot.epoch, json: slot.session };
   // the epoch and the seq go on from where the slot left them (D18)
@@ -159,7 +162,9 @@ export async function tryAutoRejoin(): Promise<boolean> {
 
   const partner = record.partnerName ?? coopText("yourPartner", "your partner");
   const { seat } = record;
-  const slot = seat === "host" ? currentCoopSlot() : null;
+  // the host's run is in the save file the record names (a record from before there were files: the first)
+  const file = record.file ?? 1;
+  const slot = seat === "host" ? readCoopSlot(store, file) : null;
   if (seat === "host" && (slot === null || slot.accountIds.host !== localAccountId())) {
     room.relay.leave();
     forgetSeat(store, record.code);
@@ -230,7 +235,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
           debug: settings.general.coopDebugMenu,
         },
       );
-      resumeFromSlot(established, slot!, overlay, "rejoin");
+      resumeFromSlot(established, slot!, overlay, "rejoin", file);
       getCoopSession()!.timing["rejoinStartedAt"] = startedAt;
     } else {
       const established = await establishGuest(room, getLocalBuildIdentity(), overlay, {
@@ -286,7 +291,7 @@ function slotRefusal(slot: CoopSlot): string | null {
 }
 
 /** The saved run cannot be loaded: say why, and offer to delete it so that "Continue" is not a dead end */
-function offerToDelete(reason: string, callbacks: CoopTitleCallbacks): void {
+function offerToDelete(reason: string, callbacks: CoopTitleCallbacks, file: number): void {
   const { ui } = globalScene;
   void ui.setMode(UiMode.MESSAGE).then(() =>
     ui.showText(
@@ -295,7 +300,7 @@ function offerToDelete(reason: string, callbacks: CoopTitleCallbacks): void {
       () =>
         ui.setModeWithoutClear(UiMode.CONFIRM, {
           yesHandler: () => {
-            removeCoopSlot();
+            removeCoopSlot(file);
             callbacks.onCancel();
           },
           noHandler: () => callbacks.onCancel(),
@@ -304,8 +309,10 @@ function offerToDelete(reason: string, callbacks: CoopTitleCallbacks): void {
   );
 }
 
-export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void> {
-  const slot = currentCoopSlot();
+/** Continue the run of save file `file` (D21): the host picked it on the save screen */
+export async function hostContinue(callbacks: CoopTitleCallbacks, file: number): Promise<void> {
+  const store = coopStore();
+  const slot = store === null ? null : readCoopSlot(store, file);
   if (slot === null) {
     showFailure(new Error("no co-op slot"), callbacks);
     return;
@@ -326,19 +333,24 @@ export async function hostContinue(callbacks: CoopTitleCallbacks): Promise<void>
   if (unusable !== null) {
     // A run this build cannot load (another version, a damaged save) would leave both players stuck after the partner
     // joins: the host is told, and may delete it (D21)
-    offerToDelete(unusable, callbacks);
+    offerToDelete(unusable, callbacks, file);
     return;
   }
   // A run of three is continued with 2 or 3 players (D40): the host chooses
   if (slot.accountIds.guest2 !== undefined) {
-    askPlayers(callbacks, players => void continueWith(callbacks, slot, players));
+    askPlayers(callbacks, players => void continueWith(callbacks, slot, players, file));
     return;
   }
-  await continueWith(callbacks, slot, 2);
+  await continueWith(callbacks, slot, 2, file);
 }
 
 /** Continue the run of the slot with this many players (D21, D40) */
-async function continueWith(callbacks: CoopTitleCallbacks, slot: CoopSlot, players: PlayerCount): Promise<void> {
+async function continueWith(
+  callbacks: CoopTitleCallbacks,
+  slot: CoopSlot,
+  players: PlayerCount,
+  file: number,
+): Promise<void> {
   const { ui } = globalScene;
   let room: HostRoom | null = null;
   let cancelled = false;
@@ -387,7 +399,7 @@ async function continueWith(callbacks: CoopTitleCallbacks, slot: CoopSlot, playe
       established.link.close();
       return;
     }
-    resumeFromSlot(established, slot, overlay, "resume");
+    resumeFromSlot(established, slot, overlay, "resume", file);
   } catch (error) {
     if (!cancelled) {
       room?.cancel();

@@ -85,6 +85,8 @@ export interface CoopSessionInit {
   players?: PlayerCount;
   /** The host's debug menu is on (D42): every turn has a `DEBUG` decision of the host's. Default off */
   debug?: boolean;
+  /** The host's co-op save file the run is saved in (D19), `1` to `COOP_SLOT_FILES`. Default 1; a guest's is not used */
+  file?: number;
 }
 
 /** How long this client waited for its partner's decisions, for the debug API and the latency report */
@@ -213,6 +215,8 @@ export class CoopSession {
   public readonly debug: boolean;
   /** The kind of run (D39): what a new run is built as. A loaded save has its own (its game mode's id). */
   public readonly runMode: CoopRunMode;
+  /** The host's co-op save file the run is saved in (D19): its wave saves, a rejoin and the run's end use it */
+  public readonly file: number;
   /** A challenge run's challenges (D41), what a new challenge run is built with; a loaded save has its own */
   public readonly challenges: readonly CoopChallenge[];
   /** The decision keys the simulation is waiting for right now (the decision window, D2); for the debug API */
@@ -250,6 +254,7 @@ export class CoopSession {
     this.challenges = init.challenges ?? [];
     this.initPlayers = init.players ?? 2;
     this.debug = init.debug === true;
+    this.file = init.file ?? 1;
   }
 
   /** How many players the game has (D40): the link's, or the session's own without one */

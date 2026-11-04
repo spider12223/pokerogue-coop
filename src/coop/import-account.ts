@@ -8,8 +8,8 @@ import { defaultStarterSpecies, saveKey } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin, isApp, isBeta, isDev } from "#constants/app-constants";
+import { savedCoopRuns } from "#coop/save-files";
 import { coopText } from "#coop/text";
-import { currentCoopSlot } from "#coop/wave-save";
 import { allMoves } from "#data/data-lists";
 import { AbilityAttr } from "#enums/ability-attr";
 import { DexAttr } from "#enums/dex-attr";
@@ -212,13 +212,22 @@ export function systemImportNotes(result: SystemImportAccepted): string[] {
       );
     }
   }
-  const slot = currentCoopSlot();
-  if (slot !== null) {
+  // the host's saved runs, of any save file (D19)
+  const saved = savedCoopRuns().filter(slot => slot !== null);
+  if (saved.length === 1) {
     notes.push(
       coopText(
         "importKeepsCoopRun",
         "Your saved co-op run (wave {{wave}}) stays: this browser keeps its trainer ID, so it can still be continued.",
-        { wave: slot.wave },
+        { wave: saved[0].wave },
+      ),
+    );
+  } else if (saved.length > 1) {
+    notes.push(
+      coopText(
+        "importKeepsCoopRuns",
+        "Your {{count}} saved co-op runs stay: this browser keeps its trainer ID, so they can still be continued.",
+        { count: saved.length },
       ),
     );
   }
