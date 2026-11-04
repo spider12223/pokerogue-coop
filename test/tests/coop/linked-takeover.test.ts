@@ -7,6 +7,7 @@
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { ownerOf } from "#coop/control";
 import { catchReleaseKey, evolutionCancelKey, learnMoveKey, turnCommandsKey } from "#coop/decision-keys";
+import { keyId } from "#coop/protocol";
 import type { Decision, RejectReason } from "#coop/sequencer";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
@@ -364,6 +365,59 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
     await advanceTo(r.ctx, ["TurnEndPhase"]);
     expect(game.scene.currentBattle.turn).toBe(turn);
     expect(texts.some(text => text.startsWith("Alex chose for") && text.endsWith("while you were away."))).toBe(true);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("lets a guest take over the turn of a host who is away, once the host's player has had the menu for the hint's time (D17)", async () => {
+    const r = await start();
+    const { game } = r.ctx;
+    const texts = textsOf(r);
+    const decisions = decisionsOf(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    // the host's player has its Pokémon's command menu up, and is away: nothing is pressed on this client from here on
+    await openUi(r.ctx, "CommandPhase");
+    expect(game.scene.ui.mode).toBe(UiMode.COMMAND);
+    const slot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "host");
+    const guestSlot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "guest");
+    const field = game.scene.getPlayerField();
+    const { waveIndex, turn } = game.scene.currentBattle;
+    const key = turnCommandsKey(waveIndex, turn, field[slot].id);
+
+    // the guest chose for its own Pokémon, waited, and takes over the host's
+    r.partner.propose(turnCommandsKey(waveIndex, turn, field[guestSlot].id), attackCommand(game, guestSlot));
+    r.partner.takeOver(key, attackCommand(game, slot));
+    // held: the host's player has not had the menu for the hint's time yet
+    expect(r.link.sequencer.hasDecision(key)).toBe(false);
+    expect(game.scene.phaseManager.getCurrentPhase().phaseName).toBe("CommandPhase");
+
+    // then it goes through: the menu closes by itself, and the turn the guest chose for it is played
+    await advanceTo(r.ctx, ["TurnEndPhase"]);
+    expect(decisions.find(d => keyId(d.key) === keyId(key))).toMatchObject({ author: "guest", takeover: true });
+    expect(game.scene.currentBattle.turn).toBe(turn);
+    expect(texts.some(text => text.startsWith("Alex chose for") && text.endsWith("while you were away."))).toBe(true);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("lets the host's own choice win over a guest's take over that waits for the hint's time (D17)", async () => {
+    const r = await start({ afkTimers: { ...AFK, hintMs: 2000 } });
+    const { game } = r.ctx;
+    const decisions = decisionsOf(r);
+    const rejections = rejectionsOf(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await openUi(r.ctx, "CommandPhase");
+    const slot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "host");
+    const guestSlot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "guest");
+    const field = game.scene.getPlayerField();
+    const { waveIndex, turn } = game.scene.currentBattle;
+    const key = turnCommandsKey(waveIndex, turn, field[slot].id);
+    r.partner.propose(turnCommandsKey(waveIndex, turn, field[guestSlot].id), attackCommand(game, guestSlot));
+    r.partner.takeOver(key, attackCommand(game, slot));
+
+    // the host's player is there after all, and chooses before the take over is due
+    queueTurnCommands(r.ctx);
+    await advanceTo(r.ctx, ["TurnEndPhase"]);
+    expect(decisions.find(d => keyId(d.key) === keyId(key))?.author).toBe("host");
+    expect(rejections).toContain("duplicate");
     expect(r.session.desyncMessage).toBeNull();
   });
 });

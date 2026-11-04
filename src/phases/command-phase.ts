@@ -261,9 +261,15 @@ export class CommandPhase extends FieldPhase {
       return;
     }
     const { waveIndex, turn } = globalScene.currentBattle;
+    const firstRound = turnCommandsKey(waveIndex, turn, this.getPokemon().id);
+    // The host's turn awaits its own commands once they are chosen: until then a guest's take over of this one comes due
+    // from the menu's time on screen (D17). Not in a second round (a refused Ball or Run): its player was just asked again
+    const stopExpecting = link.sequencer.hasDecision(firstRound)
+      ? () => undefined
+      : link.sequencer.expect(firstRound, [mySeat()]);
     // (any attempt of the turn: a second round after a refused Ball or Run is `<id>:<attempt>`)
     const pokemonId = String(this.getPokemon().id);
-    this.stopWatchingTakeover = link.sequencer.onDecision(({ key, author, takeover }) => {
+    const stopListening = link.sequencer.onDecision(({ key, author, takeover }) => {
       if (
         takeover !== true
         || author === mySeat()
@@ -281,6 +287,10 @@ export class CommandPhase extends FieldPhase {
         this.end();
       }
     });
+    this.stopWatchingTakeover = () => {
+      stopExpecting();
+      stopListening();
+    };
   }
 
   /**

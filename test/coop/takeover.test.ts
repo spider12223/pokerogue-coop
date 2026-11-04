@@ -289,6 +289,58 @@ describe("take over (D17)", () => {
         expect(await onHost).toMatchObject({ author: "guest", takeover: true });
       });
 
+      describe("a decision the host's player has on screen before the simulation awaits it (the command menu)", () => {
+        const command = { command: { command: 0 }, pre: null };
+
+        it("counts the wait from when it is on screen, and sequences the take over for the await that comes", async () => {
+          const { scheduler, host, guest, settle } = timed();
+          void guest.awaitDecision(commandKey, { authors: ["host"] });
+          const stop = host.expect(commandKey, ["host"]);
+          guest.propose(commandKey, command, { takeover: true });
+          settle();
+          scheduler.advance(HINT - 1);
+          expect(host.parkedCount).toBe(1);
+          scheduler.advance(1);
+          settle();
+          // sequenced with nothing awaiting it on the host yet: it waits, in order, for its await
+          expect(host.parkedCount).toBe(0);
+          expect(host.hasDecision(commandKey)).toBe(true);
+          stop();
+          expect(await host.awaitDecision(commandKey, { authors: ["host"] })).toMatchObject({
+            author: "guest",
+            takeover: true,
+          });
+        });
+
+        it("does not sequence it while the host awaits another decision: that one must come first", () => {
+          const { scheduler, host, guest, settle } = timed();
+          void host.awaitDecision(learnKey, { authors: ["host"] });
+          host.expect(commandKey, ["host"]);
+          guest.propose(commandKey, command, { takeover: true });
+          settle();
+          scheduler.advance(HINT * 2);
+          settle();
+          expect(host.parkedCount).toBe(1);
+          expect(host.hasDecision(commandKey)).toBe(false);
+        });
+
+        it("forgets it once the player chose or the screen went: the take over waits for the await again", () => {
+          const { scheduler, host, guest, settle } = timed();
+          const stop = host.expect(commandKey, ["host"]);
+          guest.propose(commandKey, command, { takeover: true });
+          settle();
+          stop();
+          scheduler.advance(HINT * 2);
+          settle();
+          expect(host.parkedCount).toBe(1);
+        });
+
+        it("is the host's alone: a guest's sequencer expects nothing", () => {
+          const { guest } = timed();
+          expect(() => guest.expect(commandKey, ["guest"])()).not.toThrow();
+        });
+      });
+
       it("lets a taker go on deciding for the host's player step by step, until the host's player decides again", async () => {
         const { scheduler, host, guest, settle } = timed();
         const step = (n: number): DecisionKey => ({ wave: 5, turn: 0, kind: "REWARD_PICK", ref: `1:${n}` });

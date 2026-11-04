@@ -285,6 +285,11 @@ export class Sequencer {
    * of theirs need not wait
    */
   private readonly takenOver = new Set<Seat>();
+  /**
+   * Host: decisions the host's player has on screen before the simulation awaits them (its command menu, D17), by key. Shaped
+   * like an await to share its checks, but never handed a decision: see {@linkcode expect}
+   */
+  private readonly expectations = new Map<string, Awaiter>();
   /** Host: when the next parked take over may be sequenced */
   private takeoverTimer: unknown = null;
   private takeoverDue = Number.POSITIVE_INFINITY;
@@ -370,6 +375,7 @@ export class Sequencer {
     this.early.clear();
     this.ready.length = 0;
     this.parked = [];
+    this.expectations.clear();
     this.cancelTakeoverCheck();
     this.takeoverStreak = false;
     this.takenOver.clear();
@@ -469,6 +475,38 @@ export class Sequencer {
   }
 
   /**
+   * Host: the host's player has this decision on screen, but the simulation awaits it only later (the command menu: the turn
+   * awaits the commands once its player chose, D8). A guest's take over of it comes due from now on as if it were awaited
+   * (D17); it is sequenced while nothing else is awaited, and waits, sequenced, for the await that takes it.
+   * @param authors - Who decides it (the host)
+   * @returns Ends the expectation: the player chose, or the screen went away. A guest does nothing here.
+   */
+  expect(key: DecisionKey, authors: readonly Seat[]): () => void {
+    if (this.role !== "host" || this.closed || !isDecisionKey(key)) {
+      return () => undefined;
+    }
+    const id = keyId(key);
+    const expectation: Awaiter = {
+      remaining: [key],
+      collected: [],
+      all: false,
+      authors,
+      keyAuthors: undefined,
+      closeOnResolve: false,
+      openedAt: this.scheduler.now(),
+      resolve: () => undefined,
+      reject: () => undefined,
+    };
+    this.expectations.set(id, expectation);
+    this.flushParked();
+    return () => {
+      if (this.expectations.get(id) === expectation) {
+        this.expectations.delete(id);
+      }
+    };
+  }
+
+  /**
    * Resolve with the next sequenced decision, which must have this key.
    * Rejects with {@linkcode DesyncError} if the next sequenced decision has another key.
    *
@@ -533,6 +571,7 @@ export class Sequencer {
     this.closed = true;
     this.unsubscribe();
     this.cancelTakeoverCheck();
+    this.expectations.clear();
     const error = new Error("sequencer closed");
     for (const awaiter of this.awaiters.splice(0)) {
       awaiter.reject(error);
@@ -791,8 +830,10 @@ export class Sequencer {
         return "authorNotAllowed";
       }
     }
+    // What a take over waits for: the await, or the host's player having the decision on screen (D17)
+    const pending = awaiter ?? (remote && takeover ? this.expectationFor(key) : undefined);
     // The simulation has not reached this decision yet (the guest is ahead), or a take over of the guest waits for its time
-    const hold = !awaiter || (remote && takeover && !this.takeoverRipe(awaiter));
+    const hold = !pending || (remote && takeover && !this.takeoverRipe(pending));
     if (!hold && remote && this.isIllegal(key, envelope)) {
       return "invalid";
     }
@@ -815,8 +856,8 @@ export class Sequencer {
     if (hold) {
       this.parkedSizes.set(envelope, size);
       this.parked.push(envelope);
-      if (awaiter) {
-        this.scheduleTakeoverCheck(awaiter.openedAt + this.takeoverAfterMs());
+      if (pending) {
+        this.scheduleTakeoverCheck(pending.openedAt + this.takeoverAfterMs());
       }
       return null;
     }
@@ -837,16 +878,19 @@ export class Sequencer {
         return;
       }
       const key = envelope.key;
+      const guestTakeover = envelope.takeover === true && envelope.author !== "host";
       const awaiter = key ? this.awaiterFor(key) : undefined;
+      // (a guest's take over of a decision the host's player has on screen comes due as if it were awaited, D17)
+      const pending = awaiter ?? (key && guestTakeover ? this.expectationFor(key) : undefined);
       if (key && this.closedKeys.has(keyId(key))) {
         this.rejectParked(envelope, key, "closed");
-      } else if (!key || !awaiter) {
+      } else if (!key || !pending) {
         this.parked.push(envelope);
-      } else if (envelope.takeover !== true && this.authorsFor(awaiter, key)?.includes(envelope.author) === false) {
+      } else if (envelope.takeover !== true && this.authorsFor(pending, key)?.includes(envelope.author) === false) {
         this.rejectParked(envelope, key, "authorNotAllowed");
-      } else if (envelope.takeover === true && envelope.author !== "host" && !this.takeoverRipe(awaiter)) {
+      } else if (guestTakeover && !this.takeoverRipe(pending)) {
         this.parked.push(envelope);
-        due = Math.min(due, awaiter.openedAt + this.takeoverAfterMs());
+        due = Math.min(due, pending.openedAt + this.takeoverAfterMs());
       } else if (envelope.author !== "host" && this.isIllegal(key, envelope)) {
         this.rejectParked(envelope, key, "invalid");
       } else {
@@ -879,6 +923,14 @@ export class Sequencer {
 
   private awaiterFor(key: DecisionKey): Awaiter | undefined {
     return this.awaiters.find(candidate => candidate.remaining.some(expected => keysEqual(expected, key)));
+  }
+
+  /**
+   * The expectation of a decision the host's player has on screen ({@linkcode expect}), while the simulation awaits nothing:
+   * a decision sequenced for it then waits in order for its await, and cannot meet another one first
+   */
+  private expectationFor(key: DecisionKey): Awaiter | undefined {
+    return this.awaiters.length === 0 ? this.expectations.get(keyId(key)) : undefined;
   }
 
   /**
@@ -980,7 +1032,7 @@ export class Sequencer {
     }
     if (envelope.takeover === true && this.seats.length > 2) {
       // Whose decision was taken over (D40): the one player who may decide it
-      const awaiter = this.awaiterFor(key);
+      const awaiter = this.awaiterFor(key) ?? this.expectations.get(keyId(key));
       const deciders = awaiter === undefined ? undefined : this.authorsFor(awaiter, key);
       if (deciders?.length === 1) {
         this.takenOver.add(deciders[0]);

@@ -504,8 +504,11 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 - Nobody takes over a trade request, a trade proposal or its cancel, or a party edit: nobody waits for those.
 - **The host enforces it:** a guest's `takeover` is refused for a kind that cannot be taken over (and for trade
   proposals and accepts), must carry the plan's default where the plan has one, and is held until the host's own player
-  has had the question for the hint's time (30 s); the host's own answer, if it comes first, wins. Once one take-over of
-  a screen went through, the next steps of that screen are not held again. A modified client can no longer answer the
+  has had the question for the hint's time (30 s); the host's own answer, if it comes first, wins. The host's command
+  menu is such a question too, though its turn awaits the commands only once its own are chosen: the menu opens an
+  expectation (`Sequencer.expect`), so a guest can take over an away host's turn; that decision is sequenced while the host
+  awaits nothing else and waits for the turn's await. Once one take-over of a screen went through, the next steps of that
+  screen are not held again. A modified client can no longer answer the
   host's questions for it.
 - On a Mystery Encounter's screen the hint goes under the options and the offer may come over them. The trade screen's
   hint names no key (the ping keys do nothing there).
