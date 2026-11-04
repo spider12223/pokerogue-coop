@@ -118,8 +118,16 @@ const reconnect: Scenario = {
     // gone (a reload is over before the others' screens can be shot), then back on the game's page
     const page = run.client(vars.seat).page;
     await page.goto("about:blank");
-    // the others choose their moves, then wait for the one who is gone
-    await run.drive({ until: states => states.some(state => state.seat !== vars.seat && state.away !== null) });
+    // the others choose their moves, then wait for the one who is gone: the reconnect screen in a game of two, the turn's
+    // "Waiting for …" in a game of three (the one who is gone comes in at the next wave start, D40)
+    await run.drive({
+      until: states =>
+        states.some(
+          state =>
+            state.seat !== vars.seat
+            && (state.away !== null || (state.phase === "CoopTurnSyncPhase" && state.ui === "MESSAGE")),
+        ),
+    });
     await page.goto("/");
     await run.drive({
       until: states => states.every(state => state.ui === "COMMAND" && state.linked),
