@@ -33,6 +33,7 @@ import {
   tokensMatch,
   upgradeResponse,
 } from "./shared.ts";
+import { countRoom, noteFilled } from "./stats.ts";
 
 /**
  * One co-op room on Cloudflare: the seats, tokens and holds of `coop-server`'s `RoomRegistry` and the forwarding of its
@@ -61,6 +62,8 @@ interface RoomState {
   seats: Partial<Record<Seat, SeatState>>;
   /** When a seat last changed (a game frame is kept in the sockets' attachments) */
   lastActivity: number;
+  /** Set once every seat was taken: the room was counted as filled (D43) */
+  filled?: boolean;
 }
 
 interface Attachment {
@@ -129,6 +132,7 @@ export class Room extends DurableObject<Env> {
     seats.host = { token, heldUntil: null };
     this.state = { code, size, seats, lastActivity: Date.now() };
     await this.save();
+    countRoom(this.env.STATS, "created", size);
     const socket = this.accept("host", size);
     sendControl(socket.server, { t: "relay:created", code, seat: "host", token });
     return upgradeResponse(socket.client);
@@ -145,7 +149,11 @@ export class Room extends DurableObject<Env> {
     guest.token = token;
     guest.heldUntil = null;
     room.lastActivity = Date.now();
+    const filled = noteFilled(room);
     await this.save();
+    if (filled) {
+      countRoom(this.env.STATS, "filled", sizeOf(room));
+    }
     const socket = this.accept(seat, sizeOf(room));
     sendControl(socket.server, { t: "relay:joined", code: room.code, seat, token });
     if (sizeOf(room) === 3) {

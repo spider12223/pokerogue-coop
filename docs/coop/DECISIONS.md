@@ -1197,6 +1197,20 @@ like any other run.
     skipped if that place no longer holds that item).
   - The old panel's drag (`coopDebugPos`) is gone; the chat box still moves (D38).
 
+## D43. The relay counts rooms
+
+The Cloudflare relay counts how many rooms of two and of three are opened, and how many have every seat taken, so we
+know how many people play together (the connection numbers Cloudflare keeps cannot tell a room of three from a room of
+two with an old connection still open).
+
+- **What is counted:** one data point when a room is opened (`created`) and one the first time its last seat is taken
+  (`filled`; a seat freed and taken again does not count twice). A data point is the event and the room's size, nothing
+  else: no address, room code, token, name or game data.
+- **Where:** Workers Analytics Engine, dataset `pokerogue_coop_rooms` (binding `STATS` in `coop-worker/wrangler.toml`),
+  kept 90 days. `coop-worker/src/stats.ts`. A relay without the binding (`wrangler dev`, a copy someone else hosts, or
+  the Node `coop-server`) counts nothing.
+- **Not counted:** people. The same three friends who fill five rooms are five rooms.
+
 ## See also
 
 - [HOW-TO-PLAY.md](HOW-TO-PLAY.md): co-op for players.

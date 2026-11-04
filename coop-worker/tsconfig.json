@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

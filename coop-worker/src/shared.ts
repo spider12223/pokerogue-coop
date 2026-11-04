@@ -21,6 +21,8 @@ export interface Env {
   ROOM: DurableObjectNamespace<Room>;
   /** The matchmaking queue (D37): one object, `idFromName("queue")` */
   MATCH: DurableObjectNamespace<Matchmaker>;
+  /** The room counter (D43); none: nothing is counted */
+  STATS?: AnalyticsEngineDataset;
   /** Comma list of the origins whose pages may open the relay (`*`: all). Empty: only pages of the relay's own address */
   ALLOWED_ORIGINS?: string;
   /** How long a seat is kept once both players are gone */

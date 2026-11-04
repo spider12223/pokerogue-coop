@@ -79,6 +79,9 @@ Differences from `coop-server`: the Worker does not ping (a sleeping room does n
 closing is noticed when that player comes back; it does not collect players' logs (`/coop/log` is 404); the limits count
 per Worker instance and per room, not per address over the whole relay. The protocol is the same.
 
+The Worker counts rooms opened and filled, by size (D43: the event and the size only) in the Workers Analytics Engine
+dataset `pokerogue_coop_rooms`. To count nothing, remove the `[[analytics_engine_datasets]]` block from `wrangler.toml`.
+
 `pnpm exec wrangler dev` runs the Worker on this machine (with `--var ALLOWED_ORIGINS:*` for a local page);
 `wrangler tail` shows the deployed one's requests live.
 

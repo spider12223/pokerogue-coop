@@ -16,6 +16,11 @@ class_name = "Room"
 name = "MATCH"
 class_name = "Matchmaker"
 
+# The room counter (D43): rooms opened and filled, by size, nothing else. Remove it and the relay counts nothing
+[[analytics_engine_datasets]]
+binding = "STATS"
+dataset = "pokerogue_coop_rooms"
+
 # The free plan has Durable Objects with SQLite storage only
 [[migrations]]
 tag = "v1"
