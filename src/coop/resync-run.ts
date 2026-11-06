@@ -356,7 +356,6 @@ async function gate(session: CoopSession): Promise<void> {
         // a guest of three who came back waits for the next wave start (D40)
         joining: link.players === 3 && !session.isHost && link.partnerPresent,
         onEnd: () => endSession(session),
-        ...(session.reconnectEndMs === null ? {} : { endAfterMs: session.reconnectEndMs }),
       });
       await link.untilChange();
     }
@@ -384,7 +383,6 @@ function refreshAwayScreen(session: CoopSession, link: CoopLink): void {
         code: link.code,
         back: false,
         onEnd: () => endSession(session),
-        ...(session.reconnectEndMs === null ? {} : { endAfterMs: session.reconnectEndMs }),
       });
     }
   } else if (link.needsResync && reconnectScreenText() !== null) {

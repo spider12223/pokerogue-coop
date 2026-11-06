@@ -92,10 +92,6 @@ export class OwnerMap {
     this.owners.delete(pokemonId);
   }
 
-  public get size(): number {
-    return this.owners.size;
-  }
-
   /** How many of these Pokémon a seat owns */
   public countOwned(pokemonIds: Iterable<number>, seat: Seat): number {
     let count = 0;

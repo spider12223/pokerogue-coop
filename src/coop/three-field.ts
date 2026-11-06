@@ -150,11 +150,3 @@ export function placeEnemyBoxForThree(pokemon: Pokemon): void {
   info.setScale(5 / 6);
   info.placeAt(x - (pokemon.isBoss() ? 48 : 0), y);
 }
-
-/** Every bar goes (the battle ends, the run ends) */
-export function clearTeammateBars(): void {
-  for (const { bar } of bars.values()) {
-    bar.destroy();
-  }
-  bars.clear();
-}

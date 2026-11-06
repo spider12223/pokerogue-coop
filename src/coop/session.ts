@@ -14,15 +14,14 @@ import type { MeQuestion } from "#coop/me-choice";
 import { defaultStarterOwners, OwnerMap } from "#coop/ownership";
 import { PaceTracker } from "#coop/pace";
 import { PhaseTrace } from "#coop/phase-trace";
-import {
-  type BuildIdentity,
-  type CoopChallenge,
-  type CoopRunMode,
-  type DecisionKey,
-  otherSeat,
-  type PlayerCount,
-  type Seat,
-  type SeatRecord,
+import type {
+  BuildIdentity,
+  CoopChallenge,
+  CoopRunMode,
+  DecisionKey,
+  PlayerCount,
+  Seat,
+  SeatRecord,
 } from "#coop/protocol";
 import {
   type MismatchInfo,
@@ -185,8 +184,6 @@ export class CoopSession {
   public bridgeFailed = false;
   /** The run is over (D4a): the end screen answers the partner leaving, not the session's own ending (D35) */
   public runOver = false;
-  /** After this many ms of waiting for a partner the player may end the session (D20); `null`: the default of a minute */
-  public reconnectEndMs: number | null = null;
   /** This client's own account was saved in this run (D19), at a wave start: a fresh account has no saved ids until it is */
   public accountSaved = false;
   /** When the pieces of a rejoin and a reload happened, ms since the epoch (the debug API shows them) */
@@ -482,10 +479,6 @@ export class CoopSession {
     return this.seat === "host";
   }
 
-  public get partnerSeat(): Seat {
-    return otherSeat(this.seat);
-  }
-
   /** The display names of the players, by seat (D1, D40); the seat's own for a session without a network */
   public get names(): SeatRecord<string> {
     if (this.link?.players === 3) {
@@ -580,18 +573,6 @@ export function requireCoopSession(): CoopSession {
  */
 export function checkSessionSaveBlock(block: unknown): void {
   checkSaveBlock(block, activeSession === null ? null : { accountIds: activeSession.knownAccountIds() });
-}
-
-/**
- * Guard for the features DECISIONS D12 turns off in co-op v1 (eggs, the Global Trade System, ...): they must not run
- * there, because they draw from unseeded values or write to one account only.
- * @param what - The feature, for the error message
- * @throws If a co-op session is active
- */
-export function assertNotCoop(what: string): void {
-  if (activeSession !== null) {
-    throw new Error(`${what} is not available in co-op (DECISIONS D12)`);
-  }
 }
 
 /**

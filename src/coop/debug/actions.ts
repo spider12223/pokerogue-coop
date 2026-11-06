@@ -76,8 +76,6 @@ export interface DebugBatch {
   actions: DebugAction[];
 }
 
-export type DebugActionType = DebugAction["t"];
-
 /** The most actions one batch carries */
 export const MAX_DEBUG_ACTIONS = 64;
 

@@ -203,8 +203,6 @@ export interface CoopDebugApi {
   corrupt(): boolean;
   /** "End session" (D20): leave the room for good and go back to the title screen. @returns Whether there was a session */
   leave(): boolean;
-  /** Change how long a player waits for a partner before they are offered to end the session (D20) */
-  setReconnectEndMs(ms: number): void;
   /** Send a ping at nothing in particular, or an emote, without a hotkey. @returns Whether it was sent */
   nudge(): boolean;
   emote(id: number): boolean;
@@ -476,12 +474,6 @@ function api(): CoopDebugApi {
       }
       endSession(session);
       return true;
-    },
-    setReconnectEndMs: ms => {
-      const session = getCoopSession();
-      if (session !== null) {
-        session.reconnectEndMs = ms;
-      }
     },
     setName: name => setCoopName(name),
     hotkey: which => (which === "ping" ? pingNow() : openEmoteWheel()),

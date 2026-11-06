@@ -268,11 +268,6 @@ export class RoomRegistry {
     return events;
   }
 
-  /** Remove a room outright (the relay closed it). */
-  delete(code: string): void {
-    this.rooms.delete(code);
-  }
-
   has(code: string): boolean {
     return this.rooms.has(code);
   }

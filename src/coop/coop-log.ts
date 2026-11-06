@@ -296,10 +296,6 @@ export class CoopLog {
     this.context = { ...this.context, ...context };
   }
 
-  getContext(): CoopLogContext {
-    return { ...this.context };
-  }
-
   /** Where the batches go (`null`: nowhere); entries that were not sent yet (also from before a reload) go first */
   setServer(url: string | null): void {
     if (url === this.url) {
@@ -429,15 +425,6 @@ export class CoopLog {
       ...extra,
       entries: this.entries,
     };
-  }
-
-  /** Forget everything (tests) */
-  clear(): void {
-    this.entries = [];
-    this.recent = [];
-    this.next = 0;
-    this.sentUpTo = 0;
-    this.env.storage?.removeItem(STORAGE_KEY);
   }
 
   /** An entry of the last second that `same` repeats, and that can still change: not sent, nor on its way */

@@ -955,11 +955,6 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.tradeButtonText.setShadowColor(getTextColor(style, true));
   }
 
-  /** @returns Whether the cursor is on the Trade button */
-  public isOnTradeButton(): boolean {
-    return this.rowCursor === 0 && this.cursor === TRADE_CURSOR && this.tradeButtonContainer.visible;
-  }
-
   /** @returns What the cursor points at, for a ping (D16); `null` if it is on a button */
   public getPingTarget(): CosmeticTarget | null {
     if (this.rowCursor === 1) {

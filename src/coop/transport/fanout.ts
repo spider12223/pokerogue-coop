@@ -53,16 +53,6 @@ export class FanoutTransport implements EpochInner {
     this.gone.delete(seat);
   }
 
-  /** Whether nothing is sent to this guest now */
-  isStopped(seat: Seat): boolean {
-    return this.gone.has(seat);
-  }
-
-  /** The guest seats it sends to */
-  get seats(): readonly Seat[] {
-    return [...this.channels.keys()];
-  }
-
   /** Envelopes sent and not yet acknowledged, over all guests */
   get pending(): number {
     let pending = 0;

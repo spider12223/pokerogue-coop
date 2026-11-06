@@ -70,8 +70,3 @@ export function createManualLink(): { host: ManualEnd; guest: ManualEnd } {
   guest.peer = host;
   return { host, guest };
 }
-
-/** Let promise continuations run. */
-export function flushMicrotasks(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, 0));
-}

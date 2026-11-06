@@ -1264,8 +1264,3 @@ export function hostAgain(
   // (a room of three when both guests of a game of three want to play again, D40)
   return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, room.seats, challenges, file);
 }
-
-/** Host: start a game without the menus (the debug API and the end-to-end test use it) */
-export function hostGameWithoutMenu(callbacks: CoopTitleCallbacks, runMode: CoopRunMode = "classic"): Promise<void> {
-  return hostGame(callbacks, runMode);
-}
