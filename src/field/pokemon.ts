@@ -31,7 +31,7 @@ import { coopEnemyStat } from "#coop/rules/enemy-buff";
 import { getCoopSession, isCoop } from "#coop/session";
 import { drawUniquePokemonId } from "#coop/sync/pokemon-id";
 import { ownerSeat, simAccount, writesForPokemon } from "#coop/sync/sim-account";
-import { syncHideButton } from "#coop/ui/box-hide";
+import { boxResized, placeHideEye, syncHideButton } from "#coop/ui/box-hide";
 import {
   hideTeammateBar,
   inBattleOfThree,
@@ -1351,6 +1351,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       const three = inBattleOfThree(this);
       this.battleInfo.setMini(!three && fieldPosition !== FieldPosition.CENTER);
       this.battleInfo.setOffset(!three && fieldPosition === FieldPosition.RIGHT);
+      // Co-op (D44): the box's type icons moved with its size, and its hide eye with them
+      boxResized(this);
 
       const newOffset = this.getFieldPositionOffset();
 
@@ -3459,7 +3461,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
   updateInfo(instant?: boolean): Promise<void> {
     updateTeammateBar(this);
-    return this.battleInfo.updateInfo(this, instant);
+    const updated = this.battleInfo.updateInfo(this, instant);
+    // Co-op (D44): the name's row was laid out again (before the info's first wait): the box's hide eye follows it
+    placeHideEye(this.battleInfo);
+    return updated;
   }
 
   toggleStats(visible: boolean): void {

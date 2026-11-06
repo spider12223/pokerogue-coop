@@ -1,5 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { isCoop } from "#coop/session";
+import { HIDE_EYE_ROOM } from "#coop/ui/box-hide";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getTypeRgb } from "#data/type";
 import { PokemonType } from "#enums/pokemon-type";
@@ -630,7 +632,10 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
         - ((gender === Gender.GENDERLESS ? 0 : 6)
           + (pokemon.fusionSpecies ? 8 : 0)
           + (pokemon.isShiny() ? 8 : 0)
-          + (Math.min(pokemon.level.toString().length, 3) - 3) * 8)
+          + (Math.min(pokemon.level.toString().length, 3) - 3) * 8
+          // Co-op (D44): an enemy's level of four digits moves one further left, for the hide eye; ours is next to the name
+          + (isCoop() && !this.player && pokemon.level.toString().length >= 4 ? 8 : 0)
+          + (isCoop() && this.player ? HIDE_EYE_ROOM : 0))
     ) {
       displayName = `${displayName.slice(0, displayName.endsWith(".") ? -2 : -1).trimEnd()}.`;
       nameSizeTest.setText(displayName);
@@ -667,7 +672,10 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
     for (let i = 0; i < levelStr.length; i++) {
       this.levelNumbersContainer.add(globalScene.add.image(i * 8, 0, textureKey, levelStr[i]));
     }
-    this.levelContainer.setX(this.baseLvContainerX - 8 * Math.max(levelStr.length - 3, 0));
+    // Co-op (D44): an enemy's box has the hide eye after its level; a level of three digits makes room for it (the name
+    // leaves the room, as it does for upstream's four)
+    const coopRoom = isCoop() && !this.player && levelStr.length >= 3 ? 8 : 0;
+    this.levelContainer.setX(this.baseLvContainerX - 8 * Math.max(levelStr.length - 3, 0) - coopRoom);
   }
 
   updateStats(stats: number[]): void {

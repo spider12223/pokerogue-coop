@@ -9,6 +9,10 @@ export class MockGraphics implements MockGameObject {
     this.scene = textureManager.scene;
   }
 
+  clear(): this {
+    return this;
+  }
+
   fillStyle(_color): this {
     // Sets the fill style to be used by the fill methods.
     return this;

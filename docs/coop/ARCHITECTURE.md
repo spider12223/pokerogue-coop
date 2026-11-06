@@ -520,7 +520,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `ui/player-colors.ts` | Each player's colour on the screens of a game of three | D40 | yes |
 | `ui/players-line.ts` | The line under the waiting text of a room of three: who is in, in their colours | D40 | no |
 | `ui/three-field.ts` | The HP of a battle of three: the teammates' bars over their Pokémon, the enemy boxes | D40 | no |
-| `ui/box-hide.ts` | The hide handle of every HP box: a place of the field hidden on this client, kept in the browser | D44 | no |
+| `ui/box-hide.ts` | The hide eye of every HP box: a place of the field hidden on this client, kept in the browser | D44 | no |
 | `ui/field-zoom.ts` | This player's zoom of the battlefield (wheel, two keys), applied in `setFieldScale` | D44 | no |
 | `ui/clipboard.ts` | `copyText`, for the lobby's "Copy code" button | | yes |
 | `ui/source-link.ts` | `sourceUrlOf`: the title screen's Source link (the build insists on one: `plugins/vite/require-source-url.ts`) | D25 | yes |
@@ -557,7 +557,8 @@ See [The host's debug menu](#the-hosts-debug-menu-d42).
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
 | `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`); `setFieldScale` adds the player's zoom; its loader asks again for a failed download | D6, D34, D44, D45 |
 | `src/loading-scene.ts` | The loading screen asks again for a failed download | D45 |
-| `src/field/pokemon.ts` | `showInfo`: a teammate's bar in a battle of three, the enemy boxes of three, the box's hide handle | D40, D44 |
+| `src/field/pokemon.ts` | `showInfo`: a teammate's bar in a battle of three, the enemy boxes of three, the box's hide eye; `setFieldPosition`, `updateInfo`: the eye follows the box's size and its name's row | D40, D44 |
+| `src/ui/battle-info/battle-info.ts` | `placeAt` (the enemy boxes of three); room for the hide eye: an enemy's level of three or more digits (and a long name before four), our name | D40, D44 |
 | `src/field/arena.ts` | `randomTrainerType` asks `pickCoopTrainer` in co-op | D34 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |
 | `src/timed-event-manager.ts` | `isActive` reads the run's events in co-op, the clock in solo; `eventsByClock` is what a player brings to the run | D33 |

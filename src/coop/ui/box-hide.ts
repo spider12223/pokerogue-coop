@@ -5,14 +5,16 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { drawPixels, MARK_COLORS } from "#coop/cosmetic/cosmetic-tag";
 import { isCoop } from "#coop/session";
 import type { Pokemon } from "#field/pokemon";
 import type { BattleInfo } from "#ui/battle-info";
 
 /**
- * The hide button of the HP boxes (DECISIONS D44): a small handle at the inner end of every box (enemies' and ours). It
- * slides its box off the screen's edge, until only the handle is left there; pressed again, the box comes back. A place of
- * the field stays hidden for the next Pokémon there, and in this browser. Only this client's screen changes.
+ * The hide button of the HP boxes (DECISIONS D44): a small eye on every box (an enemy's on its level's row, before its type
+ * badge; ours next to its name). It slides its box off the screen's edge until only the type and the eye, closed, are left
+ * there (ours goes before our type icons then); pressed again, the box comes back. A place of the field stays hidden for
+ * the next Pokémon there, and in this browser. Only this client's screen changes.
  *
  * The box is moved by relative amounts, as the game moves it (`Pokemon.showInfo`, `hideInfo`): the two add up, so a hidden
  * box stays hidden through the game's own slides in and out.
@@ -27,10 +29,20 @@ export const HIDDEN_BOXES_KEY = "coopHiddenBoxes";
 type BoxPlace = `${"player" | "enemy"}:${number}`;
 
 const PLACE = /^(player|enemy):[0-2]$/;
-const HANDLE_WIDTH = 9;
-const HANDLE_HEIGHT = 13;
-/** How far the handle stands from the screen's edge once its box is away */
+/** The eye, open (the box is there) and closed (it is away): rows of pixels, `#` on */
+const OPEN_EYE = ["..###..", ".#####.", "###.###", ".#####.", "..###.."];
+const CLOSED_EYE = [".......", "#.....#", ".#####.", "..#.#..", "......."];
+const EYE_WIDTH = 7;
+const EYE_COLOR = 0xf8f8f8;
+/** What a press of the eye hits: a little more than the eye */
+const HIT_WIDTH = 11;
+const HIT_HEIGHT = 9;
+/** Our type icons are 20 wide (`pbinfo_player_type`); they move with the box's size (`PlayerBattleInfo.setMini`) */
+const PLAYER_TYPE_WIDTH = 20;
+/** How far an enemy's eye stands from the screen's edge once its box is away (our type icons end at the edge) */
 const EDGE_GAP = 1;
+/** What our name's row leaves after it in co-op for the eye: 1 apart, then the eye and its outline */
+export const HIDE_EYE_ROOM = 1 + EYE_WIDTH + 2;
 const SLIDE_MS = 250;
 
 let hidden = readHidden();
@@ -40,7 +52,10 @@ const handles = new WeakMap<BattleInfo, Handle>();
 
 interface Handle {
   container: Phaser.GameObjects.Container;
-  arrow: Phaser.GameObjects.Image;
+  eye: Phaser.GameObjects.Graphics;
+  player: boolean;
+  /** Whether the box is away (as last put) */
+  away: boolean;
 }
 
 function readHidden(): Set<BoxPlace> {
@@ -82,53 +97,102 @@ export function boxShiftOf(info: BattleInfo): number {
   return shifts.get(info) ?? 0;
 }
 
-/** @returns The box's hide handle, `null` if it has none (solo play) */
+/** @returns The box's hide eye, `null` if it has none (solo play) */
 export function hideButtonOf(info: BattleInfo): Phaser.GameObjects.Container | null {
   return handles.get(info)?.container ?? null;
 }
 
-/**
- * The handle's place in the box: 2 past the type icons at its inner end (an enemy's end 5 past the box, ours start at -139),
- * further for a third type
- */
-function handleX(info: BattleInfo, player: boolean): number {
-  const third = (info.getByName("icon_type_3") as Phaser.GameObjects.Sprite | null)?.visible ?? false;
-  if (player) {
-    return third ? -165 : -150;
+/** The box's type icons (its own, protected) */
+type TypeIcons = Record<"type1Icon" | "type2Icon" | "type3Icon", Phaser.GameObjects.Sprite>;
+
+function typeIcon(info: BattleInfo, n: 1 | 2 | 3): Phaser.GameObjects.Sprite {
+  return (info as unknown as TypeIcons)[`type${n}Icon`];
+}
+
+/** Our name's row: the name, its gender sign and the icons after them (tera, fusion, shiny); the level is on it too */
+type NameRow = Record<"genderText", Phaser.GameObjects.Text> &
+  Record<"teraIcon" | "splicedIcon" | "shinyIcon", Phaser.GameObjects.Sprite> &
+  Record<"levelContainer", Phaser.GameObjects.Container>;
+
+/** @returns Where what our name's row has ends: the gender sign after the name, or the last icon after it */
+function nameRowEnd(info: BattleInfo): number {
+  const row = info as unknown as NameRow;
+  let end = row.genderText.x + row.genderText.displayWidth;
+  for (const icon of [row.teraIcon, row.splicedIcon, row.shinyIcon]) {
+    if (icon.visible) {
+      end = Math.max(end, icon.x + icon.displayWidth);
+    }
   }
-  return third ? 22 : 7;
+  return end;
 }
 
 /**
- * How far the box goes so that only its handle is left, at the screen's edge
+ * Where the eye is in the box (its middle): an enemy's on its level's row, between the level and the type badge (which
+ * starts at -15; the type effectiveness window goes to its right). Ours next to the name, on its row (the level's middle),
+ * 1 past what the row has; while the box is away, at the screen's edge with our type icons, the only part of it left
+ * there: just before them (a third type's is left of the others), by the lower one (its art is rows 1 to 13)
+ */
+function eyePlace(info: BattleInfo, player: boolean, away: boolean): [number, number] {
+  if (!player) {
+    return [-22, -5];
+  }
+  if (away) {
+    const first = typeIcon(info, typeIcon(info, 3).visible ? 3 : 1);
+    return [first.x - 6, typeIcon(info, 2).y + 7];
+  }
+  const row = info as unknown as NameRow;
+  return [Math.ceil(nameRowEnd(info)) + 1 + 1 + Math.floor(EYE_WIDTH / 2), Math.round(row.levelContainer.y)];
+}
+
+function drawEye(eye: Phaser.GameObjects.Graphics, open: boolean): void {
+  const rows = open ? OPEN_EYE : CLOSED_EYE;
+  const left = -Math.floor(EYE_WIDTH / 2);
+  const top = -Math.floor(rows.length / 2);
+  eye.clear();
+  // a dark outline, so it reads on the box and on the sky
+  for (const [dx, dy] of [
+    [-1, 0],
+    [1, 0],
+    [0, -1],
+    [0, 1],
+  ]) {
+    drawPixels(eye, rows, left + dx, top + dy, MARK_COLORS.shadow);
+  }
+  drawPixels(eye, rows, left, top, EYE_COLOR);
+  if (open) {
+    // the pupil
+    eye.fillStyle(MARK_COLORS.shadow, 1);
+    eye.fillRect(left + 3, top + 2, 1, 1);
+  }
+}
+
+/**
+ * How far the box goes so that only the eye and the type are left, at the screen's edge: an enemy's from its eye on, ours up
+ * to the end of our type icons' art (in the small box our name starts right after it)
+ * @param eyeX - Where the eye's middle is in the box
  * @param arriving - How much further the game will move the box as it shows it
  */
-function hiddenShift(info: BattleInfo, player: boolean, x: number, arriving: number): number {
+function hiddenShift(info: BattleInfo, player: boolean, eyeX: number, arriving: number): number {
   const rest = info.x - boxShiftOf(info) + arriving;
   const scale = info.scaleX || 1;
   if (player) {
-    const edge = globalScene.scaledCanvas.width - HANDLE_WIDTH * scale - EDGE_GAP;
-    return Math.round(edge - (rest + x * scale));
+    const typesEnd = typeIcon(info, 1).x + PLAYER_TYPE_WIDTH;
+    return Math.round(globalScene.scaledCanvas.width - (rest + typesEnd * scale));
   }
-  return Math.round(EDGE_GAP - (rest + x * scale));
+  return Math.round(EDGE_GAP - (rest + (eyeX - (EYE_WIDTH + 1) / 2) * scale));
 }
 
 function makeHandle(info: BattleInfo, pokemon: Pokemon): Handle {
-  const frame = globalScene.add
-    .rectangle(0, 0, HANDLE_WIDTH, HANDLE_HEIGHT, 0x303048, 0.9)
-    .setOrigin(0, 0.5)
-    .setStrokeStyle(1, 0xd8d8e0);
-  const arrow = globalScene.add
-    .image(HANDLE_WIDTH / 2, 0, "cursor")
-    .setOrigin(0.5)
-    .setScale(0.7);
-  const container = globalScene.add.container(0, 0, [frame, arrow]).setName("coop_hide");
-  frame.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
+  // (the press is caught a little around the eye: it is only 7 by 5)
+  const hit = globalScene.add.rectangle(0, 0, HIT_WIDTH, HIT_HEIGHT, 0x000000, 0.001).setOrigin(0.5);
+  const eye = globalScene.add.graphics();
+  const container = globalScene.add.container(0, 0, [hit, eye]).setName("coop_hide");
+  hit.setInteractive({ useHandCursor: true }).on("pointerdown", () => {
     const owner = pokemonOf(info) ?? pokemon;
     toggleBoxHidden(owner);
   });
   info.add(container);
-  const handle = { container, arrow };
+  const handle = { container, eye, player: pokemon.isPlayer(), away: false };
   handles.set(info, handle);
   return handle;
 }
@@ -154,11 +218,12 @@ export function syncHideButton(pokemon: Pokemon, instant = true): void {
   }
   const player = pokemon.isPlayer();
   const handle = handles.get(info) ?? makeHandle(info, pokemon);
-  const x = handleX(info, player);
-  handle.container.setX(x);
   const away = hidden.has(placeOf(pokemon));
-  // the arrow says where the box goes: out to its edge, or back in
-  handle.arrow.setTexture(player === away ? "cursor_reverse" : "cursor");
+  handle.away = away;
+  const [x, y] = eyePlace(info, player, away);
+  handle.container.setPosition(x, y);
+  // open while the box is there, closed while it is away
+  drawEye(handle.eye, !away);
   // (a box on screen that is sliding has no rest position to measure from: it keeps the shift it has)
   if (instant && info.visible && globalScene.tweens.getTweensOf(info).length > 0) {
     return;
@@ -166,6 +231,26 @@ export function syncHideButton(pokemon: Pokemon, instant = true): void {
   // a boss's box comes in 48 further right than it went out (`Pokemon.showInfo`)
   const arriving = !info.visible && !player && pokemon.isBoss() ? 48 : 0;
   moveBox(info, away ? hiddenShift(info, player, x, arriving) : 0, instant);
+}
+
+/**
+ * The box changed size (`PlayerBattleInfo.setMini`: doubles' small box, the full one for a Pokémon alone in the middle) and
+ * its type icons moved: the eye follows them, and so does a box that is away. A box not shown yet waits for its showing.
+ */
+export function boxResized(pokemon: Pokemon): void {
+  const info = pokemon.getBattleInfo();
+  if (info !== undefined && handles.has(info)) {
+    syncHideButton(pokemon);
+  }
+}
+
+/** The box laid its name's row out again (`Pokemon.updateInfo`: a name, a tera, a shiny's star): the eye follows it */
+export function placeHideEye(info: BattleInfo): void {
+  const handle = handles.get(info);
+  if (handle !== undefined) {
+    const [x, y] = eyePlace(info, handle.player, handle.away);
+    handle.container.setPosition(x, y);
+  }
 }
 
 /** The box was put at its place outright (a battle of three moves the enemy boxes, D40): it is moved by nothing now */

@@ -1099,7 +1099,8 @@ count from the host's `HELLO`.
   ally in move order that uses another Pledge; Doodle gives the ability to each ally whose ability can be replaced.
 - **HP on screen** (each client draws its own; display only): one's own Pokémon has the full box where a single battle has
   it; each teammate's Pokémon has a small bar over it with the player's name in their colour; the enemy boxes are 5/6 of
-  their size and higher up.
+  their size and higher up, a boss's (wider) ending further right so that it starts where the other's does (its name
+  was off the screen's edge before).
 - **Party:** 2 Pokémon per player, 20 starter points shared, a catch cap of 2 per player. On the starter select each
   partner's picks show in a window of their own with their name in their colour, and everyone sees the Pokémon of all
   three (D32); the host passes each guest's picks, ready and collection on to the other guest. A player who leaves the
@@ -1232,10 +1233,15 @@ two with an old connection still open).
 Two things a player changes on their own screen only: nothing is sent to the partner and nothing of the simulation
 changes, so they cannot desync a run. Co-op only; solo play keeps upstream's screen.
 
-- **Hide an HP box:** every HP box (the enemies' and ours) has a small handle past its type icons. It slides the box off
-  the screen's edge (an enemy's to the left, ours to the right) until only the handle is left there; pressed again, the
-  box comes back. Each place of the field (side and field index) hides on its own and stays hidden for the next Pokémon
-  there, through switches and waves, and in this browser (`coopHiddenBoxes`). Mouse or touch only.
+- **Hide an HP box:** every HP box (the enemies' and ours) has a small eye: an enemy's on its level's row, before its
+  type badge (the type effectiveness window goes after the badge); ours next to its name, after the gender sign and any
+  icon there (tera, fusion, shiny), following them. It slides the box off the screen's edge (an enemy's to the left,
+  ours to the right) until only the type and the eye, closed, are left there (ours then just before our type icons, by
+  the lower one, their art whole at the edge); pressed again, the box comes back. Each place of the field (side and
+  field index) hides on its own and stays hidden for the next Pokémon there, through switches and waves, and in this
+  browser (`coopHiddenBoxes`). Mouse or touch only. Room for the eye: our name is shortened 10 sooner; an enemy's level
+  of three digits moves left by one (the name leaves that room, as it does for upstream's four digits), one of four
+  digits (Endless) one further, and the name before it is shortened by one more.
 - **Zoom out:** the battlefield (the Pokémon, their bases, the trainers) shrinks around its middle, from 100% to 60% in
   steps of 10%, with the mouse wheel over the game (a burst of wheel events is one step) or two buttons, numpad minus and
   plus at first, rebindable in the keyboard settings. The background stays as it is; the game's own zoom (a big Pokémon,

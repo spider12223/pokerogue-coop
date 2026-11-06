@@ -137,6 +137,22 @@ const ENEMY_BOXES: readonly [number, number][] = [
   [120, -151],
   [110, -132],
 ];
+const ENEMY_BOX_SCALE = 5 / 6;
+/** The enemy's box art is 130 wide, a boss's 178 (`pbinfo_enemy_mini`, `pbinfo_enemy_boss`) */
+const BOSS_BOX_WIDER = 178 - 130;
+/** `Pokemon.showInfo` brings a boss's box in this much further right than an enemy's */
+const BOSS_SHOWN_FURTHER = 48;
+
+/**
+ * Where an enemy's box is put in a battle of three of ours, before `Pokemon.showInfo` slides it in. A boss's box is wider:
+ * it ends further right by the difference at this scale, so that it starts where the other's does (its name was off the
+ * screen's edge when it ended where the other's does).
+ * @returns The box's x and y
+ */
+export function enemyBoxPlaceForThree(fieldIndex: number, boss: boolean): [number, number] {
+  const [x, y] = ENEMY_BOXES[fieldIndex === 1 ? 1 : 0];
+  return [boss ? x + BOSS_BOX_WIDER * ENEMY_BOX_SCALE - BOSS_SHOWN_FURTHER : x, y];
+}
 
 /**
  * An enemy's box in a battle of three of ours: smaller and higher, so the boxes stay clear of our three. Set before the box
@@ -146,9 +162,9 @@ export function placeEnemyBoxForThree(pokemon: Pokemon): void {
   if (pokemon.isPlayer() || globalScene.currentBattle?.playerSlots !== 3 || pokemon.getBattleInfo().visible) {
     return;
   }
-  const [x, y] = ENEMY_BOXES[pokemon.getFieldIndex() === 1 ? 1 : 0];
+  const [x, y] = enemyBoxPlaceForThree(pokemon.getFieldIndex(), pokemon.isBoss());
   const info = pokemon.getBattleInfo();
-  info.setScale(5 / 6);
-  info.placeAt(x - (pokemon.isBoss() ? 48 : 0), y);
+  info.setScale(ENEMY_BOX_SCALE);
+  info.placeAt(x, y);
   resetBoxShift(info);
 }

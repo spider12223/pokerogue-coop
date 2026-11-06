@@ -184,12 +184,13 @@ server collects logs. It contains your display names and what you chose in the r
 | Chat with your partner | **H** (Enter sends, Esc closes) | | **Chat** button, top right |
 | Debug window (host, when on) | **F8** | | |
 | Zoom the battlefield out / in (your screen only) | mouse wheel, or **numpad −** / **numpad +** | | |
-| Hide or show an HP box (your screen only) | click its small arrow handle | | tap the handle |
+| Hide or show an HP box (your screen only) | click its small eye (an enemy's by its level, yours by its name) | | tap the eye |
 
 The keys can be changed in **Menu > Settings > Keyboard**.
 
 **Your own view:** zooming out (down to 60%) and hiding HP boxes change only your screen; your partner's stays as it
-is. A hidden box leaves its arrow at the screen's edge: click it to bring the box back. Your browser remembers both.
+is. A hidden box leaves its type and a closed eye at the screen's edge: click the eye to bring the box back. Your
+browser remembers both.
 
 **The chat** is there in every co-op game. Swear words and links are hidden, for both of you, and **Mute** in the chat
 hides your partner's messages. Drag the chat by its title bar or its button to put it anywhere on the screen (your browser

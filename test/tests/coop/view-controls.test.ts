@@ -14,13 +14,17 @@ import {
   toggleBoxHidden,
 } from "#coop/ui/box-hide";
 import { coopFieldZoom, FIELD_ZOOM_KEY, loadFieldZoom, onFieldWheel, stepFieldZoom } from "#coop/ui/field-zoom";
+import { enemyBoxPlaceForThree } from "#coop/ui/three-field";
+import { Gender } from "#data/gender";
 import { Button } from "#enums/buttons";
+import { FieldPosition } from "#enums/field-position";
 import { SpeciesId } from "#enums/species-id";
 import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
 import { SettingKeyboard } from "#system/settings-keyboard";
 import { GameManager } from "#test/framework/game-manager";
 import { advanceTo } from "#test/helpers/coop-harness";
 import { type LinkedRun, openLinkedRun, pickerSkips, winWave } from "#test/helpers/coop-linked";
+import { MockText } from "#test/mocks/mocks-container/mock-text";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -69,6 +73,179 @@ describe("Co-op: each player's view of the battle (D44)", () => {
       for (const pokemon of field) {
         expect(hideButtonOf(pokemon.getBattleInfo())).not.toBeNull();
       }
+    });
+
+    it("is an eye: an enemy's on its level's row, before its type badge", async () => {
+      const r = await start();
+      const [enemy] = r.ctx.game.scene.getEnemyField();
+      const enemyEye = hideButtonOf(enemy.getBattleInfo())!;
+      // the enemy's type badge starts at -15; the type effectiveness window goes to its right, so nothing is there
+      expect(enemyEye.x).toBeLessThan(-15 - 3);
+      expect(enemyEye.x).toBeGreaterThan(-30);
+      expect(enemyEye.y).toBe(-5);
+    });
+
+    type Part = { x: number; displayWidth: number; visible?: boolean };
+    type NameRow = Record<"nameText" | "genderText" | "shinyIcon", Part> & { levelContainer: { y: number } };
+
+    /** Lay parts of a box's name row out, as the game would (the tests' texts are not measured) */
+    function layNameRow(info: unknown, parts: Partial<Record<keyof NameRow, [x: number, width: number]>>): NameRow {
+      const row = info as NameRow;
+      for (const [name, [x, width]] of Object.entries(parts) as [keyof NameRow, [number, number]][]) {
+        const part = row[name] as Part;
+        part.x = x;
+        Object.defineProperty(part, "displayWidth", { configurable: true, value: width });
+      }
+      return row;
+    }
+
+    it("is an eye next to our name, on its row: after the gender sign, or after the last icon there", async () => {
+      const r = await start();
+      const [mine] = r.ctx.game.scene.getPlayerField();
+      const info = mine.getBattleInfo();
+      // "Bulbasaur" and its gender sign
+      const row = layNameRow(info, { nameText: [-115, 37], genderText: [-78, 5] });
+      await mine.updateInfo(true);
+      // the eye (7 by 5, with an outline of 1 around it) starts 1 past the gender sign
+      expect(hideButtonOf(info)!.x - 4).toBe(-73 + 1);
+      expect(hideButtonOf(info)!.y).toBe(Math.round(row.levelContainer.y));
+      // a shiny's star after it: the eye follows when the box is updated
+      layNameRow(info, { shinyIcon: [-72, 8] });
+      row.shinyIcon.visible = true;
+      await mine.updateInfo(true);
+      expect(hideButtonOf(info)!.x - 4).toBe(-64 + 1);
+    });
+
+    type TypeIcons = Record<"type1Icon" | "type2Icon", Phaser.GameObjects.Sprite>;
+
+    /**
+     * Our box is away: the eye is just before our type icons (which move with the box's size), by the lower one (its art:
+     * rows 1 to 13)
+     */
+    function expectBesideLowerTypeIcon(info: Phaser.GameObjects.Container): void {
+      const eye = hideButtonOf(info as never)!;
+      const { type1Icon: first, type2Icon: lower } = info as unknown as TypeIcons;
+      expect(eye.x).toBeLessThan(first.x - 3);
+      expect(eye.x).toBeGreaterThan(first.x - 10);
+      expect(eye.y).toBeGreaterThanOrEqual(lower.y + 1);
+      expect(eye.y).toBeLessThanOrEqual(lower.y + 13);
+    }
+
+    it("leaves a box of ours that is away as its type icons, whole at the edge, with the closed eye before them, at either size", async () => {
+      const r = await start();
+      const scene = r.ctx.game.scene;
+      const [mine] = scene.getPlayerField();
+      const info = mine.getBattleInfo();
+      const first = (info as unknown as TypeIcons).type1Icon;
+      // (the tests' tweens move nothing: the box is put where the game's slides would leave it)
+      info.x -= 150;
+      expect(toggleBoxHidden(mine)).toBe(true);
+      info.x += boxShiftOf(info);
+      // doubles' small box, then the full one (a Pokémon alone in the middle)
+      for (const center of [false, true]) {
+        if (center) {
+          // (at once, without a duration, as the summon phase does; its promise never settles then)
+          mine.setFieldPosition(FieldPosition.CENTER).catch(() => undefined);
+        }
+        expectBesideLowerTypeIcon(info);
+        // the type icons' art (20 wide) ends at the screen's edge: whole, and nothing after it (in the small box our name
+        // starts right after it)
+        const typesEnd = info.x + (first.x + 20) * info.scaleX;
+        expect(Math.abs(typesEnd - scene.scaledCanvas.width)).toBeLessThanOrEqual(0.5);
+      }
+    });
+
+    it("a boss's box in a battle of three starts where the other enemy's does, on screen (D40)", () => {
+      // (box art 130 wide, a boss's 178, at 5/6; showing a boss's box brings it 48 further right, `Pokemon.showInfo`)
+      const [normal] = enemyBoxPlaceForThree(0, false);
+      const [boss] = enemyBoxPlaceForThree(0, true);
+      const normalLeft = normal - 130 * (5 / 6);
+      const bossLeft = boss + 48 - 178 * (5 / 6);
+      expect(bossLeft).toBeCloseTo(normalLeft);
+      expect(bossLeft).toBeGreaterThanOrEqual(0);
+    });
+
+    type LevelBox = { setLevelDisplay(level: number): void; levelContainer: { x: number } };
+
+    it("makes room for the eye after an enemy's level of three digits", async () => {
+      const r = await start();
+      const box = r.ctx.game.scene.getEnemyField()[0].getBattleInfo() as unknown as LevelBox;
+      box.setLevelDisplay(99);
+      const two = box.levelContainer.x;
+      box.setLevelDisplay(100);
+      expect(box.levelContainer.x).toBe(two - 8);
+    });
+
+    type NameBox = { updateNameText(p: unknown): void; nameText: { text: string } };
+
+    /**
+     * Measure the tests' texts while `check` runs: a mock text starts empty (a Phaser text has its content) and has no width
+     * (here 6 a letter, about the boxes' font)
+     */
+    async function measuringTexts(r: LinkedRun, check: () => void | Promise<void>): Promise<void> {
+      const { add } = r.ctx.game.scene;
+      const make = add.text.bind(add);
+      vi.spyOn(add, "text").mockImplementation((x, y, content, style) => {
+        const made = make(x, y, content, style);
+        (made as unknown as MockText).text = String(content);
+        return made;
+      });
+      Object.defineProperty(MockText.prototype, "displayWidth", {
+        configurable: true,
+        get(this: MockText) {
+          return this.text.length * 6;
+        },
+      });
+      try {
+        await check();
+      } finally {
+        delete (MockText.prototype as unknown as { displayWidth?: number }).displayWidth;
+      }
+    }
+
+    it("shortens a long enemy name more before a level of four digits (Endless): that level moves one further for the eye", async () => {
+      const r = await start();
+      const [enemy] = r.ctx.game.scene.getEnemyField();
+      const box = enemy.getBattleInfo() as unknown as NameBox;
+      vi.spyOn(enemy, "getNameToRender").mockReturnValue("Abcdefghijkl");
+      await measuringTexts(r, () => {
+        enemy.level = 100;
+        box.updateNameText(enemy);
+        const three = box.nameText.text;
+        enemy.level = 1000;
+        box.updateNameText(enemy);
+        expect(box.nameText.text.length).toBeLessThan(three.length);
+      });
+    });
+
+    it("shortens a long name of ours sooner than an enemy's of the same name and level: our eye goes after it", async () => {
+      const r = await start();
+      const [mine] = r.ctx.game.scene.getPlayerField();
+      const [enemy] = r.ctx.game.scene.getEnemyField();
+      const names: string[] = [];
+      await measuringTexts(r, () => {
+        for (const pokemon of [mine, enemy]) {
+          vi.spyOn(pokemon, "getNameToRender").mockReturnValue("Abcdefghijkl");
+          vi.spyOn(pokemon, "isShiny").mockReturnValue(false);
+          pokemon.gender = Gender.MALE;
+          pokemon.level = 20;
+          const box = pokemon.getBattleInfo() as unknown as NameBox;
+          box.updateNameText(pokemon);
+          names.push(box.nameText.text);
+        }
+      });
+      const [ours, theirs] = names;
+      expect(ours.length).toBeLessThan(theirs.length);
+    });
+
+    it("leaves an enemy's level where it is in solo play", async () => {
+      const game = new GameManager(phaserGame);
+      await game.classicMode.startBattle(SpeciesId.BULBASAUR);
+      const solo = game.scene.getEnemyField()[0].getBattleInfo() as unknown as LevelBox;
+      solo.setLevelDisplay(99);
+      const soloTwo = solo.levelContainer.x;
+      solo.setLevelDisplay(100);
+      expect(solo.levelContainer.x).toBe(soloTwo);
     });
 
     it("slides an enemy's box off to the left and a player's off to the right; pressed again, it brings it back", async () => {

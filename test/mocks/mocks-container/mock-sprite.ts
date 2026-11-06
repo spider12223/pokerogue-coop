@@ -41,6 +41,23 @@ export class MockSprite implements MockGameObject {
     };
   }
 
+  // A sprite's place, as a Phaser sprite has it (code that reads it, or moves it by `+=`, gets numbers)
+  get x(): number {
+    return this.phaserSprite.x;
+  }
+
+  set x(value: number) {
+    this.phaserSprite.x = value;
+  }
+
+  get y(): number {
+    return this.phaserSprite.y;
+  }
+
+  set y(value: number) {
+    this.phaserSprite.y = value;
+  }
+
   setTexture(_key: string, _frame?: string | number): this {
     return this;
   }
