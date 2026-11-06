@@ -224,6 +224,8 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     [SettingKeyboard.BUTTON_COOP_EMOTE]: Button.COOP_EMOTE,
     [SettingKeyboard.BUTTON_COOP_CHAT]: Button.COOP_CHAT,
     [SettingKeyboard.BUTTON_COOP_DEBUG]: Button.COOP_DEBUG,
+    [SettingKeyboard.BUTTON_COOP_ZOOM_OUT]: Button.COOP_ZOOM_OUT,
+    [SettingKeyboard.BUTTON_COOP_ZOOM_IN]: Button.COOP_ZOOM_IN,
   },
   default: {
     KEY_ARROW_UP: SettingKeyboard.BUTTON_UP,
@@ -241,8 +243,9 @@ export const CFG_KEYBOARD_QWERTY: KeyboardConfig = {
     KEY_E: SettingKeyboard.BUTTON_CYCLE_ABILITY,
     KEY_N: SettingKeyboard.BUTTON_CYCLE_NATURE,
     KEY_V: SettingKeyboard.BUTTON_CYCLE_TERA,
-    KEY_PLUS: -1,
-    KEY_MINUS: -1,
+    // Co-op (D44): the battlefield zoom
+    KEY_PLUS: SettingKeyboard.BUTTON_COOP_ZOOM_IN,
+    KEY_MINUS: SettingKeyboard.BUTTON_COOP_ZOOM_OUT,
     KEY_A: SettingKeyboard.ALT_BUTTON_LEFT,
     KEY_B: -1,
     KEY_D: SettingKeyboard.ALT_BUTTON_RIGHT,

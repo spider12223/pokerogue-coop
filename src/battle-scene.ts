@@ -40,6 +40,7 @@ import { arrangeCoopParty } from "#coop/rules/arrange";
 import { withCoopDoubleVariant } from "#coop/rules/doubles";
 import { noteTrainerMet } from "#coop/rules/trainer-variety";
 import { getCoopSession } from "#coop/session";
+import { coopFieldZoom } from "#coop/ui/field-zoom";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { getDailyMysteryEncounter } from "#data/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";
@@ -221,6 +222,8 @@ export class BattleScene extends SceneBase {
 
   public field: Phaser.GameObjects.Container;
   public fieldUI: Phaser.GameObjects.Container;
+  /** Co-op (D44): the field's scale the game asked for last, before the player's own zoom */
+  public fieldScaleRequest = 1;
   public charSprite: CharSprite;
   public pbTray: PokeballTray;
   public pbTrayEnemy: PokeballTray;
@@ -1763,7 +1766,10 @@ export class BattleScene extends SceneBase {
 
   setFieldScale(scale: number, instant = false): Promise<void> {
     return new Promise(resolve => {
-      scale *= 6;
+      // Co-op (D44): this player's own zoom comes on top of the game's (1 in solo play), around the field's middle
+      this.fieldScaleRequest = scale;
+      const zoom = coopFieldZoom();
+      scale *= 6 * zoom;
       if (this.field.scale === scale) {
         return resolve();
       }
@@ -1777,7 +1783,7 @@ export class BattleScene extends SceneBase {
         targets: this.field,
         scale,
         x: (defaultWidth - scaledWidth) / 2,
-        y: defaultHeight - scaledHeight,
+        y: zoom === 1 ? defaultHeight - scaledHeight : defaultHeight * (0.5 + zoom / 2) - scaledHeight,
         duration: instant ? 0 : fixedInt(Math.abs(this.field.scale - scale) * 200),
         ease: "Sine.easeInOut",
         onComplete: () => resolve(),

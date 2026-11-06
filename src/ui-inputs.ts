@@ -5,6 +5,7 @@ import type { InputsController } from "#app/inputs-controller";
 import { isDev } from "#constants/app-constants";
 import { SETTINGS_UI_MODES } from "#constants/ui-constants";
 import { openEmoteWheel, pingNow } from "#coop/cosmetic/hotkeys";
+import { stepFieldZoom } from "#coop/ui/field-zoom";
 import { Button } from "#enums/buttons";
 import { GameSpeed } from "#enums/game-speed";
 import { UiMode } from "#enums/ui-mode";
@@ -116,6 +117,9 @@ export class UiInputs {
       [Button.COOP_CHAT]: () => {},
       // Co-op (D42): caught on the page like the chat key (src/coop/debug/panel.ts)
       [Button.COOP_DEBUG]: () => {},
+      // Co-op (D44): this player's battlefield zoom, in a linked battle only
+      [Button.COOP_ZOOM_OUT]: () => void stepFieldZoom(true),
+      [Button.COOP_ZOOM_IN]: () => void stepFieldZoom(false),
     };
     return actions;
   }
@@ -145,6 +149,8 @@ export class UiInputs {
       [Button.COOP_CHAT]: () => {},
       // Co-op (D42): caught on the page like the chat key (src/coop/debug/panel.ts)
       [Button.COOP_DEBUG]: () => {},
+      [Button.COOP_ZOOM_OUT]: () => {},
+      [Button.COOP_ZOOM_IN]: () => {},
     };
     return actions;
   }

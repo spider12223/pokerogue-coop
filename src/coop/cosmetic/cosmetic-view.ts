@@ -276,8 +276,9 @@ export class CosmeticView {
       return;
     }
 
+    const actorBox = battlerBox(actor);
     const objects: Phaser.GameObjects.GameObject[] = [
-      addTag(actor.x, battlerBox(actor).top - 1, pieces, { accent, dim: !intent.ready, tail: true }),
+      addTag(actorBox.x, actorBox.top - 1, pieces, { accent, dim: !intent.ready, tail: true }),
     ];
     if (aimed) {
       // a pointer over the target: moving while the partner is still aiming, still once locked in
@@ -604,7 +605,8 @@ function bubbleSpot(seat: Seat): [number, number] {
   }
   for (const [slot, pokemon] of globalScene.getPlayerField().entries()) {
     if (pokemon?.isActive() && controllerOf(slot) === seat) {
-      return [pokemon.x, battlerBox(pokemon).top - 1 - BUBBLE_ABOVE_TAG];
+      const box = battlerBox(pokemon);
+      return [box.x, box.top - 1 - BUBBLE_ABOVE_TAG];
     }
   }
   return [seat === "host" ? width * 0.25 : width * 0.75, 110];

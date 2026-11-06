@@ -29,6 +29,10 @@ export function coopSettingLabel(i18nKey: string): { defaultValue: string } | Re
       return { defaultValue: "Co-op: chat" };
     case "buttonCoopDebug":
       return { defaultValue: "Co-op: debug menu (host)" };
+    case "buttonCoopZoomOut":
+      return { defaultValue: "Co-op: zoom out" };
+    case "buttonCoopZoomIn":
+      return { defaultValue: "Co-op: zoom in" };
     default:
       return {};
   }
@@ -64,6 +68,15 @@ export function bindCoopHotkeys(custom: Record<string, unknown>, isDev: boolean)
   // The debug menu (D42): F8, if it is free
   if (!values.includes(SettingKeyboard.BUTTON_COOP_DEBUG) && custom["KEY_F8"] === -1) {
     custom["KEY_F8"] = SettingKeyboard.BUTTON_COOP_DEBUG;
+    changed = true;
+  }
+  // The battlefield zoom (D44): numpad minus and plus, if they are free
+  if (!values.includes(SettingKeyboard.BUTTON_COOP_ZOOM_OUT) && custom["KEY_MINUS"] === -1) {
+    custom["KEY_MINUS"] = SettingKeyboard.BUTTON_COOP_ZOOM_OUT;
+    changed = true;
+  }
+  if (!values.includes(SettingKeyboard.BUTTON_COOP_ZOOM_IN) && custom["KEY_PLUS"] === -1) {
+    custom["KEY_PLUS"] = SettingKeyboard.BUTTON_COOP_ZOOM_IN;
     changed = true;
   }
   return changed;

@@ -188,7 +188,8 @@ export function addTargetPointer(pokemon: Pokemon, color: number, bob = false): 
     drawPixels(graphics, POINTER, left + dx, top + dy, MARK_COLORS.shadow);
   }
   drawPixels(graphics, POINTER, left, top, color);
-  pointer.setPosition(Math.round(pokemon.x), battlerBox(pokemon).top - 3 - globalScene.scaledCanvas.height);
+  const box = battlerBox(pokemon);
+  pointer.setPosition(box.x, box.top - 3 - globalScene.scaledCanvas.height);
   addUnderPanels(pointer);
   if (bob) {
     globalScene.tweens.add({ targets: pointer, y: pointer.y - 2, duration: 420, yoyo: true, repeat: -1 });
@@ -197,20 +198,31 @@ export function addTargetPointer(pokemon: Pokemon, color: number, bob = false): 
 }
 
 /**
- * Where a battler is drawn, in field units: its sprite's frame, trimmed to the part a Pokémon fills (the frames have room
- * around the Pokémon). Without a sprite (a test scene), a box of the usual size.
+ * Where a battler is drawn, in the units of the field's UI (where the marks go): its sprite's frame, trimmed to the part a
+ * Pokémon fills (the frames have room around the Pokémon). The field may be zoomed (the game's zoom for a big Pokémon, a
+ * battle of three, the player's own, D44): the box is where the zoomed field draws it. Without a sprite (a test scene), a
+ * box of the usual size.
  */
-export function battlerBox(pokemon: Pokemon): { left: number; right: number; top: number; bottom: number } {
+export function battlerBox(pokemon: Pokemon): {
+  x: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+} {
   const sprite = pokemon.getSprite?.() as Phaser.GameObjects.Sprite | undefined;
   const scale = Math.abs(pokemon.scale || 1);
   const frameWidth = (Number.isFinite(sprite?.displayWidth) && sprite?.displayWidth ? sprite.displayWidth : 48) * scale;
   const frameHeight =
     (Number.isFinite(sprite?.displayHeight) && sprite?.displayHeight ? sprite.displayHeight : 48) * scale;
-  const width = Math.round(frameWidth * 0.7);
-  const height = Math.round(frameHeight * 0.8);
-  const x = Math.round(pokemon.x);
-  const bottom = Math.round(pokemon.y);
-  return { left: x - Math.round(width / 2), right: x + Math.round(width / 2), top: bottom - height, bottom };
+  // field units to the UI's: the field is drawn at `field.scale` from (`field.x`, `field.y`), the UI at 6 from the corner
+  const field = globalScene.field;
+  const zoom = (field?.scale || 6) / 6;
+  const width = Math.round(frameWidth * 0.7 * zoom);
+  const height = Math.round(frameHeight * 0.8 * zoom);
+  const x = Math.round((field?.x ?? 0) / 6 + pokemon.x * zoom);
+  const bottom = Math.round((field?.y ?? 0) / 6 + pokemon.y * zoom);
+  return { x, left: x - Math.round(width / 2), right: x + Math.round(width / 2), top: bottom - height, bottom };
 }
 
 /** A text's width in canvas units; the test scene's texts have none, so it is guessed from the length */

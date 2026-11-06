@@ -63,6 +63,7 @@ import { RelayError } from "#coop/transport/relay-ws";
 import { stopAllAfkWatchers } from "#coop/ui/afk";
 import { startChat, stopChat } from "#coop/ui/chat";
 import { copyText } from "#coop/ui/clipboard";
+import { listenForFieldWheel } from "#coop/ui/field-zoom";
 import { startPacer, stopPacer } from "#coop/ui/pace-run";
 import { coloredName } from "#coop/ui/player-colors";
 import { hidePlayersLine, showPlayersLine } from "#coop/ui/players-line";
@@ -721,6 +722,8 @@ export function beginSession(
   setReportButtonVisible(true);
   // The chat box (D38), for the whole session
   startChat(link, getCoopName());
+  // The wheel zooms this player's battlefield (D44)
+  listenForFieldWheel();
   // The host's debug menu (D42): only the host's, and only with the menu on; nothing of an earlier run's is in effect
   clearDebugQueue();
   writeDebugOverrides(null, 0);

@@ -31,6 +31,7 @@ import { coopEnemyStat } from "#coop/rules/enemy-buff";
 import { getCoopSession, isCoop } from "#coop/session";
 import { drawUniquePokemonId } from "#coop/sync/pokemon-id";
 import { ownerSeat, simAccount, writesForPokemon } from "#coop/sync/sim-account";
+import { syncHideButton } from "#coop/ui/box-hide";
 import {
   hideTeammateBar,
   inBattleOfThree,
@@ -3402,6 +3403,8 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
       return;
     }
     placeEnemyBoxForThree(this);
+    // Co-op (D44): the box's hide handle, and the box away if this player hid its place
+    syncHideButton(this);
     if (!this.battleInfo.visible) {
       const otherBattleInfo = globalScene.fieldUI
         .getAll()

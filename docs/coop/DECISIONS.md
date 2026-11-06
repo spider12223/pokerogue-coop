@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D41, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D44, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -1219,6 +1219,21 @@ two with an old connection still open).
   kept 90 days. `coop-worker/src/stats.ts`. A relay without the binding (`wrangler dev`, a copy someone else hosts, or
   the Node `coop-server`) counts nothing.
 - **Not counted:** people. The same three friends who fill five rooms are five rooms.
+
+## D44. Each player's own view of the battle
+
+Two things a player changes on their own screen only: nothing is sent to the partner and nothing of the simulation
+changes, so they cannot desync a run. Co-op only; solo play keeps upstream's screen.
+
+- **Hide an HP box:** every HP box (the enemies' and ours) has a small handle past its type icons. It slides the box off
+  the screen's edge (an enemy's to the left, ours to the right) until only the handle is left there; pressed again, the
+  box comes back. Each place of the field (side and field index) hides on its own and stays hidden for the next Pokémon
+  there, through switches and waves, and in this browser (`coopHiddenBoxes`). Mouse or touch only.
+- **Zoom out:** the battlefield (the Pokémon, their bases, the trainers) shrinks around its middle, from 100% to 60% in
+  steps of 10%, with the mouse wheel over the game (a burst of wheel events is one step) or two buttons, numpad minus and
+  plus at first, rebindable in the keyboard settings. The background stays as it is; the game's own zoom (a big Pokémon,
+  a battle of three) comes on top. Kept in this browser (`coopFieldZoom`). The marks over a Pokémon (intents, pings,
+  emotes, D16) follow the zoomed field.
 
 ## See also
 

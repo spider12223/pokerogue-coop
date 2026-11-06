@@ -25,4 +25,7 @@ export enum Button {
   COOP_CHAT,
   /** Co-op (D42): the host opens the debug menu */
   COOP_DEBUG,
+  /** Co-op (D44): this player's battlefield zoom, out and in */
+  COOP_ZOOM_OUT,
+  COOP_ZOOM_IN,
 }

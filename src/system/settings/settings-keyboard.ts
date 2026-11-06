@@ -48,6 +48,9 @@ export enum SettingKeyboard {
   /** Co-op: the chat box (DECISIONS D38) */
   BUTTON_COOP_CHAT = "BUTTON_COOP_CHAT",
   BUTTON_COOP_DEBUG = "BUTTON_COOP_DEBUG",
+  /** Co-op: this player's battlefield zoom (DECISIONS D44) */
+  BUTTON_COOP_ZOOM_OUT = "BUTTON_COOP_ZOOM_OUT",
+  BUTTON_COOP_ZOOM_IN = "BUTTON_COOP_ZOOM_IN",
 }
 
 const pressAction = i18next.t("settings:pressToBind");
@@ -93,6 +96,8 @@ export const settingKeyboardOptions = {
   [SettingKeyboard.BUTTON_COOP_EMOTE]: [`KEY ${Button.COOP_EMOTE.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_COOP_CHAT]: [`KEY ${Button.COOP_CHAT.toString()}`, pressAction],
   [SettingKeyboard.BUTTON_COOP_DEBUG]: [`KEY ${Button.COOP_DEBUG.toString()}`, pressAction],
+  [SettingKeyboard.BUTTON_COOP_ZOOM_OUT]: [`KEY ${Button.COOP_ZOOM_OUT.toString()}`, pressAction],
+  [SettingKeyboard.BUTTON_COOP_ZOOM_IN]: [`KEY ${Button.COOP_ZOOM_IN.toString()}`, pressAction],
 };
 
 export const settingKeyboardDefaults = {
@@ -137,6 +142,8 @@ export const settingKeyboardDefaults = {
   [SettingKeyboard.BUTTON_COOP_EMOTE]: 0,
   [SettingKeyboard.BUTTON_COOP_CHAT]: 0,
   [SettingKeyboard.BUTTON_COOP_DEBUG]: 0,
+  [SettingKeyboard.BUTTON_COOP_ZOOM_OUT]: 0,
+  [SettingKeyboard.BUTTON_COOP_ZOOM_IN]: 0,
 };
 
 export const settingKeyboardBlackList = [
@@ -190,6 +197,8 @@ export function setSettingKeyboard(setting: SettingKeyboard, value: number): boo
     case SettingKeyboard.BUTTON_COOP_EMOTE:
     case SettingKeyboard.BUTTON_COOP_CHAT:
     case SettingKeyboard.BUTTON_COOP_DEBUG:
+    case SettingKeyboard.BUTTON_COOP_ZOOM_OUT:
+    case SettingKeyboard.BUTTON_COOP_ZOOM_IN:
       if (value && globalScene.ui) {
         const cancelHandler = (success = false): boolean => {
           globalScene.ui.revertMode();

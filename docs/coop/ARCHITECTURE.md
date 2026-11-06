@@ -380,7 +380,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `sync/` | Determinism and desync detection: seeded draws, the account snapshot, state hashes, checkpoints, the phase trace |
 | `save/` | Saves, reloads and rejoining: the save block, the co-op save files, resync, seat tokens, account import and backup |
 | `cosmetic/` | The cosmetic channel: intents, cursors, pings, emotes, and the hotkeys and touch buttons that send them |
-| `ui/` | The co-op screens and widgets: the UI strings, waiting lines, the take over menus, pacing, the chat, HP bars of three |
+| `ui/` | The co-op screens and widgets: the UI strings, waiting lines, the take over menus, pacing, the chat, HP bars of three, each player's own view |
 | `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector |
 | `debug/` | The host's debug menu (D42) |
 
@@ -520,6 +520,8 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `ui/player-colors.ts` | Each player's colour on the screens of a game of three | D40 | yes |
 | `ui/players-line.ts` | The line under the waiting text of a room of three: who is in, in their colours | D40 | no |
 | `ui/three-field.ts` | The HP of a battle of three: the teammates' bars over their Pokémon, the enemy boxes | D40 | no |
+| `ui/box-hide.ts` | The hide handle of every HP box: a place of the field hidden on this client, kept in the browser | D44 | no |
+| `ui/field-zoom.ts` | This player's zoom of the battlefield (wheel, two keys), applied in `setFieldScale` | D44 | no |
 | `ui/clipboard.ts` | `copyText`, for the lobby's "Copy code" button | | yes |
 | `ui/source-link.ts` | `sourceUrlOf`: the title screen's Source link (the build insists on one: `plugins/vite/require-source-url.ts`) | D25 | yes |
 
@@ -552,7 +554,8 @@ See [The host's debug menu](#the-hosts-debug-menu-d42).
 | `src/phases/game-over-phase.ts`, `post-game-over-phase.ts` | The shared run end and the retry after a wipe | D4a |
 | `src/phases/egg-lapse-phase.ts`, `egg-summary-phase.ts`, `trainer-victory-phase.ts`, `victory-phase.ts` | Eggs, vouchers, the rewards of a lone encounter enemy | D29, D30 |
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
-| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`) | D6, D34 |
+| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`); `setFieldScale` adds the player's zoom | D6, D34, D44 |
+| `src/field/pokemon.ts` | `showInfo`: a teammate's bar in a battle of three, the enemy boxes of three, the box's hide handle | D40, D44 |
 | `src/field/arena.ts` | `randomTrainerType` asks `pickCoopTrainer` in co-op | D34 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |
 | `src/timed-event-manager.ts` | `isActive` reads the run's events in co-op, the clock in solo; `eventsByClock` is what a player brings to the run | D33 |

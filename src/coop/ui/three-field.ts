@@ -7,6 +7,7 @@
 import { globalScene } from "#app/global-scene";
 import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
+import { resetBoxShift } from "#coop/ui/box-hide";
 import { PLAYER_COLORS } from "#coop/ui/player-colors";
 import { TextStyle } from "#enums/text-style";
 import type { Pokemon } from "#field/pokemon";
@@ -149,4 +150,5 @@ export function placeEnemyBoxForThree(pokemon: Pokemon): void {
   const info = pokemon.getBattleInfo();
   info.setScale(5 / 6);
   info.placeAt(x - (pokemon.isBoss() ? 48 : 0), y);
+  resetBoxShift(info);
 }

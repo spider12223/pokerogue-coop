@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import type { Page } from "@playwright/test";
 import { type ClientState, choose } from "../engine.ts";
 import type { Scenario } from "../scenario.ts";
 import { partnerOf } from "../variables.ts";
@@ -159,4 +160,70 @@ const debugWindow: Scenario = {
   },
 };
 
-export const togetherScenarios: Scenario[] = [chat, pings, away, reconnect, debugWindow];
+/** Where the hide handle of a box of the field is on the page: an enemy's or ours, and the field index (D44) */
+async function handleOnPage(page: Page, enemy: boolean, index: number): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    async ([path, isEnemy, at]) => {
+      const { globalScene } = await import(path as string);
+      const pokemon = (isEnemy ? globalScene.getEnemyField() : globalScene.getPlayerField())[at as number];
+      const handle = pokemon.getBattleInfo().getByName("coop_hide");
+      const point = handle.getWorldTransformMatrix().transformPoint(4.5, 0);
+      const rect = (globalScene.game.canvas as HTMLCanvasElement).getBoundingClientRect();
+      return {
+        x: rect.left + (point.x * rect.width) / globalScene.game.canvas.width,
+        y: rect.top + (point.y * rect.height) / globalScene.game.canvas.height,
+      };
+    },
+    ["/src/globals/global-scene.ts", enemy, index] as const,
+  );
+}
+
+const view: Scenario = {
+  id: "coop:view",
+  area: "Co-op",
+  summary:
+    "--seat zooms its battlefield out (numpad minus, then the wheel), sees a partner's move on the zoomed field, and hides an enemy's HP box and its own with their handles (D44); the others' screens do not change",
+  vars: { seat: null },
+  async play(run, vars) {
+    await run.toRun();
+    await run.drive({ until: atCommand, shoot: () => false });
+    const page = run.client(vars.seat).page;
+    await run.shot("before", true);
+    for (let i = 0; i < 2; i++) {
+      await page.keyboard.press("NumpadSubtract");
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(500);
+    await run.shot("zoom-80", true);
+    const canvas = await page.locator("canvas").boundingBox();
+    if (canvas !== null) {
+      await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + canvas.height / 3);
+    }
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(400);
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(700);
+    await run.shot("zoom-60", true);
+    // a partner picks a move: its tag and target pointer on this player's zoomed field
+    const partner = run.seats.find(seat => seat !== vars.seat);
+    if (partner !== undefined) {
+      await run.pressFor(partner, "ACTION", "FIGHT");
+      await run.pressFor(partner, "ACTION", "TARGET_SELECT");
+      await page.waitForTimeout(700);
+      await run.shot("partner-aims", true);
+    }
+    const enemyHandle = await handleOnPage(page, true, 0);
+    await page.mouse.click(enemyHandle.x, enemyHandle.y);
+    await page.waitForTimeout(600);
+    const mineHandle = await handleOnPage(page, false, 0);
+    await page.mouse.click(mineHandle.x, mineHandle.y);
+    await page.waitForTimeout(600);
+    await run.shot("boxes-hidden", true);
+    const back = await handleOnPage(page, true, 0);
+    await page.mouse.click(back.x, back.y);
+    await page.waitForTimeout(600);
+    await run.shot("enemy-box-back", true);
+  },
+};
+
+export const togetherScenarios: Scenario[] = [chat, pings, away, reconnect, debugWindow, view];
