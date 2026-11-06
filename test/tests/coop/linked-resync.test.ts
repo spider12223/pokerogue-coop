@@ -4,12 +4,17 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { COOP_SLOT_KEY } from "#coop/coop-slot";
-import { hideReconnectScreen, isEndSessionOffered, reconnectScreenText, showReconnectScreen } from "#coop/reconnect-ui";
-import type { ResyncPayload } from "#coop/resync";
-import { reportOf } from "#coop/resync-run";
-import { isCoopSaveBlock } from "#coop/save-block";
-import { currentCoopSlot } from "#coop/wave-save";
+import { COOP_SLOT_KEY } from "#coop/save/coop-slot";
+import type { ResyncPayload } from "#coop/save/resync";
+import { reportOf } from "#coop/save/resync-run";
+import { isCoopSaveBlock } from "#coop/save/save-block";
+import { currentCoopSlot } from "#coop/save/wave-save";
+import {
+  hideReconnectScreen,
+  isEndSessionOffered,
+  reconnectScreenText,
+  showReconnectScreen,
+} from "#coop/ui/reconnect-ui";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
 import { SpeciesId } from "#enums/species-id";

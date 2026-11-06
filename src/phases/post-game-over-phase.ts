@@ -1,9 +1,9 @@
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { leaveCoop } from "#coop/lobby";
-import { askPlayAgain } from "#coop/play-again";
+import { leaveCoop } from "#coop/link/lobby";
+import { askPlayAgain } from "#coop/link/play-again";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { getCoopSession } from "#coop/session";
-import { removeCoopSlot } from "#coop/wave-save";
 import type { EndCardPhase } from "#phases/end-card-phase";
 
 export class PostGameOverPhase extends Phase {

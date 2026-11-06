@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { drawUniquePokemonId, MAX_ID_REDRAWS } from "#coop/pokemon-id";
+import { drawUniquePokemonId, MAX_ID_REDRAWS } from "#coop/sync/pokemon-id";
 import { describe, expect, it } from "vitest";
 
 function sequence(values: number[]): { draw: () => number; drawn: () => number } {

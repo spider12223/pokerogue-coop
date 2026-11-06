@@ -4,10 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot } from "#coop/account-snapshot";
-import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
-import { guestHandshake } from "#coop/handshake";
-import { CoopLink, createRoom, establishGuest, establishHost, HandshakeRefusedError, joinRoom } from "#coop/link";
+import { guestHandshake } from "#coop/link/handshake";
+import { CoopLink, createRoom, establishGuest, establishHost, HandshakeRefusedError, joinRoom } from "#coop/link/link";
+import { StarterLobby } from "#coop/link/starter-lobby";
 import {
   type BuildIdentity,
   type CoopStarter,
@@ -17,7 +16,8 @@ import {
   type StartPayload,
 } from "#coop/protocol";
 import { CoopSession } from "#coop/session";
-import { StarterLobby } from "#coop/starter-lobby";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
+import { attachCheckpointExchange } from "#coop/sync/checkpoint-exchange";
 import { FanoutTransport } from "#coop/transport/fanout";
 import { createLoopbackPair, createLoopbackRoom } from "#coop/transport/loopback";
 import { RelayError, type RelayEvent, type RelayWsTransport } from "#coop/transport/relay-ws";

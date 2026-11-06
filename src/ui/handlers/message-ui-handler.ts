@@ -1,7 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
-import { coopPromptClosed, coopPromptOpened, coopTextAtOnce } from "#coop/pace-run";
+import { coopPromptClosed, coopPromptOpened, coopTextAtOnce } from "#coop/ui/pace-run";
 import { TextStyle } from "#enums/text-style";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { addBBCodeTextObject } from "#ui/text";

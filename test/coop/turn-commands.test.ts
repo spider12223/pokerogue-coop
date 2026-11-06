@@ -13,17 +13,17 @@ import {
   pivotSwitchKey,
   sideActionKey,
   turnCommandsKey,
-} from "#coop/decision-keys";
-import { interleaveStarters } from "#coop/ownership";
-import { isLearnMovePayload } from "#coop/prompt-payloads";
-import { isDecisionKey, keyId } from "#coop/protocol";
+} from "#coop/decisions/decision-keys";
+import { isLearnMovePayload } from "#coop/decisions/prompt-payloads";
 import {
   commandFromWire,
   commandToWire,
   isSideAction,
   isTurnCommandsPayload,
   isWireCommand,
-} from "#coop/turn-commands";
+} from "#coop/decisions/turn-commands";
+import { isDecisionKey, keyId } from "#coop/protocol";
+import { interleaveStarters } from "#coop/rules/ownership";
 import { Command } from "#enums/command";
 import { MoveUseMode } from "#enums/move-use-mode";
 import { describe, expect, it } from "vitest";

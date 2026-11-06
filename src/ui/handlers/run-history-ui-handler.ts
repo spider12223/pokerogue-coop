@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
-import { coopRunNames } from "#coop/labels";
-import { coopText } from "#coop/text";
+import { coopRunNames } from "#coop/ui/labels";
+import { coopText } from "#coop/ui/text";
 import { BattleType } from "#enums/battle-type";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";

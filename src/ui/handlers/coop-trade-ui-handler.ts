@@ -6,10 +6,10 @@
 
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { drawPixels, MARK_COLORS, MARK_ICONS } from "#coop/cosmetic-tag";
-import { playerColorHex } from "#coop/player-colors";
+import { drawPixels, MARK_COLORS, MARK_ICONS } from "#coop/cosmetic/cosmetic-tag";
 import type { Seat } from "#coop/protocol";
-import { coopText } from "#coop/text";
+import { playerColorHex } from "#coop/ui/player-colors";
+import { coopText } from "#coop/ui/text";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
 import type { PlayerPokemon } from "#field/pokemon";

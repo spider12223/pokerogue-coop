@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type Draggable, makeDraggable } from "#coop/draggable";
+import { type Draggable, makeDraggable } from "#coop/ui/draggable";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /** The chat box (D38) and the debug menu (D42) can be dragged around the screen, and stay where they were dropped */

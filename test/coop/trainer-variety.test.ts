@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { noteTrainerMet, unmetTrainerPool } from "#coop/rules/trainer-variety";
 import { endCoopSession, startCoopSession } from "#coop/session";
-import { noteTrainerMet, unmetTrainerPool } from "#coop/trainer-variety";
 import { BiomePoolTier } from "#enums/biome-pool-tier";
 import { TrainerType } from "#enums/trainer-type";
 import type { TrainerPools } from "#types/biomes";

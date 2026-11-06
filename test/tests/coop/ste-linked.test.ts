@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { controllerOf, deciderOf, ownerOf } from "#coop/control";
+import { controllerOf, deciderOf, ownerOf } from "#coop/decisions/control";
+import type { Decision } from "#coop/decisions/sequencer";
+import { commandToWire, type TurnCommandsPayload } from "#coop/decisions/turn-commands";
 import { type CheckpointMessage, type DecisionKey, keyId, otherSeat, type Seat, type SeatRecord } from "#coop/protocol";
-import type { RewardAction } from "#coop/reward-actions";
-import type { Decision } from "#coop/sequencer";
-import { commandTargetPick } from "#coop/sim-rng";
-import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
-import { commandToWire, type TurnCommandsPayload } from "#coop/turn-commands";
+import type { RewardAction } from "#coop/rules/reward-actions";
+import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/rules/trade";
+import { commandTargetPick } from "#coop/sync/sim-rng";
 import { modifierTypes } from "#data/data-lists";
 import { getLevelTotalExp } from "#data/exp";
 import { BattleType } from "#enums/battle-type";

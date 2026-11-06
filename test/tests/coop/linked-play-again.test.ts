@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
-import type { HostRoom } from "#coop/link";
-import { playAgainNetwork, startPlayAgain } from "#coop/play-again";
+import type { HostRoom } from "#coop/link/link";
+import { playAgainNetwork, startPlayAgain } from "#coop/link/play-again";
 import type { CoopChallenge } from "#coop/protocol";
-import { removeCoopSlot } from "#coop/wave-save";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/save/coop-slot";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { Challenges } from "#enums/challenges";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";

@@ -13,10 +13,10 @@ import {
   getValueReductionCandyCounts,
   POKERUS_STARTER_COUNT,
 } from "#balance/starters";
-import { getStarterLobby, returnToTitle } from "#coop/lobby";
+import { getStarterLobby, returnToTitle } from "#coop/link/lobby";
+import { CoopStarterSelectController, getStarterPickLimit } from "#coop/link/starter-select-coop";
 import { getCoopSession } from "#coop/session";
-import { CoopStarterSelectController, getStarterPickLimit } from "#coop/starter-select-coop";
-import { coopText } from "#coop/text";
+import { coopText } from "#coop/ui/text";
 import { allMoves } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { getNatureName } from "#data/nature";

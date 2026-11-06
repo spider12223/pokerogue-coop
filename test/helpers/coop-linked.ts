@@ -5,13 +5,15 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { listenForAgain } from "#coop/again-answer";
-import { attachCheckpointExchange } from "#coop/checkpoint-exchange";
-import { controllerOf, deciderOf, ownerOf, switchTargets } from "#coop/control";
-import type { CosmeticMessage } from "#coop/cosmetic";
-import { startCosmeticView, stopCosmeticView } from "#coop/cosmetic-view";
-import { EpochTransport } from "#coop/epoch";
-import { CoopLink } from "#coop/link";
+import type { CosmeticMessage } from "#coop/cosmetic/cosmetic";
+import { startCosmeticView, stopCosmeticView } from "#coop/cosmetic/cosmetic-view";
+import { controllerOf, deciderOf, ownerOf, switchTargets } from "#coop/decisions/control";
+import { Sequencer } from "#coop/decisions/sequencer";
+import type { AfkTimers } from "#coop/decisions/takeover";
+import { commandToWire, type SideActionPayload, type TurnCommandsPayload } from "#coop/decisions/turn-commands";
+import { validateProposal } from "#coop/decisions/validate";
+import { listenForAgain } from "#coop/link/again-answer";
+import { CoopLink } from "#coop/link/link";
 import {
   type CheckpointMessage,
   type DecisionKey,
@@ -20,20 +22,18 @@ import {
   otherSeat,
   type Seat,
 } from "#coop/protocol";
-import type { ResyncMessage, ResyncPayload, ResyncReason, ResyncRequestPayload } from "#coop/resync";
-import { installResync } from "#coop/resync-run";
-import type { RetryPayload } from "#coop/retry";
-import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions";
-import { Sequencer } from "#coop/sequencer";
+import type { RetryPayload } from "#coop/rules/retry";
+import { kindOfAction, type RewardAction, rewardKey } from "#coop/rules/reward-actions";
+import type { ResyncMessage, ResyncPayload, ResyncReason, ResyncRequestPayload } from "#coop/save/resync";
+import { installResync } from "#coop/save/resync-run";
 import { type CoopSession, requireCoopSession, rewardPickerOf } from "#coop/session";
-import type { AfkTimers } from "#coop/takeover";
+import { attachCheckpointExchange } from "#coop/sync/checkpoint-exchange";
+import { EpochTransport } from "#coop/transport/epoch";
 import { FanoutTransport } from "#coop/transport/fanout";
 import { createLoopbackPair, createLoopbackRoom } from "#coop/transport/loopback";
 import type { RelayWsTransport } from "#coop/transport/relay-ws";
 import { ReliableTransport } from "#coop/transport/reliable";
 import { RoutedHub } from "#coop/transport/routed";
-import { commandToWire, type SideActionPayload, type TurnCommandsPayload } from "#coop/turn-commands";
-import { validateProposal } from "#coop/validate";
 import { BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";

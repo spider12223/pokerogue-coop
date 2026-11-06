@@ -2,7 +2,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { isCoop } from "#coop/session";
-import { simAccount } from "#coop/sim-account";
+import { simAccount } from "#coop/sync/sim-account";
 import { modifierTypes } from "#data/data-lists";
 import { MAX_PER_TYPE_POKEBALLS } from "#data/pokeball";
 import { AbilityId } from "#enums/ability-id";

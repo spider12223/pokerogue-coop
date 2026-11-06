@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { coopText } from "#coop/bridge";
+import { coopText } from "#coop/decisions/bridge";
 import type { ModalConfig } from "#types/ui-types";
 import { FormModalUiHandler, type InputFieldConfig } from "#ui/form-modal-ui-handler";
 import i18next from "i18next";

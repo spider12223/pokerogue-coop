@@ -5,11 +5,11 @@
  */
 
 import { GameMode } from "#app/game-mode";
-import * as buildInfo from "#coop/build-info";
-import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
-import { localAccountId, matchBuild, showCoopTitleMenu } from "#coop/lobby";
+import * as buildInfo from "#coop/link/build-info";
+import { localAccountId, matchBuild, showCoopTitleMenu } from "#coop/link/lobby";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, readCoopSlot, writeCoopSlot } from "#coop/save/coop-slot";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { endCoopSession } from "#coop/session";
-import { removeCoopSlot } from "#coop/wave-save";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";

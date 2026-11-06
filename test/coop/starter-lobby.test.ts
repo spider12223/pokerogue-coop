@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot } from "#coop/account-snapshot";
-import type { LinkEnd } from "#coop/link";
+import type { LinkEnd } from "#coop/link/link";
+import { StarterLobby } from "#coop/link/starter-lobby";
 import type { CoopStarter, LobbyMessage, StartPayload } from "#coop/protocol";
-import { StarterLobby } from "#coop/starter-lobby";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
 import { describe, expect, it } from "vitest";
 
 /** The starter select's lobby over a link that drops and comes back (D20) */

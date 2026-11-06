@@ -13,6 +13,7 @@ import { Tutorial } from "#app/tutorial";
 import { speciesEggMoves } from "#balance/egg-moves";
 import { bypassLogin, isBeta, isDev, systemSaveShortKeyMap } from "#constants/app-constants";
 import { MAX_STARTER_CANDY_COUNT } from "#constants/game-constants";
+import { ownAccountData } from "#coop/link/shared-collection";
 import {
   decodeSaveText,
   gameImportCatalog,
@@ -24,10 +25,9 @@ import {
   showImportNotes,
   systemImportNotes,
   systemImportRefusalText,
-} from "#coop/import-account";
-import { noteAccountExported } from "#coop/save-backup-offer";
+} from "#coop/save/import-account";
+import { noteAccountExported } from "#coop/save/save-backup-offer";
 import { checkSessionSaveBlock, isCoop, requireCoopSession } from "#coop/session";
-import { ownAccountData } from "#coop/shared-collection";
 import { EntryHazardTag } from "#data/arena-tag";
 import { getSerializedDailyRunConfig, parseDailySeed } from "#data/daily-seed-utils";
 import { allMoves } from "#data/data-lists";

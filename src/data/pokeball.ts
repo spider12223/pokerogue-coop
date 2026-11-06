@@ -1,6 +1,6 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
-import { simAccount } from "#coop/sim-account";
+import { simAccount } from "#coop/sync/sim-account";
 import { PokeballType } from "#enums/pokeball";
 import { NumberHolder } from "#utils/common";
 import i18next from "i18next";

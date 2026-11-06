@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { guestHandshake, hostHandshake, type SettingsOverlayPort } from "#coop/handshake";
+import { guestHandshake, hostHandshake, type SettingsOverlayPort } from "#coop/link/handshake";
 import { type BuildIdentity, hashCanonical, type PinnedSettings } from "#coop/protocol";
 import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";

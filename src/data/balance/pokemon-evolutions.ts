@@ -1,7 +1,7 @@
 import type { determineEnemySpecies } from "#ai/ai-species-gen";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { ownerSeat, simAccount } from "#coop/sim-account";
+import { ownerSeat, simAccount } from "#coop/sync/sim-account";
 import { allMoves } from "#data/data-lists";
 import { type Gender, getGenderSymbol } from "#data/gender";
 import type { BiomeId } from "#enums/biome-id";

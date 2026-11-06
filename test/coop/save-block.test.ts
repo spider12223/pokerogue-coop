@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot } from "#coop/account-snapshot";
 import type { BuildIdentity } from "#coop/protocol";
 import {
   COOP_SAVE_VERSION,
@@ -13,8 +12,9 @@ import {
   checkSaveBlock,
   isCoopSaveBlock,
   swapGuestSeats,
-} from "#coop/save-block";
+} from "#coop/save/save-block";
 import { accountIdOf, checkSessionSaveBlock, endCoopSession, rewardPickerOf, startCoopSession } from "#coop/session";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
 import { afterEach, describe, expect, it } from "vitest";
 
 const build: BuildIdentity = {

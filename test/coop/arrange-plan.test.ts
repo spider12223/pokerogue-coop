@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type ArrangeMember, arrangeOrder } from "#coop/arrange-plan";
 import type { Seat } from "#coop/protocol";
+import { type ArrangeMember, arrangeOrder } from "#coop/rules/arrange-plan";
 import { describe, expect, it } from "vitest";
 
 /** "h1 g1 h2! k1" is the host's 1, the guest's 1, the host's 2 (fainted: the `!`), the second guest's 1 */

@@ -1,8 +1,13 @@
 import { globalScene } from "#app/global-scene";
-import { isLinked } from "#coop/bridge";
-import { MARK_COLORS } from "#coop/cosmetic-tag";
-import { getCosmeticView, sendMeCursor } from "#coop/cosmetic-view";
-import { coopMeetsRequirements, refreshChooserWaiting, showChooserWaiting, viewPartyBackToOptions } from "#coop/me-run";
+import { MARK_COLORS } from "#coop/cosmetic/cosmetic-tag";
+import { getCosmeticView, sendMeCursor } from "#coop/cosmetic/cosmetic-view";
+import { isLinked } from "#coop/decisions/bridge";
+import {
+  coopMeetsRequirements,
+  refreshChooserWaiting,
+  showChooserWaiting,
+  viewPartyBackToOptions,
+} from "#coop/rules/me-run";
 import { getCoopSession } from "#coop/session";
 import { getPokeballAtlasKey } from "#data/pokeball";
 import { Button } from "#enums/buttons";

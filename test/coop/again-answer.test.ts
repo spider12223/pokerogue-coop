@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { AgainAnswer } from "#coop/again-answer";
-import type { CoopLink } from "#coop/link";
+import { AgainAnswer } from "#coop/link/again-answer";
+import type { CoopLink } from "#coop/link/link";
 import type { LobbyMessage, Seat } from "#coop/protocol";
 import { describe, expect, it } from "vitest";
 

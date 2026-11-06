@@ -1,18 +1,17 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
-import { AfkWatcher, tookOverText } from "#coop/afk";
-import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
-import { coopRewardOptionsReady } from "#coop/checkpoints";
-import { endTurnCosmetics, getCosmeticView } from "#coop/cosmetic-view";
+import { endTurnCosmetics, getCosmeticView } from "#coop/cosmetic/cosmetic-view";
 import { isDebugBatch } from "#coop/debug/actions";
 import { applyDebugBatch } from "#coop/debug/apply";
 import { debugRewardCount } from "#coop/debug/hooks";
 import { setDebugSink } from "#coop/debug/queue";
-import type { RewardOptionView, RewardView } from "#coop/legal";
-import { type PartyEdit, partyEditKey } from "#coop/party-edit";
-import { applyPartyEdit } from "#coop/party-edit-run";
+import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/decisions/bridge";
+import type { RewardOptionView, RewardView } from "#coop/decisions/legal";
+import { ProposalRejectedError, type RejectReason, type WindowEntry } from "#coop/decisions/sequencer";
 import type { DecisionKey, Seat } from "#coop/protocol";
+import { type PartyEdit, partyEditKey } from "#coop/rules/party-edit";
+import { applyPartyEdit } from "#coop/rules/party-edit-run";
 import {
   isRewardAction,
   isRewardKind,
@@ -21,12 +20,13 @@ import {
   type RewardTarget,
   rewardKey,
   rewardWindow,
-} from "#coop/reward-actions";
-import { rewardResumePlan } from "#coop/reward-resume";
-import { ProposalRejectedError, type RejectReason, type WindowEntry } from "#coop/sequencer";
+} from "#coop/rules/reward-actions";
+import { tradeRequestKey } from "#coop/rules/trade";
+import { rewardResumePlan } from "#coop/save/reward-resume";
+import { saveCoopWaveStart } from "#coop/save/wave-save";
 import { isCoop, requireCoopSession, rewardPickerOf } from "#coop/session";
-import { tradeRequestKey } from "#coop/trade";
-import { saveCoopWaveStart } from "#coop/wave-save";
+import { coopRewardOptionsReady } from "#coop/sync/checkpoints";
+import { AfkWatcher, tookOverText } from "#coop/ui/afk";
 import { ModifierPoolType } from "#enums/modifier-pool-type";
 import type { ModifierTier } from "#enums/modifier-tier";
 import { PartyUiMode } from "#enums/party-ui-mode";

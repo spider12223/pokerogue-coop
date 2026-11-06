@@ -28,7 +28,6 @@ import { TurnCommandManager } from "#app/turn-command-manager";
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
-import { arrangeCoopParty } from "#coop/arrange";
 import {
   debugBeginWave,
   debugEnemySpecies,
@@ -37,9 +36,10 @@ import {
   debugMoneyMultiplier,
   takeDebugJump,
 } from "#coop/debug/hooks";
-import { withCoopDoubleVariant } from "#coop/doubles";
+import { arrangeCoopParty } from "#coop/rules/arrange";
+import { withCoopDoubleVariant } from "#coop/rules/doubles";
+import { noteTrainerMet } from "#coop/rules/trainer-variety";
 import { getCoopSession } from "#coop/session";
-import { noteTrainerMet } from "#coop/trainer-variety";
 import { initCommonAnims, initMoveAnim, loadCommonAnimAssets, loadMoveAnimAssets } from "#data/battle-anims";
 import { getDailyMysteryEncounter } from "#data/daily-run";
 import { allMoves, biomeDepths, modifierTypes } from "#data/data-lists";

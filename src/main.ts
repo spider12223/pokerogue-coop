@@ -28,7 +28,7 @@ async function startGame(): Promise<void> {
   // and so is `VITE_COOP_E2E` unless the image for the browser tests asks for it (D22), so the module is not even emitted
   // in a build that is deployed
   if (import.meta.env.DEV || import.meta.env.VITE_COOP_E2E === "1") {
-    void import("#coop/debug-api").then(({ installCoopDebugApi }) => installCoopDebugApi());
+    void import("#coop/diagnostics/debug-api").then(({ installCoopDebugApi }) => installCoopDebugApi());
   }
 
   const LoadingScene = (await import("./loading-scene")).LoadingScene;

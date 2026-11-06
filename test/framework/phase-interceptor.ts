@@ -1,7 +1,7 @@
 import type { BattleScene } from "#app/battle-scene";
 import type { Phase } from "#app/phase";
 import { PHASE_INTERCEPTOR_COLOR, PHASE_START_COLOR } from "#constants/colors";
-import { tracePhaseStart } from "#coop/checkpoints";
+import { tracePhaseStart } from "#coop/sync/checkpoints";
 import { UiMode } from "#enums/ui-mode";
 import { TEST_TIMEOUT } from "#test/constants";
 import type { GameManager } from "#test/framework/game-manager";

@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { attachCheckpointExchange, CHECKPOINT_LOOKAHEAD } from "#coop/checkpoint-exchange";
-import type { CoopLink } from "#coop/link";
+import type { CoopLink } from "#coop/link/link";
 import type { BuildIdentity, CheckpointMessage, Seat } from "#coop/protocol";
 import { CoopSession } from "#coop/session";
+import { attachCheckpointExchange, CHECKPOINT_LOOKAHEAD } from "#coop/sync/checkpoint-exchange";
 import { describe, expect, it } from "vitest";
 
 /**

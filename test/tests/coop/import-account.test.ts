@@ -7,11 +7,16 @@
 import { saveKey } from "#app/constants";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import * as appConstants from "#constants/app-constants";
-import { COOP_SLOT_FILES, COOP_SLOT_VERSION, writeCoopSlot } from "#coop/coop-slot";
-import { importInCoopText, sessionImportHint, systemImportNotes, systemImportRefusalText } from "#coop/import-account";
-import { localAccountId, showCoopTitleMenu } from "#coop/lobby";
+import { localAccountId, showCoopTitleMenu } from "#coop/link/lobby";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, writeCoopSlot } from "#coop/save/coop-slot";
+import {
+  importInCoopText,
+  sessionImportHint,
+  systemImportNotes,
+  systemImportRefusalText,
+} from "#coop/save/import-account";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { endCoopSession, startCoopSession } from "#coop/session";
-import { removeCoopSlot } from "#coop/wave-save";
 import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
 import { GameDataType } from "#enums/game-data-type";

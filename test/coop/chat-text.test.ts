@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { CHAT_MAX, cleanChat, filterChat } from "#coop/chat-text";
+import { CHAT_MAX, cleanChat, filterChat } from "#coop/ui/chat-text";
 import { describe, expect, it } from "vitest";
 
 describe("Co-op: the chat box's text (D38)", () => {

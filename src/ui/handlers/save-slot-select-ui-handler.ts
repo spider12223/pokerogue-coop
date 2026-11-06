@@ -1,7 +1,7 @@
 import { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { isBeta, isDev } from "#constants/app-constants";
-import type { CoopSaveFiles } from "#coop/save-files";
+import type { CoopSaveFiles } from "#coop/save/save-files";
 import { Button } from "#enums/buttons";
 import { GameModes } from "#enums/game-modes";
 import { TextStyle } from "#enums/text-style";

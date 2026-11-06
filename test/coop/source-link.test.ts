@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { sourceUrlOf } from "#coop/source-link";
+import { sourceUrlOf } from "#coop/ui/source-link";
 import { describe, expect, it } from "vitest";
 import { checkSourceUrl, isSourceUrl, requireSourceUrl } from "../../plugins/vite/require-source-url.ts";
 

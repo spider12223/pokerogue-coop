@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { chatInfo, startChat, stopChat, toggleChat } from "#coop/chat";
-import { CoopLink } from "#coop/link";
+import { CoopLink } from "#coop/link/link";
 import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";
+import { chatInfo, startChat, stopChat, toggleChat } from "#coop/ui/chat";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**

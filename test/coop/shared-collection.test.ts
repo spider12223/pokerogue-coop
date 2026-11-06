@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { CollectionData } from "#coop/collection-data";
-import { CoopLink } from "#coop/link";
-import { isLobbyMessage, type LobbyMessage } from "#coop/protocol";
+import type { CollectionData } from "#coop/link/collection-data";
+import { CoopLink } from "#coop/link/link";
 import {
   CollectionExchange,
   type CollectionHolder,
@@ -17,7 +16,8 @@ import {
   ownAccountData,
   poolCollection,
   unpoolCollection,
-} from "#coop/shared-collection";
+} from "#coop/link/shared-collection";
+import { isLobbyMessage, type LobbyMessage } from "#coop/protocol";
 import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";
 import { Passive } from "#enums/passive";

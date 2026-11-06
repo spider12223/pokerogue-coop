@@ -550,7 +550,7 @@ a {
   animation: blink normal 4s infinite ease-in-out; /* Opera and prob css3 final iteration */
 }
 
-/* co-op: the emote and ping buttons of the touch pad (src/coop/touch-emote.ts); only while a co-op run is linked */
+/* co-op: the emote and ping buttons of the touch pad (src/coop/cosmetic/touch-emote.ts); only while a co-op run is linked */
 #coopEmoteTouch,
 #coopPingTouch {
   display: none;
@@ -569,7 +569,7 @@ a {
   display: flex;
 }
 
-/* co-op: "Report a problem" (src/coop/report-button.ts), at the top left, quiet until it is pointed at */
+/* co-op: "Report a problem" (src/coop/diagnostics/report-button.ts), at the top left, quiet until it is pointed at */
 #coopReport {
   position: fixed;
   top: 6px;
@@ -601,7 +601,7 @@ a {
 }
 
 /*
-  co-op: the chat box (src/coop/chat.ts, DECISIONS D38), in the game's font and window colors. It is placed on the game's
+  co-op: the chat box (src/coop/ui/chat.ts, DECISIONS D38), in the game's font and window colors. It is placed on the game's
   picture (16:9, fitted into the page and centered: Scale.FIT in src/main.ts): at its right edge, below the biome name and
   the money of a battle.
 */
@@ -653,7 +653,7 @@ a {
   pointer-events: auto;
 }
 
-/* the chat box and the debug menu are dragged by their title bar (and the chat by its button too): src/coop/draggable.ts */
+/* the chat box and the debug menu are dragged by their title bar (and the chat by its button too): src/coop/ui/draggable.ts */
 .coop-drag-handle {
   cursor: move;
   touch-action: none;

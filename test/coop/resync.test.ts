@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Checkpoint } from "#coop/checkpoint-log";
-import type { PhaseTraceEntry } from "#coop/phase-trace";
 import type { BuildIdentity } from "#coop/protocol";
 import {
   buildReport,
@@ -19,7 +17,9 @@ import {
   ResyncBook,
   type ResyncPayload,
   type ResyncStopPayload,
-} from "#coop/resync";
+} from "#coop/save/resync";
+import type { Checkpoint } from "#coop/sync/checkpoint-log";
+import type { PhaseTraceEntry } from "#coop/sync/phase-trace";
 import { describe, expect, it } from "vitest";
 
 const build: BuildIdentity = {

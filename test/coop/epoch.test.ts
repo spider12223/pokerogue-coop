@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { EpochChangedError, EpochTransport, MAX_HELD_NEWER } from "#coop/epoch";
+import { DesyncError, Sequencer } from "#coop/decisions/sequencer";
 import type { DecisionKey, Envelope, MessageKind } from "#coop/protocol";
-import { DesyncError, Sequencer } from "#coop/sequencer";
+import { EpochChangedError, EpochTransport, MAX_HELD_NEWER } from "#coop/transport/epoch";
 import { describe, expect, it } from "vitest";
 import { createManualLink } from "./manual-link";
 

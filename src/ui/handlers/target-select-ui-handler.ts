@@ -1,8 +1,8 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { sendIntent } from "#coop/cosmetic-view";
-import { teammateTarget } from "#coop/teammate-hit";
-import { coopText } from "#coop/text";
+import { sendIntent } from "#coop/cosmetic/cosmetic-view";
+import { teammateTarget } from "#coop/rules/teammate-hit";
+import { coopText } from "#coop/ui/text";
 import { SubstituteTag } from "#data/battler-tags";
 import { allMoves } from "#data/data-lists";
 import { BattlerIndex, isPlayerBattler } from "#enums/battler-index";

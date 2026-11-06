@@ -5,9 +5,9 @@
  */
 
 import { settings } from "#app/global-settings-manager";
-import type { CosmeticMessage, PaceAt } from "#coop/cosmetic";
-import { paceInfo, startPacer, stopPacer } from "#coop/pace-run";
+import type { CosmeticMessage, PaceAt } from "#coop/cosmetic/cosmetic";
 import type { Seat } from "#coop/protocol";
+import { paceInfo, startPacer, stopPacer } from "#coop/ui/pace-run";
 import { Button } from "#enums/buttons";
 import { GameSpeed } from "#enums/game-speed";
 import { SpeciesId } from "#enums/species-id";

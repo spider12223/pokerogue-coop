@@ -6,8 +6,8 @@
 
 import { GameMode } from "#app/game-mode";
 import { settings } from "#app/global-settings-manager";
-import * as buildInfo from "#coop/build-info";
-import { showCoopTitleMenu } from "#coop/lobby";
+import * as buildInfo from "#coop/link/build-info";
+import { showCoopTitleMenu } from "#coop/link/lobby";
 import { endCoopSession } from "#coop/session";
 import { Button } from "#enums/buttons";
 import { Challenges } from "#enums/challenges";

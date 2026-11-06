@@ -1,0 +1,95 @@
+/*
+ * SPDX-FileCopyrightText: 2026 pokerogue-coop contributors
+ *
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+import { globalScene } from "#app/global-scene";
+import type { CosmeticTarget } from "#coop/cosmetic/cosmetic";
+import { EMOTE_COUNT } from "#coop/cosmetic/cosmetic";
+import { emoteLabel, sendEmote, sendPing } from "#coop/cosmetic/cosmetic-view";
+import { isLinked } from "#coop/decisions/bridge";
+import { showOverlayMenu } from "#coop/ui/overlay";
+import { BattlerIndex } from "#enums/battler-index";
+import { UiMode } from "#enums/ui-mode";
+import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
+import i18next from "i18next";
+
+/**
+ * The two hotkeys of the cosmetic channel (DECISIONS D16): one pings what the player's cursor is on (`P` at first),
+ * one opens the emote wheel (`Q` at first). They are buttons of the game like any other, so the player moves them in the
+ * keyboard settings (they are the last two rows), and there is a button for them on a touch screen. They only do something in
+ * a linked co-op run, and only where a cursor or a message is on screen: never over a form where the player types.
+ *
+ * @module
+ */
+
+/** The screens where a hotkey does something */
+const SCREENS: readonly UiMode[] = [
+  UiMode.MESSAGE,
+  UiMode.COMMAND,
+  UiMode.FIGHT,
+  UiMode.TARGET_SELECT,
+  UiMode.PARTY,
+  UiMode.MODIFIER_SELECT,
+];
+
+/**
+ * The screens where the ping does something: those, and a Mystery Encounter's options, where the player who waits watches
+ * the chooser's cursor and can ping (D29). The emote wheel stays off there: when the chooser picks, the encounter goes on
+ * with a plain change of mode, which would close the wheel only and leave the options drawn under it.
+ */
+const PING_SCREENS: readonly UiMode[] = [...SCREENS, UiMode.MYSTERY_ENCOUNTER];
+
+/** @returns What the player's cursor is on, for a ping; a nudge (nothing in particular) where it is on nothing */
+export function pingTargetOfCursor(): CosmeticTarget {
+  const { ui } = globalScene;
+  switch (ui.mode) {
+    case UiMode.TARGET_SELECT: {
+      const cursor = ui.getHandler().getCursor();
+      if (cursor === BattlerIndex.PLAYER_3) {
+        // the third of ours in a battle of three (D40)
+        return { k: "ally", index: 2 };
+      }
+      if (cursor >= BattlerIndex.ENEMY) {
+        return { k: "enemy", index: cursor - BattlerIndex.ENEMY };
+      }
+      return { k: "ally", index: cursor };
+    }
+    case UiMode.PARTY: {
+      const member = globalScene.getPlayerParty()[ui.getHandler().getCursor()];
+      return member === undefined ? { k: "none" } : { k: "party", pokemonId: member.id };
+    }
+    case UiMode.MODIFIER_SELECT:
+      return (ui.getHandler() as ModifierSelectUiHandler).getPingTarget() ?? { k: "none" };
+    default:
+      return { k: "none" };
+  }
+}
+
+/** Ping what the cursor is on. @returns Whether the ping was sent */
+export function pingNow(): boolean {
+  if (!isLinked() || !PING_SCREENS.includes(globalScene.ui.mode)) {
+    return false;
+  }
+  return sendPing(pingTargetOfCursor());
+}
+
+/** Open the emote wheel: the six emotes in a menu over whatever is on screen. @returns Whether it opened */
+export function openEmoteWheel(): boolean {
+  const { ui } = globalScene;
+  // A screen that is fading out (co-op) is on its way out: the wheel would open over the next one, whatever it is
+  if (!isLinked() || !SCREENS.includes(ui.mode) || ui.pendingCoopTransition !== null) {
+    return false;
+  }
+  const options = Array.from({ length: EMOTE_COUNT }, (_, id) => ({
+    label: emoteLabel(id),
+    handler: () => {
+      sendEmote(id);
+      return true;
+    },
+  }));
+  options.push({ label: i18next.t("menu:cancel"), handler: () => true });
+  showOverlayMenu(options);
+  return true;
+}

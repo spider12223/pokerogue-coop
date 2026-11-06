@@ -4,7 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { NIGHT_TIME } from "#constants/game-constants";
-import { pickCoopTrainer } from "#coop/trainer-variety";
+import { pickCoopTrainer } from "#coop/rules/trainer-variety";
 import type { ArenaTag, ArenaTagTypeMap } from "#data/arena-tag";
 import { getArenaTag } from "#data/arena-tag";
 import { biomeBgmLoopPoints } from "#data/biome-bgm-loop-points";

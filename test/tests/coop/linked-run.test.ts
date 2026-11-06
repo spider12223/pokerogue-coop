@@ -5,12 +5,12 @@
  */
 
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { controllerOf, ownerOf } from "#coop/control";
-import { biomeKey, catchReleaseKey, turnCommandsKey } from "#coop/decision-keys";
+import { controllerOf, ownerOf } from "#coop/decisions/control";
+import { biomeKey, catchReleaseKey, turnCommandsKey } from "#coop/decisions/decision-keys";
+import type { Decision } from "#coop/decisions/sequencer";
+import { commandToWire } from "#coop/decisions/turn-commands";
 import { keyId } from "#coop/protocol";
-import type { Decision } from "#coop/sequencer";
 import { getCoopSession } from "#coop/session";
-import { commandToWire } from "#coop/turn-commands";
 import { modifierTypes } from "#data/data-lists";
 import { catchPokemon } from "#data/mystery-encounters/utils/encounter-pokemon-utils";
 import { BiomeId } from "#enums/biome-id";

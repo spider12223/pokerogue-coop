@@ -1,8 +1,8 @@
 import { globalScene } from "#app/global-scene";
-import { isLinked, reportBridgeError } from "#coop/bridge";
-import { coopSwitchFilter, isAllowedSwitch, type SwitchReason, switchTargets } from "#coop/control";
+import { isLinked, reportBridgeError } from "#coop/decisions/bridge";
+import { coopSwitchFilter, isAllowedSwitch, type SwitchReason, switchTargets } from "#coop/decisions/control";
+import { coopDecideSwitch } from "#coop/decisions/switch-bridge";
 import { isCoop } from "#coop/session";
-import { coopDecideSwitch } from "#coop/switch-bridge";
 import { PartyUiMode } from "#enums/party-ui-mode";
 import { SwitchType } from "#enums/switch-type";
 import { UiMode } from "#enums/ui-mode";

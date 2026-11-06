@@ -521,7 +521,7 @@ export async function describeClients(...clients: Client[]): Promise<Record<stri
           desync: coop.desync,
           reward: coop.reward,
           party: coop.party,
-          // what the stall detector wrote down, if it did (`src/coop/stall-detector.ts`)
+          // what the stall detector wrote down, if it did (`src/coop/diagnostics/stall-detector.ts`)
           stalls: coop.stalls,
           // the last phases this client started: `wave:turn:phase`
           trace: coop

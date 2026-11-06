@@ -8,7 +8,7 @@ import { enableThreePlayers, openCoopMenu, waitForTitle } from "../../e2e/coop-c
 import { choose, type ShotRun } from "../engine.ts";
 import type { Scenario } from "../scenario.ts";
 
-/** Where a page keeps the seat it takes back after a reload (`SEAT_KEY_PREFIX` of `src/coop/seat-store.ts`, D20) */
+/** Where a page keeps the seat it takes back after a reload (`SEAT_KEY_PREFIX` of `src/coop/save/seat-store.ts`, D20) */
 const SEAT_KEY_PREFIX = "coopSeat:";
 
 /** From the title screen to the first wave: the co-op menu, hosting and joining, the starter select */

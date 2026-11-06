@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type AccountSnapshot, isAccountSnapshot, isCoopAccountSnapshot } from "#coop/account-snapshot";
+import { type AccountSnapshot, isAccountSnapshot, isCoopAccountSnapshot } from "#coop/sync/account-snapshot";
 import { describe, expect, it } from "vitest";
 
 const account: AccountSnapshot = {

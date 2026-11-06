@@ -6,12 +6,10 @@
 
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { AfkWatcher } from "#coop/afk";
-import { dropLeftoverFaintReplacements, INDEX_BAKED_PHASES } from "#coop/arrange";
-import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
+import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/decisions/bridge";
+import { type Decision, ProposalRejectedError } from "#coop/decisions/sequencer";
 import { type DecisionKey, otherSeat, type Seat, seatsFor } from "#coop/protocol";
-import { type Decision, ProposalRejectedError } from "#coop/sequencer";
-import { requireCoopSession } from "#coop/session";
+import { dropLeftoverFaintReplacements, INDEX_BAKED_PHASES } from "#coop/rules/arrange";
 import {
   applyTrade,
   checkTradeProposal,
@@ -23,7 +21,9 @@ import {
   TradeState,
   tradeDoneKey,
   tradeKey,
-} from "#coop/trade";
+} from "#coop/rules/trade";
+import { requireCoopSession } from "#coop/session";
+import { AfkWatcher } from "#coop/ui/afk";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
 import type { CoopTradeUiHandler, TradeScreenActions, TradeScreenModel } from "#ui/coop-trade-ui-handler";

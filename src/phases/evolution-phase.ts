@@ -6,15 +6,15 @@ import { Phase } from "#app/phase";
 import type { BackgroundMusic } from "#audio/background-music";
 import type { SpeciesFormEvolution } from "#balance/pokemon-evolutions";
 import { FusionSpeciesFormEvolution } from "#balance/pokemon-evolutions";
-import { coopDecide, isLinked, mySeat, reportBridgeError } from "#coop/bridge";
-import { deciderOf } from "#coop/control";
-import { evolutionCancelKey, evolutionPauseKey } from "#coop/decision-keys";
+import { coopDecide, isLinked, mySeat, reportBridgeError } from "#coop/decisions/bridge";
+import { deciderOf } from "#coop/decisions/control";
+import { evolutionCancelKey, evolutionPauseKey } from "#coop/decisions/decision-keys";
 import {
   type EvolutionCancelPayload,
   type EvolutionPausePayload,
   isEvolutionCancelPayload,
   isEvolutionPausePayload,
-} from "#coop/prompt-payloads";
+} from "#coop/decisions/prompt-payloads";
 import { requireCoopSession } from "#coop/session";
 import { getTypeRgb } from "#data/type";
 import { LearnMoveSituation } from "#enums/learn-move-situation";

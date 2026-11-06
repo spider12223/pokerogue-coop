@@ -5,7 +5,6 @@
  */
 
 import { EvolutionItem } from "#balance/pokemon-evolutions";
-import { ownerOf } from "#coop/control";
 import type { DebugBatch } from "#coop/debug/actions";
 import { itemCatalog, makeItemType, partyMembersFor } from "#coop/debug/catalog";
 import { itemId } from "#coop/debug/item-id";
@@ -13,9 +12,10 @@ import { writeDebugOverrides } from "#coop/debug/overrides";
 import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
 import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
 import { emptyWavePlan } from "#coop/debug/state";
-import { debugTurnKey } from "#coop/decision-keys";
+import { ownerOf } from "#coop/decisions/control";
+import { debugTurnKey } from "#coop/decisions/decision-keys";
+import type { Decision } from "#coop/decisions/sequencer";
 import type { DecisionKey } from "#coop/protocol";
-import type { Decision } from "#coop/sequencer";
 import { TerrainType } from "#data/terrain";
 import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";

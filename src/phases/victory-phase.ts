@@ -1,7 +1,7 @@
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { hasDebugBiome } from "#coop/debug/hooks";
-import { isLoneEnemy } from "#coop/me-run";
+import { isLoneEnemy } from "#coop/rules/me-run";
 import { modifierTypes } from "#data/data-lists";
 import { BattleType } from "#enums/battle-type";
 import type { BattlerIndex } from "#enums/battler-index";

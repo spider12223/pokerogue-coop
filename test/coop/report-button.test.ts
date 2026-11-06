@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { CoopLog, type CoopLogEnvironment, setCoopLog } from "#coop/coop-log";
-import { reportProblem, SEND_TIMEOUT_MS } from "#coop/report-button";
+import { CoopLog, type CoopLogEnvironment, setCoopLog } from "#coop/diagnostics/coop-log";
+import { reportProblem, SEND_TIMEOUT_MS } from "#coop/diagnostics/report-button";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // The snapshot reads the game; this test has none
-vi.mock("#coop/coop-diagnostics", () => ({ gameSnapshot: () => ({ phase: "CommandPhase", wave: 7 }) }));
+vi.mock("#coop/diagnostics/coop-diagnostics", () => ({ gameSnapshot: () => ({ phase: "CommandPhase", wave: 7 }) }));
 
 /** A browser whose server answers with `post`; the log's own timers never go off */
 function browser(post: CoopLogEnvironment["post"], store = new Map<string, string>()): CoopLogEnvironment {

@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { ownerOf } from "#coop/control";
-import { type PartyEdit, partyEditKey } from "#coop/party-edit";
+import { ownerOf } from "#coop/decisions/control";
+import { type PartyEdit, partyEditKey } from "#coop/rules/party-edit";
 import { requireCoopSession } from "#coop/session";
 import { modifierTypes } from "#data/data-lists";
 import { Button } from "#enums/buttons";

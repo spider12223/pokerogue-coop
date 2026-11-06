@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { ownerOf } from "#coop/control";
-import { turnCommandsKey } from "#coop/decision-keys";
-import { checkDecisionLegal } from "#coop/legal";
-import { gameLegalityView } from "#coop/legal-view";
-import { askCommandFor } from "#coop/takeover-command";
-import { tradeRequestKey } from "#coop/trade";
-import { commandToWire } from "#coop/turn-commands";
+import { ownerOf } from "#coop/decisions/control";
+import { turnCommandsKey } from "#coop/decisions/decision-keys";
+import { checkDecisionLegal } from "#coop/decisions/legal";
+import { gameLegalityView } from "#coop/decisions/legal-view";
+import { commandToWire } from "#coop/decisions/turn-commands";
+import { tradeRequestKey } from "#coop/rules/trade";
+import { askCommandFor } from "#coop/ui/takeover-command";
 import type { Egg } from "#data/egg";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";

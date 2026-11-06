@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { retryKey } from "#coop/decision-keys";
-import { checkDecisionLegal } from "#coop/legal";
+import { retryKey } from "#coop/decisions/decision-keys";
+import { checkDecisionLegal } from "#coop/decisions/legal";
+import { canTakeOver, takeoverPlan } from "#coop/decisions/takeover";
+import { validateProposal } from "#coop/decisions/validate";
 import { DECISION_KINDS, isDecisionKey } from "#coop/protocol";
-import { isResyncMessage, isResyncRequest, RESYNC_REASONS } from "#coop/resync";
-import { isRetryPayload } from "#coop/retry";
-import { canTakeOver, takeoverPlan } from "#coop/takeover";
-import { validateProposal } from "#coop/validate";
+import { isRetryPayload } from "#coop/rules/retry";
+import { isResyncMessage, isResyncRequest, RESYNC_REASONS } from "#coop/save/resync";
 import { describe, expect, it } from "vitest";
 import { view } from "./legal-fixtures";
 

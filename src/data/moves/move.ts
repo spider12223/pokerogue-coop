@@ -13,7 +13,7 @@ import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { switchTargets } from "#coop/control";
+import { switchTargets } from "#coop/decisions/control";
 import { isCoop } from "#coop/session";
 import type { EntryHazardTag, PendingHealTag } from "#data/arena-tag";
 import { WeakenMoveTypeTag } from "#data/arena-tag";

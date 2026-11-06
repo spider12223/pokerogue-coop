@@ -3,7 +3,7 @@ import type { GameMode } from "#app/game-mode";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getCoopSession } from "#coop/session";
-import { currentSeedBlockId, simRandInt } from "#coop/sim-rng";
+import { currentSeedBlockId, simRandInt } from "#coop/sync/sim-rng";
 import { isDailyFinalBoss } from "#data/daily-seed-utils";
 import { ArenaTagType } from "#enums/arena-tag-type";
 import { BattleType } from "#enums/battle-type";

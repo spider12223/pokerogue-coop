@@ -5,7 +5,6 @@
  */
 
 import { activeOverrides, defaultOverrides } from "#app/overrides";
-import { overridesAreDefaults } from "#coop/build-info";
 import { type DebugAction, isDebugAction, isDebugBatch, MAX_DEBUG_ACTIONS } from "#coop/debug/actions";
 import { isItemId, itemId, parseItemId } from "#coop/debug/item-id";
 import { identityOverrides, writeDebugOverrides } from "#coop/debug/overrides";
@@ -30,8 +29,9 @@ import {
   isEmptyDebugState,
   nextPlannedSpecies,
 } from "#coop/debug/state";
+import { overridesAreDefaults } from "#coop/link/build-info";
 import { hashCanonical } from "#coop/protocol";
-import { COOP_SAVE_VERSION, isCoopSaveBlock } from "#coop/save-block";
+import { COOP_SAVE_VERSION, isCoopSaveBlock } from "#coop/save/save-block";
 import { BattleType } from "#enums/battle-type";
 import { afterEach, describe, expect, it } from "vitest";
 

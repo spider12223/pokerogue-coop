@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { EpochInner } from "#coop/epoch";
 import type { Envelope, Seat } from "#coop/protocol";
+import type { EpochInner } from "#coop/transport/epoch";
 import type { ReliableTransport } from "#coop/transport/reliable";
 import type { Unsubscribe } from "#coop/transport/transport";
 

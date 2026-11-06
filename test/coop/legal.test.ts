@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { checkDecisionLegal, type LegalityView, safeLegality } from "#coop/legal";
-import type { OwnerMap } from "#coop/ownership";
+import { checkDecisionLegal, type LegalityView, safeLegality } from "#coop/decisions/legal";
 import { DECISION_KINDS, type DecisionKey, type DecisionKind, type Seat } from "#coop/protocol";
+import type { OwnerMap } from "#coop/rules/ownership";
 import { describe, expect, it } from "vitest";
 import {
   fight,

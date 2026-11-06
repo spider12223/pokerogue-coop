@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { ownerOf } from "#coop/control";
-import { COSMETIC_LIMITS, type CosmeticMessage } from "#coop/cosmetic";
-import { getCosmeticView } from "#coop/cosmetic-view";
+import { COSMETIC_LIMITS, type CosmeticMessage } from "#coop/cosmetic/cosmetic";
+import { getCosmeticView } from "#coop/cosmetic/cosmetic-view";
+import { ownerOf } from "#coop/decisions/control";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import { advanceTo, queueTurnCommands } from "#test/helpers/coop-harness";

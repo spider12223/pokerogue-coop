@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
-import { isLinked } from "#coop/bridge";
-import { coopCheckpoint } from "#coop/checkpoints";
+import { isLinked } from "#coop/decisions/bridge";
+import { coopCheckpoint } from "#coop/sync/checkpoints";
 import { BattlerIndex, fieldIndexOfBattler, isPlayerBattler } from "#enums/battler-index";
 import { TurnInitEvent } from "#events/battle-scene";
 import type { PlayerPokemon } from "#field/pokemon";

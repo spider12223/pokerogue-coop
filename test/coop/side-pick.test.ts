@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { sidePickKey } from "#coop/decision-keys";
-import { checkDecisionLegal } from "#coop/legal";
-import { takeoverPlan } from "#coop/takeover";
-import { isSidePickPayload } from "#coop/turn-commands";
+import { sidePickKey } from "#coop/decisions/decision-keys";
+import { checkDecisionLegal } from "#coop/decisions/legal";
+import { takeoverPlan } from "#coop/decisions/takeover";
+import { isSidePickPayload } from "#coop/decisions/turn-commands";
 import { describe, expect, it } from "vitest";
 import { key, view } from "./legal-fixtures";
 

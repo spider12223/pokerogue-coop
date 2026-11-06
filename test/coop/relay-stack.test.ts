@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { guestHandshake, hostHandshake, type SettingsOverlayPort } from "#coop/handshake";
+import { type Decision, Sequencer } from "#coop/decisions/sequencer";
+import { guestHandshake, hostHandshake, type SettingsOverlayPort } from "#coop/link/handshake";
 import { type BuildIdentity, DECISION_KINDS, type DecisionKey, hashCanonical, type Seat } from "#coop/protocol";
-import { type Decision, Sequencer } from "#coop/sequencer";
 import { findMatch, type MatchSearch } from "#coop/transport/match-ws";
 import { RelayError, type RelayEvent, RelayWsTransport } from "#coop/transport/relay-ws";
 import { ReliableTransport } from "#coop/transport/reliable";

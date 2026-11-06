@@ -4,11 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot } from "#coop/account-snapshot";
-import { OwnerMap } from "#coop/ownership";
+import { type RejectReason, Sequencer } from "#coop/decisions/sequencer";
 import type { BuildIdentity, Seat } from "#coop/protocol";
-import { type RejectReason, Sequencer } from "#coop/sequencer";
-import { endCoopSession, startCoopSession } from "#coop/session";
+import { OwnerMap } from "#coop/rules/ownership";
 import {
   applyTrade,
   checkTradeProposal,
@@ -17,7 +15,9 @@ import {
   TradeState,
   tradeDoneKey,
   tradeKey,
-} from "#coop/trade";
+} from "#coop/rules/trade";
+import { endCoopSession, startCoopSession } from "#coop/session";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
 import { afterEach, describe, expect, it } from "vitest";
 import { createManualLink } from "./manual-link";
 

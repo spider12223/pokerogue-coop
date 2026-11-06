@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { ProposalRejectedError, type RejectReason, Sequencer } from "#coop/decisions/sequencer";
+import { AfkClock, canTakeOver, DEFAULT_AFK_TIMERS, KEEP_WAITING_MS, takeoverPlan } from "#coop/decisions/takeover";
 import { DECISION_KINDS, type DecisionKey } from "#coop/protocol";
-import { ProposalRejectedError, type RejectReason, Sequencer } from "#coop/sequencer";
-import { AfkClock, canTakeOver, DEFAULT_AFK_TIMERS, KEEP_WAITING_MS, takeoverPlan } from "#coop/takeover";
 import { describe, expect, it } from "vitest";
 import { FakeScheduler } from "./fake-scheduler";
 import { createManualLink } from "./manual-link";

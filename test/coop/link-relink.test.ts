@@ -13,9 +13,9 @@ import {
   joinRoom,
   type RejoinedRoom,
   rejoinRoom,
-} from "#coop/link";
+} from "#coop/link/link";
 import { type BuildIdentity, type DecisionKey, hashCanonical, type PinnedSettings } from "#coop/protocol";
-import type { ResyncPayload } from "#coop/resync";
+import type { ResyncPayload } from "#coop/save/resync";
 import { RelayError, type RelayWsTransport } from "#coop/transport/relay-ws";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type RelayServer, startRelayServer } from "../../coop-server/src/relay-server.ts";

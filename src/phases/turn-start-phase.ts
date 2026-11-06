@@ -1,7 +1,7 @@
 import { applyAbAttrs } from "#abilities/apply-ab-attrs";
 import type { TurnCommand } from "#app/battle";
 import { globalScene } from "#app/global-scene";
-import { endTurnCosmetics } from "#coop/cosmetic-view";
+import { endTurnCosmetics } from "#coop/cosmetic/cosmetic-view";
 import { ArenaTagSide } from "#enums/arena-tag-side";
 import type { BattlerIndex } from "#enums/battler-index";
 import { Command } from "#enums/command";

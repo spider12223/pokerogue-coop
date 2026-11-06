@@ -4,16 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot, CoopAccountSnapshot } from "#coop/account-snapshot";
-import { type Checkpoint, CheckpointLog } from "#coop/checkpoint-log";
 import { type DebugState, emptyDebugState, isEmptyDebugState } from "#coop/debug/state";
-import type { SettingsOverlayPort } from "#coop/handshake";
-import type { RewardView } from "#coop/legal";
-import type { CoopLink } from "#coop/link";
-import type { MeQuestion } from "#coop/me-choice";
-import { defaultStarterOwners, OwnerMap } from "#coop/ownership";
-import { PaceTracker } from "#coop/pace";
-import { PhaseTrace } from "#coop/phase-trace";
+import type { RewardView } from "#coop/decisions/legal";
+import { type AfkTimers, DEFAULT_AFK_TIMERS } from "#coop/decisions/takeover";
+import type { SettingsOverlayPort } from "#coop/link/handshake";
+import type { CoopLink } from "#coop/link/link";
 import type {
   BuildIdentity,
   CoopChallenge,
@@ -23,6 +18,8 @@ import type {
   Seat,
   SeatRecord,
 } from "#coop/protocol";
+import type { MeQuestion } from "#coop/rules/me-choice";
+import { defaultStarterOwners, OwnerMap } from "#coop/rules/ownership";
 import {
   type MismatchInfo,
   type ReportPayload,
@@ -30,9 +27,12 @@ import {
   type ResyncMessage,
   type ResyncReason,
   type ResyncStopPayload,
-} from "#coop/resync";
-import { COOP_SAVE_VERSION, type CoopSaveBlock, checkSaveBlock, type RewardResume } from "#coop/save-block";
-import { type AfkTimers, DEFAULT_AFK_TIMERS } from "#coop/takeover";
+} from "#coop/save/resync";
+import { COOP_SAVE_VERSION, type CoopSaveBlock, checkSaveBlock, type RewardResume } from "#coop/save/save-block";
+import type { AccountSnapshot, CoopAccountSnapshot } from "#coop/sync/account-snapshot";
+import { type Checkpoint, CheckpointLog } from "#coop/sync/checkpoint-log";
+import { PhaseTrace } from "#coop/sync/phase-trace";
+import { PaceTracker } from "#coop/ui/pace";
 
 /**
  * The co-op session of this client (DECISIONS D1-D5). It exists for exactly as long as a co-op run: `null` in solo
@@ -190,7 +190,7 @@ export class CoopSession {
   public readonly timing: Record<string, number> = {};
   /** Called with each checkpoint as it is taken: this is how a client reports it to its partner */
   public onCheckpoint: ((checkpoint: Checkpoint) => void) | null = null;
-  /** The phase trace (see `src/coop/phase-trace.ts`): what the desync report is made of */
+  /** The phase trace (see `src/coop/sync/phase-trace.ts`): what the desync report is made of */
   public readonly trace = new PhaseTrace();
   /** Where this client is in the text of the run, and where the host is (D27) */
   public readonly pace = new PaceTracker();

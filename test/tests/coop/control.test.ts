@@ -16,9 +16,9 @@ import {
   ownerOf,
   requireOwnerOf,
   switchTargets,
-} from "#coop/control";
+} from "#coop/decisions/control";
 import { endCoopSession, requireCoopSession } from "#coop/session";
-import { takeoverTargetLabel } from "#coop/takeover-command";
+import { takeoverTargetLabel } from "#coop/ui/takeover-command";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { PartyUiMode } from "#enums/party-ui-mode";

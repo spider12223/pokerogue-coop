@@ -3,7 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { TouchControl } from "#app/touch-controls";
 import { isDev } from "#constants/app-constants";
-import { bindCoopHotkeys } from "#coop/hotkey-names";
+import { bindCoopHotkeys } from "#coop/cosmetic/hotkey-names";
 import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { UiMode } from "#enums/ui-mode";

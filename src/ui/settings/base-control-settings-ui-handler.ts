@@ -1,6 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
-import { coopSettingLabel } from "#coop/hotkey-names";
+import { coopSettingLabel } from "#coop/cosmetic/hotkey-names";
 import { Button } from "#enums/buttons";
 import type { Device } from "#enums/devices";
 import { TextStyle } from "#enums/text-style";

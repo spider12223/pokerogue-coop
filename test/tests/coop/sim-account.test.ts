@@ -5,9 +5,9 @@
  */
 
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { type AccountSnapshot, type CoopAccountSnapshot, isAccountSnapshot } from "#coop/account-snapshot";
 import { endCoopSession, startCoopSession } from "#coop/session";
-import { captureAccountSnapshot, ownerSeat, simAccount } from "#coop/sim-account";
+import { type AccountSnapshot, type CoopAccountSnapshot, isAccountSnapshot } from "#coop/sync/account-snapshot";
+import { captureAccountSnapshot, ownerSeat, simAccount } from "#coop/sync/sim-account";
 import { getCriticalCaptureChance } from "#data/pokeball";
 import { getSpeciesDependentFormChangeCondition } from "#data/pokemon-forms";
 import { DexAttr } from "#enums/dex-attr";

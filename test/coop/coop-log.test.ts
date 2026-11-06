@@ -15,7 +15,7 @@ import {
   REPORT_MAX_PARTS,
   splitLogData,
   toLogData,
-} from "#coop/coop-log";
+} from "#coop/diagnostics/coop-log";
 import { describe, expect, it } from "vitest";
 
 /** A browser of its own: a clock that only moves when told, a storage, and a server that answers what the test says */

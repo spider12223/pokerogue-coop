@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { EpochTransport } from "#coop/epoch";
-import { safeLegality } from "#coop/legal";
+import { safeLegality } from "#coop/decisions/legal";
+import { DesyncError, type RejectReason, Sequencer } from "#coop/decisions/sequencer";
 import type { DecisionKey, DecisionKind, Seat } from "#coop/protocol";
-import { DesyncError, type RejectReason, Sequencer } from "#coop/sequencer";
+import { EpochTransport } from "#coop/transport/epoch";
 import { describe, expect, it } from "vitest";
 import { fight, GUEST_MON, HOST_MON, key, TACKLE, turnKey, view } from "./legal-fixtures";
 import { createManualLink } from "./manual-link";

@@ -35,6 +35,6 @@ interface ViteTypeOptions {
   strictImportMetaEnv: unknown;
 }
 
-/** Co-op build identity, injected by `vite.config.ts` (see `src/coop/build-info.ts`). */
+/** Co-op build identity, injected by `vite.config.ts` (see `src/coop/link/build-info.ts`). */
 declare const __COOP_GIT_SHA__: string;
 declare const __COOP_DIRTY_HASH__: string;

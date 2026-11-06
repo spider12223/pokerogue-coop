@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { describePhaseTraceDiff, diffPhaseTraces, formatPhaseTrace, PhaseTrace } from "#coop/phase-trace";
+import { describePhaseTraceDiff, diffPhaseTraces, formatPhaseTrace, PhaseTrace } from "#coop/sync/phase-trace";
 import { describe, expect, it } from "vitest";
 
 function record(trace: PhaseTrace, phases: [name: string, rng: string][], wave = 1) {

@@ -12,7 +12,7 @@ it is tested. It ends with a map of `src/coop/` and pointers for common changes.
 
 The rules themselves (who decides what, which keys, which checks) are in [DECISIONS.md](DECISIONS.md). References such as
 "D13" point to its sections, and the code cites them the same way. Paths are relative to the repository root; module
-names without a directory are in `src/coop/`.
+names without a directory are in `src/coop/` or one of its folders (see the [module map](#module-map)).
 
 ## The big picture
 
@@ -336,6 +336,7 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
 `src/coop/debug/`: `state.ts` (the run's plans and modes, and what they write into `activeOverrides`), `actions.ts` (the
 actions of a `DEBUG` batch and their checks), `apply.ts` (carrying a batch out; the host marks it applied in the log),
 `queue.ts` (the host's change log: pending changes, the batches sent, the applied ones; an open reward step is its sink),
+`overrides.ts` (writing that state into the game's `activeOverrides`, and the overrides the build identity compares),
 `item-id.ts` and `catalog.ts` (exact item ids and every item of the game), `hooks.ts` (where the game reads the state:
 `newBattle`, `addEnemyPokemon`, the Mystery Encounter check, the biome, the reward options, damage, EXP and money).
 The debug window: `window.ts` (its own browser window, or the panel over the game), `styles.ts`, `dom.ts` (one-step
@@ -355,139 +356,186 @@ frame and text.
   again on `hub.reopen(seat)` (`CoopLink.relinkGuest`) and comes in with the reload at the next wave start.
 - **Battle:** `BattlerIndex.PLAYER_3 = 4`, after the enemies; `Battle.playerSlots` and `getPlayerBattlerCount()` (the
   enemy side keeps `getBattlerCount()`); `getField()` is five long. Commands are keyed by battler. `Pokemon.getAllies()` and
-  `isAllyOf()` are `[getAlly()]` outside a battle of three, both allies in one. `coop/enemy-buff.ts` makes enemies tougher in
-  `calculateStats`; `coop/three-field.ts` draws the teammates' bars and places the enemy boxes.
+  `isAllyOf()` are `[getAlly()]` outside a battle of three, both allies in one. `coop/rules/enemy-buff.ts` makes enemies tougher in
+  `calculateStats`; `coop/ui/three-field.ts` draws the teammates' bars and places the enemy boxes.
 - **Seats in the run:** `interleaveStarters` and `arrangeOrder` go round the seats; `session.actingSeatOf` is who commands a
   Pokémon (its owner, or a present player for an absent one's in a run of three continued with two);
   `swapGuestSeats` exchanges the guests in a save when they come back the other way round.
 
 ## Module map
 
+`src/coop/` has two modules at its root that everything else builds on (`protocol.ts`, `session.ts`) and a folder per
+area. A module is named by its path under `src/coop/` and imported as `#coop/<path>` (`#coop/ui/chat`).
+
 "Pure" means the module imports no game code (no `globalScene`, no Phaser), so both clients can run in one Node process
 in tests. Keep it that way: nothing in a pure module may import a game module, directly or through another co-op module.
 
-### Protocol and transport
+| Folder | What is in it |
+|---|---|
+| (root) | The wire protocol and the session |
+| `transport/` | The layers under the link: the relay's WebSocket, numbering and resends, epochs, rooms of three, matchmaking |
+| `link/` | The link to the partner, the handshake, the title screen's Co-op entry, the starter select, Play again |
+| `decisions/` | The sequencer, the decision keys and payloads, the bridge the phases call, who decides, legality, take over |
+| `rules/` | The rules of the run: ownership, the arrange step, rewards, trades, party edits, encounters, catches, games of three |
+| `sync/` | Determinism and desync detection: seeded draws, the account snapshot, state hashes, checkpoints, the phase trace |
+| `save/` | Saves, reloads and rejoining: the save block, the co-op save files, resync, seat tokens, account import and backup |
+| `cosmetic/` | The cosmetic channel: intents, cursors, pings, emotes, and the hotkeys and touch buttons that send them |
+| `ui/` | The co-op screens and widgets: the UI strings, waiting lines, the take over menus, pacing, the chat, HP bars of three |
+| `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector |
+| `debug/` | The host's debug menu (D42) |
+
+### Root
 
 | Module | What it does | Rules | Pure |
 |---|---|---|---|
-| `protocol.ts` | `Envelope` and message kinds, `DecisionKey`, `keyId`, `DECISION_KINDS`, `NO_REF`, the `HELLO`/`HELLO_ACK` payloads, `BuildIdentity`, the `START` payload, canonical JSON and its hash, `COOP_PROTOCOL_VERSION` | D1, D2, D3 | yes |
+| `protocol.ts` | `Envelope` and message kinds, `DecisionKey`, `keyId`, `DECISION_KINDS`, `NO_REF`, the `HELLO`/`HELLO_ACK` payloads, `BuildIdentity`, the `START` payload, seats, canonical JSON and its hash, `COOP_PROTOCOL_VERSION` | D1, D2, D3, D40 | yes |
+| `session.ts` | `CoopSession` (`null` in solo), `isCoop()`, `requireCoopSession`, `startCoopSession`, `endCoopSession`, `rewardPickerOf` | D1–D5 | yes |
+
+### `transport/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
 | `transport/transport.ts` | The `RawTransport`, `MessageTransport` and `Scheduler` interfaces | D2 | yes |
 | `transport/relay-ws.ts` | The relay's WebSocket client: create, join, rejoin with a seat token | D2, D20 | yes |
 | `transport/reliable.ts` | Numbering, selective acks, resend, dedupe, in-order delivery, volatile sends, a new pairing | D2, D20 | yes |
-| `transport/loopback.ts` | An in-process transport pair with seeded drop, duplicate and reorder | D14 | yes |
-| `epoch.ts` | `EpochTransport` (stamps the epoch; drops older, holds newer, a `RESYNC` always passes), `EpochChangedError` | D18 | yes |
-| `relay-url.ts` | `relayUrlFor` (`VITE_COOP_RELAY_URL`, else `/coop` of the page's origin, `wss` on `https`), `logUrlFor` | D22, D26 | yes |
-
-### Connection and session
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `link.ts` | `CoopLink`: channel, epoch, sequencer, lobby, `START`, checkpoints, cosmetics, resync messages, partner presence and relink; `createRoom`, `joinRoom`, `rejoinRoom`, `establishHost`, `establishGuest` | D1, D2, D18, D20 | yes |
-| `handshake.ts` | `hostHandshake`, `guestHandshake`: build check, the settings overlay through a port, the resume account check | D1, D21 | yes |
-| `build-info.ts` | The local `BuildIdentity`: `gitSha` and `dirtyHash` from the build, the mode, the overrides hash | D1 | no |
-| `pinned-settings.ts` | The pinned values, their validation, the overlay port for the settings manager | D5 | yes |
-| `session.ts` | `CoopSession` (`null` in solo), `isCoop()`, `requireCoopSession`, `startCoopSession`, `endCoopSession`, `rewardPickerOf` | D1–D5 | yes |
-| `lobby.ts` | The title screen's Co-op entry: host or join, Classic or Endless, the code, the handshake, `beginSession`, leaving | D1, D20, D39 | no |
-| `starter-lobby.ts` | The co-op starter select as a state machine: live picks, shared points, ready, `START` | D3, D4, D7 | yes |
-| `starter-select-coop.ts` | The partner's picks, the shared limit and ready on the starter select screen | D3, D7 | no |
-| `collection-data.ts` | `CollectionData`: a player's collection on the wire, and its validation | D32 | yes |
-| `shared-collection.ts` | `CollectionExchange`, the merge of both collections, `poolCollection`, `ownAccountData` (what the save writes) | D32 | yes |
-| `display-name.ts` | The player's display name, stored locally | D1 | yes |
-| `clipboard.ts` | `copyText`, for the lobby's "Copy code" button | | yes |
-
-### Decisions
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `sequencer.ts` | `Sequencer`: `seq`, windows (`awaitDecision`, `awaitOneOf`, `awaitAll`), validation, parking, `REJECT`, take over, legality (`setLegality`), epochs (`resetForEpoch`, `reserveSeq`), `DesyncError` | D2, D17, D18, D24 | yes |
-| `decision-keys.ts` | The keys of turn, switch and prompt decisions | D2 | yes |
-| `prompt-payloads.ts` | Payloads of the prompts (learn-move, evolution, biome, catch release) and their guards | D2, D10 | yes |
-| `turn-commands.ts` | A turn command on the wire and back; side action and side pick payloads | D2, D8 | yes |
-| `bridge.ts` | `coopDecide`, `coopGate`, `isLinked`, `proposeUnlessLate`, the take over of bridge decisions, the waiting text | D2, D17 | no |
-| `switch-bridge.ts` | `coopDecideSwitch`: faint and pivot replacements as decisions | D7 | no |
-| `control.ts` | `ownerOf`, `controllerOf`, `switchTargets`, `deciderOf`, the party screen's switch filter | D7, D9, D10 | no |
-| `validate.ts` | `validateProposal`: the host's check before it sequences | D2, D4a, D9, D10, D11, D28 | yes |
-| `legal.ts` | `checkDecisionLegal` over a `LegalityView`, for every kind; never throws | D24 | yes |
-| `legal-view.ts` | The game's `LegalityView`, read from `globalScene` when a decision is applied | D24 | no |
-
-### Rules of the run
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `ownership.ts` | The owner map `pokemon.id → seat`, `interleaveStarters` (the party order of a run) | D7 | yes |
-| `arrange-plan.ts` | The wave-start arrange order: each seat's first legal Pokémon, the partner covers | D7 | yes |
-| `arrange.ts` | `arrangeCoopParty`: the arrange step on the real party | D7 | no |
-| `doubles.ts` | Forced doubles: which trainers have a usable `DOUBLE` variant | D6 | no |
-| `reward-actions.ts` | The reward screen's actions, `rewardKey`, `rewardWindow`, who may make which, `isValidRewardProposal` | D2, D9 | yes |
-| `trade.ts` | `checkTradeProposal` (gifts, counts), `applyTrade`, `TradeState` (the window of each trade step), the trade keys | D11 | yes |
-| `party-edit.ts` | `PartyEdit` (swap, release, rename, evolution pause, form item, unsplice), `checkPartyEdit`, `partyEditKey` | D28 | yes |
-| `party-edit-run.ts` | Which edits the party screen offers, `proposePartyEdit`, `applyPartyEdit` | D28 | no |
-| `me-choice.ts` | `MeChoice`, `MeQuestion`, `checkMeChoice`, `meChoiceKey` | D29 | yes |
-| `me-run.ts` | `meDecide`, the co-op encounter selection helpers, the seeded requirement check, who goes, the 2v2 battles, `passOwnership` | D29 | no |
-| `trainer-variety.ts` | `pickCoopTrainer`: a biome's next trainer is one the run has not met; `noteTrainerMet` | D34 | no |
-| `retry.ts` | The `RETRY` payload of a wipe (`isRetryPayload`) | D4a, D13 | yes |
-| `save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
-
-### Determinism and desync detection
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `sim-rng.ts` | `simRandInt` (a seeded stream per unseeded site), `commandTargetPick`, `applyCoopRunSeed` | D3 | no |
-| `sim-account.ts` | `simAccount()`, `ownerSeat`, `captureAccountSnapshot`, `writesForSeat`, `writesForPokemon` | D4, D4a | no |
-| `account-snapshot.ts` | `CoopAccountSnapshot`: both accounts at run start, as plain JSON | D4 | yes |
-| `pokemon-id.ts` | Deterministic redraw until a `pokemon.id` is unique | D3 | yes |
-| `state-hash.ts` | The hashed state: parties, fields, modifiers, RNG states, seeds, pinned settings, reward options | D9, D13 | no |
-| `checkpoints.ts` | `coopCheckpoint` at the hash points, `coopRewardOptionsReady`, `tracePhaseStart` | D13 | no |
-| `checkpoint-log.ts` | `Checkpoint`, `CheckpointLog`, the first-mismatch search | D13 | yes |
-| `checkpoint-exchange.ts` | Sends each checkpoint's hash to the partner and compares | D13 | yes |
-| `phase-trace.ts` | A ring buffer of phase starts (wave, turn, phase, RNG hash), its diff and dump | D13 | yes |
-
-### Resync, saving and reconnecting
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `resync.ts` | `ResyncPayload`, `RESYNC_REQUEST`, `REPORT`, `ResyncBook` (three strikes per wave), the report | D13 | yes |
-| `resync-run.ts` | `installResync`, `wantResync`, `issueResync`, `applyResync`, the gate behind `coopGate`, the stop | D13, D18, D20, D24 | no |
-| `wave-save.ts` | `saveCoopWaveStart` (in `EncounterPhase`), the slot, `updateSlotEpoch` | D19 | no |
-| `coop-slot.ts` | The host's co-op slot (`coopSlot`): the wave-start save, the epoch, the last `seq`, both names and accounts | D19 | yes |
-| `seat-store.ts` | Seat tokens (`coopSeat:<code>`) for the automatic rejoin at boot | D20 | yes |
-| `rejoin.ts` | `tryAutoRejoin` (at boot), `hostContinue` ("Co-op, Continue") | D20, D21 | no |
-| `reconnect-ui.ts` | The waiting screen: the partner, the room code, "End session" after 60 s | D20 | no |
-
-### Cosmetics, take over and pacing
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `cosmetic.ts` | The `COSMETIC` messages (`intent`, `cursor`, `meCursor`, `ping`, `emote`, `pace`, `press`), their validation, sender and receiver rate limits | D16, D27, D29 | yes |
-| `cosmetic-view.ts` | Draws what the channel brings: ghost markers, check marks, the reward and encounter cursors, pings, emotes | D16, D29 | no |
-| `cosmetic-tag.ts` | The framed tags and pointers that the cosmetic view draws on the field | D16 | no |
-| `hotkeys.ts` | What the ping and emote buttons do, and on which screens | D16 | no |
-| `hotkey-names.ts` | The ping and emote rows of the keyboard settings, their default keys (P, Q), the key name in hints | D16 | no |
-| `labels.ts` | Co-op words in upstream screens: the "Co-op Clears" row of the stats, both names in the run history | D4a | yes |
-| `touch-emote.ts` | The touch screen's ping and emote buttons (`#coopEmoteTouch`, `#coopPingTouch` in `index.html`) | D16 | yes |
-| `takeover.ts` | `takeoverPlan` (what a take over decides per kind), `canTakeOver`, `AfkClock`, the default timers | D17 | yes |
-| `afk.ts` | `AfkWatcher`: the hint at 30 s and the offer at 90 s | D17 | no |
-| `waiting-line.ts` | The waiting player's line ("Waiting for your partner…", the AFK hints): it goes when the wait is over | D17 | no |
-| `overlay.ts` | `showOverlayMenu`: a small menu over whatever is on screen (the take over offer and menus, the emote wheel) | D16, D17 | no |
-| `takeover-command.ts` | The menus that choose a move and a target for the partner's Pokémon | D17 | no |
-| `pace.ts` | `PaceTracker`: positions in the text, shared lines, whether the guest is behind, whether a press fits | D27 | yes |
-| `pace-run.ts` | The game side of pacing: line reports, `pace` and `press`, the speed overlay, `whenCoopBehind` | D27 | no |
-| `text.ts` | `coopText`, `pingHint`: every co-op UI string | | yes |
-
-### Diagnostics and other
-
-| Module | What it does | Rules | Pure |
-|---|---|---|---|
-| `coop-log.ts` | The co-op log: entries, memory and `localStorage`, batched upload | D26 | yes |
-| `coop-diagnostics.ts` | What the log records of a session, the game snapshot of a report, the stall note | D26 | no |
-| `report-button.ts` | "Report a problem" (`#coopReport` in `index.html`) and the downloadable log | D26 | no |
-| `chat.ts` | The chat box (`#coopChat`, built by the page): lines on the link, mute, limits, the chat key | D38 | no |
-| `chat-text.ts` | What a chat line may hold, and the filter every line is shown through | D38 | yes |
+| `transport/epoch.ts` | `EpochTransport` (stamps the epoch; drops older, holds newer, a `RESYNC` always passes), `EpochChangedError` | D18 | yes |
+| `transport/routed.ts` | `RoutedHub`: the host's end of a room of three, one channel per guest over the relay's routed frames | D40 | yes |
+| `transport/fanout.ts` | `FanoutTransport`: the host's messages to every guest of a room of three, one reliable channel each | D40 | yes |
+| `transport/loopback.ts` | An in-process transport pair (and room of three) with seeded drop, duplicate and reorder, for the tests | D14 | yes |
 | `transport/match-ws.ts` | Find a partner: the queue's connection to the relay, its keepalive and its outcome | D37 | yes |
-| `debug-api.ts` | `window.__coop`, in dev, test and `COOP_E2E` builds only | D17, D22 | no |
-| `stall-detector.ts` | Dev only: a dump of both clients after 20 s without progress | | no |
-| `source-link.ts` | `sourceUrlOf`: the title screen's Source link (the build insists on one: `plugins/vite/require-source-url.ts`) | D25 | yes |
-| `import-account.ts` | Reads an account exported from pokerogue.net (`.prsv` or JSON), fits a newer version's into this one | D31 | no |
+| `transport/relay-url.ts` | `relayUrlFor` (`VITE_COOP_RELAY_URL`, else `/coop` of the page's origin, `wss` on `https`), `logUrlFor` | D22, D26 | yes |
+
+### `link/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `link/link.ts` | `CoopLink`: channel, epoch, sequencer, lobby, `START`, checkpoints, cosmetics, resync messages, partner presence and relink; `createRoom`, `joinRoom`, `rejoinRoom`, `establishHost`, `establishGuest` | D1, D2, D18, D20 | yes |
+| `link/handshake.ts` | `hostHandshake`, `guestHandshake`: build check, the settings overlay through a port, the resume account check | D1, D21 | yes |
+| `link/build-info.ts` | The local `BuildIdentity`: `gitSha` and `dirtyHash` from the build, the mode, the overrides hash | D1 | no |
+| `link/pinned-settings.ts` | The pinned values, their validation, the overlay port for the settings manager | D5 | yes |
+| `link/lobby.ts` | The title screen's Co-op entry: host or join, players, Classic or Endless, the code, the handshake, `beginSession`, leaving | D1, D20, D39, D40 | no |
+| `link/challenge-pick.ts` | The challenge screen of a co-op challenge run, opened by the host | D41 | no |
+| `link/starter-lobby.ts` | The co-op starter select as a state machine: live picks, shared points, ready, `START` | D3, D4, D7 | yes |
+| `link/starter-select-coop.ts` | The partners' picks, the shared limit and ready on the starter select screen | D3, D7 | no |
+| `link/collection-data.ts` | `CollectionData`: a player's collection on the wire, and its validation | D32 | yes |
+| `link/shared-collection.ts` | `CollectionExchange`, the merge of both collections, `poolCollection`, `ownAccountData` (what the save writes) | D32 | yes |
+| `link/display-name.ts` | The player's display name, stored locally | D1 | yes |
+| `link/again-answer.ts` | `AgainAnswer`: what the partner answered on the end screen, heard from the start of the session | D35 | yes |
+| `link/play-again.ts` | Play again: the end screen's question, the new room, the new game for the same players | D35, D40 | no |
+
+### `decisions/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `decisions/sequencer.ts` | `Sequencer`: `seq`, windows (`awaitDecision`, `awaitOneOf`, `awaitAll`), validation, parking, `REJECT`, take over, legality (`setLegality`), epochs (`resetForEpoch`, `reserveSeq`), `DesyncError` | D2, D17, D18, D24 | yes |
+| `decisions/decision-keys.ts` | The keys of turn, switch and prompt decisions | D2 | yes |
+| `decisions/prompt-payloads.ts` | Payloads of the prompts (learn-move, evolution, biome, catch release) and their guards | D2, D10 | yes |
+| `decisions/turn-commands.ts` | A turn command on the wire and back; side action and side pick payloads | D2, D8 | yes |
+| `decisions/bridge.ts` | `coopDecide`, `coopGate`, `isLinked`, `proposeUnlessLate`, the take over of bridge decisions, the waiting text | D2, D17 | no |
+| `decisions/switch-bridge.ts` | `coopDecideSwitch`: faint and pivot replacements as decisions | D7 | no |
+| `decisions/control.ts` | `ownerOf`, `controllerOf`, `switchTargets`, `deciderOf`, the party screen's switch filter | D7, D9, D10 | no |
+| `decisions/validate.ts` | `validateProposal`: the host's check before it sequences | D2, D4a, D9, D10, D11, D28 | yes |
+| `decisions/legal.ts` | `checkDecisionLegal` over a `LegalityView`, for every kind; never throws | D24 | yes |
+| `decisions/legal-view.ts` | The game's `LegalityView`, read from `globalScene` when a decision is applied | D24 | no |
+| `decisions/takeover.ts` | `takeoverPlan` (what a take over decides per kind), `canTakeOver`, `AfkClock`, the default timers | D17 | yes |
+
+### `rules/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `rules/ownership.ts` | The owner map `pokemon.id → seat`, `interleaveStarters` (the party order of a run) | D7 | yes |
+| `rules/arrange-plan.ts` | The wave-start arrange order: each seat's first legal Pokémon, the partner covers | D7 | yes |
+| `rules/arrange.ts` | `arrangeCoopParty`: the arrange step on the real party | D7 | no |
+| `rules/doubles.ts` | Forced doubles: which trainers have a usable `DOUBLE` variant | D6 | no |
+| `rules/reward-actions.ts` | The reward screen's actions, `rewardKey`, `rewardWindow`, who may make which, `isValidRewardProposal` | D2, D9 | yes |
+| `rules/trade.ts` | `checkTradeProposal` (gifts, counts), `applyTrade`, `TradeState` (the window of each trade step), the trade keys | D11 | yes |
+| `rules/party-edit.ts` | `PartyEdit` (swap, release, rename, evolution pause, form item, unsplice), `checkPartyEdit`, `partyEditKey` | D28 | yes |
+| `rules/party-edit-run.ts` | Which edits the party screen offers, `proposePartyEdit`, `applyPartyEdit` | D28 | no |
+| `rules/me-choice.ts` | `MeChoice`, `MeQuestion`, `checkMeChoice`, `meChoiceKey` | D29 | yes |
+| `rules/me-run.ts` | `meDecide`, the co-op encounter selection helpers, the seeded requirement check, who goes, the 2v2 battles, `passOwnership` | D29 | no |
+| `rules/trainer-variety.ts` | `pickCoopTrainer`: a biome's next trainer is one the run has not met; `noteTrainerMet` | D34 | no |
+| `rules/retry.ts` | The `RETRY` payload of a wipe (`isRetryPayload`) | D4a, D13 | yes |
+| `rules/catch-room.ts` | `noRoomQuestion`: "party full", or "you already have 3 of your own" at the co-op cap | D10, D40 | no |
+| `rules/teammate-hit.ts` | `teammateTarget`: a move aimed at a teammate's Pokémon that could have gone at an enemy asks first | D8 | no |
+| `rules/enemy-buff.ts` | `coopEnemyStat`: tougher enemies in a battle of three | D40 | yes |
+
+### `sync/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `sync/sim-rng.ts` | `simRandInt` (a seeded stream per unseeded site), `commandTargetPick`, `applyCoopRunSeed` | D3 | no |
+| `sync/sim-account.ts` | `simAccount()`, `ownerSeat`, `captureAccountSnapshot`, `writesForSeat`, `writesForPokemon` | D4, D4a | no |
+| `sync/account-snapshot.ts` | `CoopAccountSnapshot`: both accounts at run start, as plain JSON | D4 | yes |
+| `sync/pokemon-id.ts` | Deterministic redraw until a `pokemon.id` is unique | D3 | yes |
+| `sync/state-hash.ts` | The hashed state: parties, fields, modifiers, RNG states, seeds, pinned settings, reward options | D9, D13 | no |
+| `sync/checkpoints.ts` | `coopCheckpoint` at the hash points, `coopRewardOptionsReady`, `tracePhaseStart` | D13 | no |
+| `sync/checkpoint-log.ts` | `Checkpoint`, `CheckpointLog`, the first-mismatch search | D13 | yes |
+| `sync/checkpoint-exchange.ts` | Sends each checkpoint's hash to the partner and compares | D13 | yes |
+| `sync/phase-trace.ts` | A ring buffer of phase starts (wave, turn, phase, RNG hash), its diff and dump | D13 | yes |
+
+### `save/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `save/save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
+| `save/wave-save.ts` | `saveCoopWaveStart` (in `EncounterPhase`), the slot, `updateSlotEpoch` | D19 | no |
+| `save/coop-slot.ts` | The host's co-op save files (`coopSlot`): the wave-start save, the epoch, the last `seq`, the names and accounts | D19 | yes |
+| `save/save-files.ts` | The host's co-op save files on the save screen | D19, D21 | no |
+| `save/reward-resume.ts` | The reward-screen save: a reload during the rewards comes back to them | D19 | no |
+| `save/resync.ts` | `ResyncPayload`, `RESYNC_REQUEST`, `REPORT`, `ResyncBook` (three strikes per wave), the report | D13 | yes |
+| `save/resync-run.ts` | `installResync`, `wantResync`, `issueResync`, `applyResync`, the gate behind `coopGate`, the stop | D13, D18, D20, D24 | no |
+| `save/seat-store.ts` | Seat tokens (`coopSeat:<code>`) for the automatic rejoin at boot | D20 | yes |
+| `save/rejoin.ts` | `tryAutoRejoin` (at boot), `hostContinue` ("Co-op, Continue") | D20, D21 | no |
+| `save/import-account.ts` | Reads an account exported from pokerogue.net (`.prsv` or JSON), fits a newer version's into this one | D31 | no |
+| `save/save-backup.ts` | When to offer a backup of a local account | | yes |
+| `save/save-backup-offer.ts` | The title screen's offer to back up a local account | | no |
+
+### `cosmetic/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `cosmetic/cosmetic.ts` | The `COSMETIC` messages (`intent`, `cursor`, `meCursor`, `ping`, `emote`, `pace`, `press`), their validation, sender and receiver rate limits | D16, D27, D29 | yes |
+| `cosmetic/cosmetic-view.ts` | Draws what the channel brings: ghost markers, check marks, the reward and encounter cursors, pings, emotes | D16, D29 | no |
+| `cosmetic/cosmetic-tag.ts` | The framed tags and pointers that the cosmetic view draws on the field | D16 | no |
+| `cosmetic/hotkeys.ts` | What the ping and emote buttons do, and on which screens | D16 | no |
+| `cosmetic/hotkey-names.ts` | The ping and emote rows of the keyboard settings, their default keys (P, Q), the key name in hints | D16 | no |
+| `cosmetic/touch-emote.ts` | The touch screen's ping and emote buttons (`#coopEmoteTouch`, `#coopPingTouch` in `index.html`) | D16 | yes |
+
+### `ui/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `ui/text.ts` | `coopText`, `pingHint`: every co-op UI string | | yes |
+| `ui/labels.ts` | Co-op words in upstream screens: the "Co-op Clears" row of the stats, both names in the run history | D4a | yes |
+| `ui/waiting-line.ts` | The waiting player's line ("Waiting for your partner…", the AFK hints): it goes when the wait is over | D17 | no |
+| `ui/afk.ts` | `AfkWatcher`: the hint at 30 s and the offer at 90 s | D17 | no |
+| `ui/overlay.ts` | `showOverlayMenu`: a small menu over whatever is on screen (the take over offer and menus, the emote wheel) | D16, D17 | no |
+| `ui/takeover-command.ts` | The menus that choose a move and a target for the partner's Pokémon | D17 | no |
+| `ui/reconnect-ui.ts` | The waiting screen: the partner, the room code, "End session" after 60 s | D20 | no |
+| `ui/pace.ts` | `PaceTracker`: positions in the text, shared lines, whether the guest is behind, whether a press fits | D27 | yes |
+| `ui/pace-run.ts` | The game side of pacing: line reports, `pace` and `press`, the speed overlay, `whenCoopBehind` | D27 | no |
+| `ui/chat.ts` | The chat box (`#coopChat`, built by the page): lines on the link, mute, limits, the chat key | D38 | no |
+| `ui/chat-text.ts` | What a chat line may hold, and the filter every line is shown through | D38 | yes |
+| `ui/draggable.ts` | `makeDraggable`: a box over the game moved by its handles (the chat box, the debug menu) | D38, D42 | yes |
+| `ui/player-colors.ts` | Each player's colour on the screens of a game of three | D40 | yes |
+| `ui/players-line.ts` | The line under the waiting text of a room of three: who is in, in their colours | D40 | no |
+| `ui/three-field.ts` | The HP of a battle of three: the teammates' bars over their Pokémon, the enemy boxes | D40 | no |
+| `ui/clipboard.ts` | `copyText`, for the lobby's "Copy code" button | | yes |
+| `ui/source-link.ts` | `sourceUrlOf`: the title screen's Source link (the build insists on one: `plugins/vite/require-source-url.ts`) | D25 | yes |
+
+### `diagnostics/`
+
+| Module | What it does | Rules | Pure |
+|---|---|---|---|
+| `diagnostics/coop-log.ts` | The co-op log: entries, memory and `localStorage`, batched upload | D26 | yes |
+| `diagnostics/coop-diagnostics.ts` | What the log records of a session, the game snapshot of a report, the stall note | D26 | no |
+| `diagnostics/report-button.ts` | "Report a problem" (`#coopReport` in `index.html`) and the downloadable log | D26 | no |
+| `diagnostics/debug-api.ts` | `window.__coop`, in dev, test and `COOP_E2E` builds only | D17, D22 | no |
+| `diagnostics/stall-detector.ts` | Dev only: a dump of both clients after 20 s without progress | | no |
+
+### `debug/`
+
+See [The host's debug menu](#the-hosts-debug-menu-d42).
 
 ### Game-side files outside `src/coop/`
 

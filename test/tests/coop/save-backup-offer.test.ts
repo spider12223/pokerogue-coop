@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { BACKUP_AFTER_PLAY_S, BACKUP_KEY, readBackupState } from "#coop/save-backup";
-import { offerSaveBackup } from "#coop/save-backup-offer";
+import { BACKUP_AFTER_PLAY_S, BACKUP_KEY, readBackupState } from "#coop/save/save-backup";
+import { offerSaveBackup } from "#coop/save/save-backup-offer";
 import { GameDataType } from "#enums/game-data-type";
 import { UiMode } from "#enums/ui-mode";
 import { GameManager } from "#test/framework/game-manager";

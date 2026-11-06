@@ -13,14 +13,14 @@
  * @module
  */
 
+import { type CollectionData, isCollectionData } from "#coop/link/collection-data";
 import {
   type AccountSnapshot,
   type CoopAccountSnapshot,
   isAccountSnapshot,
   isCoopAccountSnapshot,
-} from "#coop/account-snapshot";
-import { filterChat } from "#coop/chat-text";
-import { type CollectionData, isCollectionData } from "#coop/collection-data";
+} from "#coop/sync/account-snapshot";
+import { filterChat } from "#coop/ui/chat-text";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
 export const COOP_PROTOCOL_VERSION = 11;

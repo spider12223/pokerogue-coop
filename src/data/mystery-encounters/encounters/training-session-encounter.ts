@@ -2,7 +2,7 @@ import type { Ability } from "#abilities/ability";
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { writesForPokemon } from "#coop/sim-account";
+import { writesForPokemon } from "#coop/sync/sim-account";
 import { allAbilities } from "#data/data-lists";
 import { getNatureName } from "#data/nature";
 import { AbilityAttr } from "#enums/ability-attr";

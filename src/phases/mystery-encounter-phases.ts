@@ -1,9 +1,9 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { arrangeCoopParty } from "#coop/arrange";
-import { isLinked, reportBridgeError } from "#coop/bridge";
-import { getCosmeticView } from "#coop/cosmetic-view";
+import { getCosmeticView } from "#coop/cosmetic/cosmetic-view";
+import { isLinked, reportBridgeError } from "#coop/decisions/bridge";
+import { arrangeCoopParty } from "#coop/rules/arrange";
 import {
   askWhoGoes,
   beginCoopEncounter,
@@ -12,7 +12,7 @@ import {
   meDecide,
   queueLoneEnemyBoost,
   showChooserWaiting,
-} from "#coop/me-run";
+} from "#coop/rules/me-run";
 import { isCoop } from "#coop/session";
 import { getCharVariantFromDialogue } from "#data/dialogue";
 import { ArenaTagSide } from "#enums/arena-tag-side";

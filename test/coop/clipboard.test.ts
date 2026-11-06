@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type ClipboardEnv, copyText } from "#coop/clipboard";
+import { type ClipboardEnv, copyText } from "#coop/ui/clipboard";
 import { describe, expect, it } from "vitest";
 
 /** The copy button of the lobby: the clipboard of the browser, and the older way where it is not allowed */

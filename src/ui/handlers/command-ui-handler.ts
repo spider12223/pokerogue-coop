@@ -1,7 +1,7 @@
 import { MAX_TERAS_PER_ARENA } from "#app/constants";
 import { globalScene } from "#app/global-scene";
-import { coopSwitchFilter } from "#coop/control";
-import { sendIntent } from "#coop/cosmetic-view";
+import { sendIntent } from "#coop/cosmetic/cosmetic-view";
+import { coopSwitchFilter } from "#coop/decisions/control";
 import { isCoop } from "#coop/session";
 import { getTypeRgb } from "#data/type";
 import { playerBattlerOf } from "#enums/battler-index";

@@ -6,9 +6,9 @@
 
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
-import type { AccountSnapshot } from "#coop/account-snapshot";
 import { endCoopSession, startCoopSession } from "#coop/session";
-import { applyCoopRunSeed, simRandInt } from "#coop/sim-rng";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
+import { applyCoopRunSeed, simRandInt } from "#coop/sync/sim-rng";
 import { modifierTypes } from "#data/data-lists";
 import { Egg } from "#data/egg";
 import { getRandomStatus, Status } from "#data/status-effect";

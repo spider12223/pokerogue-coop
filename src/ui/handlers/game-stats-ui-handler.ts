@@ -2,7 +2,7 @@ import { loggedInUser } from "#app/account";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { coopStatLabel } from "#coop/labels";
+import { coopStatLabel } from "#coop/ui/labels";
 import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
 import { TextStyle } from "#enums/text-style";

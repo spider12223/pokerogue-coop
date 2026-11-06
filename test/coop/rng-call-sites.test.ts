@@ -34,32 +34,32 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "run-seed",
     note: "reset() picks the run seed (the host's in co-op); Date.now = achv/voucher unlock times (account)",
   },
-  "src/coop/lobby.ts": {
+  "src/coop/link/lobby.ts": {
     counts: { randomString: 1, "Date.now": 1 },
     why: "run-seed",
     note: "the host draws the seed of the run before the lobby; it travels in START (D3); Date.now = when a seat token was stored (D20)",
   },
-  "src/coop/coop-log.ts": {
+  "src/coop/diagnostics/coop-log.ts": {
     counts: { "new Date": 1, crypto: 2 },
     why: "ui",
     note: "the co-op log's clock (when a line was written) and the id of a page load (D26); nothing reads them back",
   },
-  "src/coop/cosmetic-view.ts": {
+  "src/coop/cosmetic/cosmetic-view.ts": {
     counts: { "Date.now": 2 },
     why: "ui",
     note: "when a ping or an emote bubble was shown (what the debug view lists); the simulation never reads it (D16)",
   },
-  "src/coop/rejoin.ts": {
+  "src/coop/save/rejoin.ts": {
     counts: { "Date.now": 3 },
     why: "ui",
     note: "when a rejoin began and when the handshake was through (the debug API shows them); nothing reads them back",
   },
-  "src/coop/resync-run.ts": {
+  "src/coop/save/resync-run.ts": {
     counts: { "Date.now": 2 },
     why: "ui",
     note: "when a RESYNC arrived and when a report was saved (the debug API shows them); nothing reads them back",
   },
-  "src/coop/wave-save.ts": {
+  "src/coop/save/wave-save.ts": {
     counts: { "Date.now": 1 },
     why: "ui",
     note: "when the co-op slot was written, to show it; the simulation never reads it",
@@ -69,7 +69,7 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "ui",
     note: "when a reload began and ended (the debug API shows them); nothing reads them back",
   },
-  "src/coop/stall-detector.ts": {
+  "src/coop/diagnostics/stall-detector.ts": {
     counts: { "Date.now": 4 },
     why: "ui",
     note: "dev builds only: how long the phase trace has not moved; it only reads the game",
@@ -79,17 +79,17 @@ const ALLOWED: Record<string, { counts: Record<string, number>; why: Why; note?:
     why: "run-seed",
     note: "the host's debug menu draws the seed of a Pokémon it adds or randomizes; the seed travels in the DEBUG batch and every client makes the same from it (D42)",
   },
-  "src/coop/chat.ts": {
+  "src/coop/ui/chat.ts": {
     counts: { "performance.now": 1 },
     why: "ui",
     note: "the chat box's sending and receiving limits (D38); the chat is not part of a run",
   },
-  "src/coop/save-backup-offer.ts": {
+  "src/coop/save/save-backup-offer.ts": {
     counts: { "Date.now": 1 },
     why: "account",
     note: "when the account was backed up or the offer put off (title screen); no run reads it",
   },
-  "src/coop/sim-rng.ts": { counts: { randInt: 1 }, why: "solo-only", note: "simRandInt in solo play" },
+  "src/coop/sync/sim-rng.ts": { counts: { randInt: 1 }, why: "solo-only", note: "simRandInt in solo play" },
   "src/coop/transport/transport.ts": { counts: { "Date.now": 1 }, why: "ui", note: "transport clock, not simulation" },
   "src/data/egg.ts": {
     counts: { randInt: 2, randomString: 1, "Date.now": 1, "new Date": 1 },
@@ -202,7 +202,7 @@ describe("unseeded RNG and wall-clock call sites in src/ (D3)", () => {
       .map(([file]) => file)
       .sort();
     expect(sensitive).toEqual([
-      "src/coop/sim-rng.ts",
+      "src/coop/sync/sim-rng.ts",
       "src/data/mystery-encounters/encounters/global-trade-system-encounter.ts",
       "src/timed-event-manager.ts",
     ]);

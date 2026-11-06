@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { type RejectReason, Sequencer } from "#coop/decisions/sequencer";
 import type { Seat } from "#coop/protocol";
 import {
   isRewardAction,
@@ -12,8 +13,7 @@ import {
   type RewardAction,
   rewardKey,
   rewardWindow,
-} from "#coop/reward-actions";
-import { type RejectReason, Sequencer } from "#coop/sequencer";
+} from "#coop/rules/reward-actions";
 import { describe, expect, it } from "vitest";
 import { createManualLink } from "./manual-link";
 

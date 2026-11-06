@@ -1,7 +1,7 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { registerGoerSetUp } from "#coop/me-run";
+import { registerGoerSetUp } from "#coop/rules/me-run";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";
 import { getPokeballTintColor } from "#data/pokeball";

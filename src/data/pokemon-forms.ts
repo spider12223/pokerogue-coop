@@ -1,4 +1,4 @@
-import { ownerSeat, simAccount } from "#coop/sim-account";
+import { ownerSeat, simAccount } from "#coop/sync/sim-account";
 import { SpeciesFormChangeCompoundTrigger, type SpeciesFormChangeTrigger } from "#data/form-change-triggers";
 import type { SpeciesId } from "#enums/species-id";
 import type { Pokemon } from "#field/pokemon";

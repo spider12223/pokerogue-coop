@@ -14,7 +14,7 @@ import {
   readCoopSlot,
   readCoopSlots,
   writeCoopSlot,
-} from "#coop/coop-slot";
+} from "#coop/save/coop-slot";
 import {
   forgetAllSeats,
   forgetSeat,
@@ -24,7 +24,7 @@ import {
   SEAT_KEY_PREFIX,
   type SeatRecord,
   saveSeat,
-} from "#coop/seat-store";
+} from "#coop/save/seat-store";
 import { describe, expect, it } from "vitest";
 
 /** A `Storage` in a Map, with the order and `length` of the real one */

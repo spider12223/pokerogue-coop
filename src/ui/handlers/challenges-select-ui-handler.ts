@@ -1,5 +1,5 @@
 import { globalScene } from "#app/global-scene";
-import { takeCoopChallengePick } from "#coop/challenge-pick";
+import { takeCoopChallengePick } from "#coop/link/challenge-pick";
 import type { Challenge } from "#data/challenge";
 import { Button } from "#enums/buttons";
 import { ChallengeCategory } from "#enums/challenge-category";

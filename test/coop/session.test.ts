@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { SettingsOverlayPort } from "#coop/handshake";
+import type { SettingsOverlayPort } from "#coop/link/handshake";
 import type { BuildIdentity } from "#coop/protocol";
 import { endCoopSession, getCoopSession, isCoop, requireCoopSession, startCoopSession } from "#coop/session";
 import { afterEach, describe, expect, it, vi } from "vitest";

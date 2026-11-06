@@ -6,13 +6,13 @@
 
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { reportBridgeError } from "#coop/bridge";
+import { reportBridgeError } from "#coop/decisions/bridge";
 import type { Seat } from "#coop/protocol";
-import type { ResyncPayload } from "#coop/resync";
-import { beforeReload, showReloadFailed } from "#coop/resync-run";
-import { queueRewardResume } from "#coop/reward-resume";
+import type { ResyncPayload } from "#coop/save/resync";
+import { beforeReload, showReloadFailed } from "#coop/save/resync-run";
+import { queueRewardResume } from "#coop/save/reward-resume";
 import { type CoopSession, getCoopSession, requireCoopSession } from "#coop/session";
-import { coopText } from "#coop/text";
+import { coopText } from "#coop/ui/text";
 import { BattleType } from "#enums/battle-type";
 import { UiMode } from "#enums/ui-mode";
 import { fixedInt } from "#utils/common";

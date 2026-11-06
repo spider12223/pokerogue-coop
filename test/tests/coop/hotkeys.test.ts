@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { bindCoopHotkeys, coopSettingLabel } from "#coop/hotkey-names";
-import { openEmoteWheel, pingNow } from "#coop/hotkeys";
-import { showOverlayMenu } from "#coop/overlay";
-import { pingHint } from "#coop/text";
-import { setTouchEmoteVisible, TOUCH_EMOTE_CLASS } from "#coop/touch-emote";
+import { bindCoopHotkeys, coopSettingLabel } from "#coop/cosmetic/hotkey-names";
+import { openEmoteWheel, pingNow } from "#coop/cosmetic/hotkeys";
+import { setTouchEmoteVisible, TOUCH_EMOTE_CLASS } from "#coop/cosmetic/touch-emote";
+import { showOverlayMenu } from "#coop/ui/overlay";
+import { pingHint } from "#coop/ui/text";
 import { Button } from "#enums/buttons";
 import { PartyUiMode } from "#enums/party-ui-mode";
 import { SpeciesId } from "#enums/species-id";

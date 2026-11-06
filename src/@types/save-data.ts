@@ -1,6 +1,6 @@
 import type { PokeballCounts } from "#app/battle-scene";
 import type { Tutorial } from "#app/tutorial";
-import type { CoopSaveBlock } from "#coop/save-block";
+import type { CoopSaveBlock } from "#coop/save/save-block";
 import type { BattleType } from "#enums/battle-type";
 import type { GameModes } from "#enums/game-modes";
 import type { MoveId } from "#enums/move-id";
@@ -74,7 +74,7 @@ export interface SessionSaveData {
    * Counts the amount of pokemon fainted in your party during the current arena encounter.
    */
   playerFaints: number;
-  /** Only in a co-op run (see `src/coop/save-block.ts`); a save without it is a solo run */
+  /** Only in a co-op run (see `src/coop/save/save-block.ts`); a save without it is a solo run */
   coop?: CoopSaveBlock;
 }
 

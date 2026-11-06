@@ -1,8 +1,8 @@
 import { CLASSIC_MODE_MYSTERY_ENCOUNTER_WAVES } from "#app/constants";
 import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { isLinked } from "#coop/bridge";
-import { coopConfirm } from "#coop/me-run";
+import { isLinked } from "#coop/decisions/bridge";
+import { coopConfirm } from "#coop/rules/me-run";
 import { EncounterBattleAnim } from "#data/battle-anims";
 import { allAbilities, modifierTypes } from "#data/data-lists";
 import { CustomPokemonData } from "#data/pokemon-data";

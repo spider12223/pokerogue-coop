@@ -9,7 +9,7 @@ import { scanAccountReads } from "./sim-call-sites";
 
 /**
  * Call-site test for account data (DECISIONS D4): the simulation reads the account through
- * `simAccount()` (`src/coop/sim-account.ts`), never from `gameData` directly. Every direct `gameData` access left in
+ * `simAccount()` (`src/coop/sync/sim-account.ts`), never from `gameData` directly. Every direct `gameData` access left in
  * `src/` (outside the UI, `src/coop/` and `game-data.ts` itself) is listed here with its reason; a new one fails the
  * test. Decide whether the new read decides anything in the simulation (add it to `SimAccountData` and the snapshot)
  * or not (list it here).

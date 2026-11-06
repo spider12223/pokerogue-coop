@@ -2,7 +2,7 @@ import type { Animation } from "#app/animations";
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { writesForPokemon } from "#coop/sim-account";
+import { writesForPokemon } from "#coop/sync/sim-account";
 import { getSpeciesFormChangeMessage } from "#data/form-change-triggers";
 import type { SpeciesFormChange } from "#data/pokemon-forms";
 import { BattlerTagType } from "#enums/battler-tag-type";

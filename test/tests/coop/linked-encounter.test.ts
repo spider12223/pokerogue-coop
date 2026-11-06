@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { ownerOf } from "#coop/control";
-import { MARK_COLORS } from "#coop/cosmetic-tag";
-import { type MeChoice, meChoiceKey } from "#coop/me-choice";
+import { MARK_COLORS } from "#coop/cosmetic/cosmetic-tag";
+import { ownerOf } from "#coop/decisions/control";
 import type { Seat } from "#coop/protocol";
+import { type MeChoice, meChoiceKey } from "#coop/rules/me-choice";
 import { requireCoopSession } from "#coop/session";
 import { Button } from "#enums/buttons";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";

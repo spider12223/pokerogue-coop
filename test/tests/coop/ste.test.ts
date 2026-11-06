@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { describePhaseTraceDiff, diffPhaseTraces } from "#coop/phase-trace";
+import { describePhaseTraceDiff, diffPhaseTraces } from "#coop/sync/phase-trace";
 import { getLevelTotalExp } from "#data/exp";
 import { BattleStyle } from "#enums/battle-style";
 import { BiomeId } from "#enums/biome-id";

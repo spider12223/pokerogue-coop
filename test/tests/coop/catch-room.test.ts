@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { noRoomQuestion } from "#coop/catch-room";
 import type { BuildIdentity } from "#coop/protocol";
+import { noRoomQuestion } from "#coop/rules/catch-room";
 import { endCoopSession, startCoopSession } from "#coop/session";
 import i18next from "i18next";
 import { afterEach, describe, expect, it } from "vitest";

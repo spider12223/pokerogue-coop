@@ -23,14 +23,14 @@ import {
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE, SHINY_EPIC_CHANCE, SHINY_VARIANT_CHANCE } from "#balance/rates";
 import type { FORCED_RIVAL_SIGNATURE_MOVES } from "#balance/signature-moves";
 import { getStarterValueFriendshipCap, TRAINER_MAX_FRIENDSHIP_WAVE, TRAINER_MIN_FRIENDSHIP } from "#balance/starters";
-import { isLinked, reportBridgeError } from "#coop/bridge";
-import { coopSwitchFilter, giveOwnerOf, isAllowedSwitch, mayAddBeside, switchTargets } from "#coop/control";
 import { debugDamage } from "#coop/debug/hooks";
-import { coopEnemyStat } from "#coop/enemy-buff";
-import { drawUniquePokemonId } from "#coop/pokemon-id";
+import { isLinked, reportBridgeError } from "#coop/decisions/bridge";
+import { coopSwitchFilter, giveOwnerOf, isAllowedSwitch, mayAddBeside, switchTargets } from "#coop/decisions/control";
+import { coopDecideSwitch } from "#coop/decisions/switch-bridge";
+import { coopEnemyStat } from "#coop/rules/enemy-buff";
 import { getCoopSession, isCoop } from "#coop/session";
-import { ownerSeat, simAccount, writesForPokemon } from "#coop/sim-account";
-import { coopDecideSwitch } from "#coop/switch-bridge";
+import { drawUniquePokemonId } from "#coop/sync/pokemon-id";
+import { ownerSeat, simAccount, writesForPokemon } from "#coop/sync/sim-account";
 import {
   hideTeammateBar,
   inBattleOfThree,
@@ -38,7 +38,7 @@ import {
   showsOwnBox,
   showTeammateBar,
   updateTeammateBar,
-} from "#coop/three-field";
+} from "#coop/ui/three-field";
 import type { SuppressAbilitiesTag } from "#data/arena-tag";
 import { NoCritTag, WeakenMoveScreenTag } from "#data/arena-tag";
 import {

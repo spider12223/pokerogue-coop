@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { defaultStarterOwners, isOwnerRecord, OwnerMap, STARTERS_PER_SEAT } from "#coop/ownership";
+import { defaultStarterOwners, isOwnerRecord, OwnerMap, STARTERS_PER_SEAT } from "#coop/rules/ownership";
 import { describe, expect, it } from "vitest";
 
 describe("OwnerMap (D7)", () => {

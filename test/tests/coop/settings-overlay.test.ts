@@ -5,13 +5,13 @@
  */
 
 import { settings } from "#app/global-settings-manager";
-import { guestHandshake, hostHandshake } from "#coop/handshake";
+import { guestHandshake, hostHandshake } from "#coop/link/handshake";
 import {
   buildPinnedSettings,
   createSettingsOverlayPort,
   PINNED_SETTING_KEYS,
   readPinnedSettings,
-} from "#coop/pinned-settings";
+} from "#coop/link/pinned-settings";
 import { type BuildIdentity, hashCanonical } from "#coop/protocol";
 import { endCoopSession, getCoopSession, isCoop, startCoopSession } from "#coop/session";
 import { createLoopbackPair } from "#coop/transport/loopback";

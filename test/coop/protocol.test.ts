@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { AccountSnapshot } from "#coop/account-snapshot";
 import {
   type BuildIdentity,
   type CoopStarter,
@@ -36,6 +35,7 @@ import {
   type StartPayload,
   seatsFor,
 } from "#coop/protocol";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
 import { describe, expect, it } from "vitest";
 
 const key: DecisionKey = { wave: 3, turn: 2, kind: "TURN_COMMANDS", ref: 1 };

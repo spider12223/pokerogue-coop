@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { getCoopName, setCoopName } from "#coop/display-name";
-import { showCoopTitleMenu } from "#coop/lobby";
+import { getCoopName, setCoopName } from "#coop/link/display-name";
+import { showCoopTitleMenu } from "#coop/link/lobby";
 import { Button } from "#enums/buttons";
 import { UiMode } from "#enums/ui-mode";
 import { GameManager } from "#test/framework/game-manager";

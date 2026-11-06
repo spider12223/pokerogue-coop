@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { DesyncError, ProposalRejectedError, type RejectReason, Sequencer } from "#coop/decisions/sequencer";
 import { type DecisionKey, type Envelope, type Seat, seatsFor } from "#coop/protocol";
-import { DesyncError, ProposalRejectedError, type RejectReason, Sequencer } from "#coop/sequencer";
 import { FanoutTransport } from "#coop/transport/fanout";
 import { createLoopbackRoom } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";

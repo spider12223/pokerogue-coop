@@ -5,8 +5,8 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { ownerOf } from "#coop/control";
-import { learnMoveKey } from "#coop/decision-keys";
+import { ownerOf } from "#coop/decisions/control";
+import { learnMoveKey } from "#coop/decisions/decision-keys";
 import { keyId } from "#coop/protocol";
 import { rewardPickerOf } from "#coop/session";
 import { modifierTypes } from "#data/data-lists";

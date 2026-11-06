@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { checkDecisionLegal } from "#coop/legal";
-import { checkPartyEdit, isPartyEdit, type PartyMemberView, pokemonOfEdit } from "#coop/party-edit";
-import { takeoverPlan } from "#coop/takeover";
+import { checkDecisionLegal } from "#coop/decisions/legal";
+import { takeoverPlan } from "#coop/decisions/takeover";
+import { checkPartyEdit, isPartyEdit, type PartyMemberView, pokemonOfEdit } from "#coop/rules/party-edit";
 import { describe, expect, it } from "vitest";
 import { key, view } from "./legal-fixtures";
 

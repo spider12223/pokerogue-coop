@@ -1,5 +1,5 @@
 import { globalScene } from "#app/global-scene";
-import { isLinked } from "#coop/bridge";
+import { isLinked } from "#coop/decisions/bridge";
 import { allMoves } from "#data/data-lists";
 import { type BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";

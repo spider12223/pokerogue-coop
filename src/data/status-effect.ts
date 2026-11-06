@@ -1,4 +1,4 @@
-import { simRandInt } from "#coop/sim-rng";
+import { simRandInt } from "#coop/sync/sim-rng";
 import { StatusEffect } from "#enums/status-effect";
 import { randIntRange } from "#utils/common";
 import type { ParseKeys } from "i18next";

@@ -14,7 +14,7 @@ import {
   noteBackup,
   readBackupState,
   snoozeBackup,
-} from "#coop/save-backup";
+} from "#coop/save/save-backup";
 import { describe, expect, it } from "vitest";
 
 /** A `Storage` in a Map */

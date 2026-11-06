@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { deciderOf } from "#coop/control";
-import { retryKey } from "#coop/decision-keys";
+import { deciderOf } from "#coop/decisions/control";
+import { retryKey } from "#coop/decisions/decision-keys";
 import { keyId } from "#coop/protocol";
-import type { ResyncPayload } from "#coop/resync";
+import type { ResyncPayload } from "#coop/save/resync";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";

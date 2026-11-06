@@ -9,7 +9,7 @@ import {
   CheckpointLog,
   describeCheckpointMismatch,
   firstCheckpointMismatch,
-} from "#coop/checkpoint-log";
+} from "#coop/sync/checkpoint-log";
 import { describe, expect, it } from "vitest";
 
 function logOf(...hashes: string[]): readonly Checkpoint[] {

@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { controllerOf, ownerOf } from "#coop/control";
-import { isCoopSaveBlock } from "#coop/save-block";
-import type { RejectReason } from "#coop/sequencer";
-import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
-import { validateProposal } from "#coop/validate";
+import { controllerOf, ownerOf } from "#coop/decisions/control";
+import type { RejectReason } from "#coop/decisions/sequencer";
+import { validateProposal } from "#coop/decisions/validate";
+import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/rules/trade";
+import { isCoopSaveBlock } from "#coop/save/save-block";
 import { modifierTypes } from "#data/data-lists";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";

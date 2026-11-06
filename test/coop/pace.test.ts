@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { COSMETIC_LIMITS, type CosmeticMessage, CosmeticSender, isCosmeticMessage } from "#coop/cosmetic";
-import { comparePositions, PaceTracker } from "#coop/pace";
+import { COSMETIC_LIMITS, type CosmeticMessage, CosmeticSender, isCosmeticMessage } from "#coop/cosmetic/cosmetic";
+import { comparePositions, PaceTracker } from "#coop/ui/pace";
 import { describe, expect, it } from "vitest";
 import { FakeScheduler } from "./fake-scheduler";
 

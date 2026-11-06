@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { MeChoice, MeQuestion } from "#coop/me-choice";
-import { isOnePokemonEncounter, setMeAutoAnswers } from "#coop/me-run";
 import type { CheckpointMessage, Seat } from "#coop/protocol";
+import type { MeChoice, MeQuestion } from "#coop/rules/me-choice";
+import { isOnePokemonEncounter, setMeAutoAnswers } from "#coop/rules/me-run";
 import { requireCoopSession } from "#coop/session";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";

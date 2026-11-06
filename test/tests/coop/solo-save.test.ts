@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { COOP_SAVE_VERSION, CoopSaveRefusedError } from "#coop/save-block";
+import { COOP_SAVE_VERSION, CoopSaveRefusedError } from "#coop/save/save-block";
 import { isCoop } from "#coop/session";
 import { SpeciesId } from "#enums/species-id";
 import { GameManager } from "#test/framework/game-manager";

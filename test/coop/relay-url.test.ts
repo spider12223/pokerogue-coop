@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { logUrlFor, relayUrlFor } from "#coop/relay-url";
+import { logUrlFor, relayUrlFor } from "#coop/transport/relay-url";
 import { describe, expect, it } from "vitest";
 
 /** The relay URL of the client (DECISIONS D22): the page's own origin, unless a build says otherwise */

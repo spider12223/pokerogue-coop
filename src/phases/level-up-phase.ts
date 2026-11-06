@@ -2,7 +2,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { writesForPokemon } from "#coop/sim-account";
+import { writesForPokemon } from "#coop/sync/sim-account";
 import { allMoves } from "#data/data-lists";
 import { ExpNotification } from "#enums/exp-notification";
 import { LearnableMoveSource } from "#enums/learnable-move-source";

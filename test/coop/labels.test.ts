@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { coopRunNames, coopStatLabel } from "#coop/labels";
+import { coopRunNames, coopStatLabel } from "#coop/ui/labels";
 import { describe, expect, it } from "vitest";
 
 /** The words of the co-op rows in upstream's screens */

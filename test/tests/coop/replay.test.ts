@@ -5,7 +5,7 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { describePhaseTraceDiff, diffPhaseTraces } from "#coop/phase-trace";
+import { describePhaseTraceDiff, diffPhaseTraces } from "#coop/sync/phase-trace";
 import { BattleStyle } from "#enums/battle-style";
 import { BiomeId } from "#enums/biome-id";
 import { ExpNotification } from "#enums/exp-notification";

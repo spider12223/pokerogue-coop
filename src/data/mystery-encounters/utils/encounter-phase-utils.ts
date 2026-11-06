@@ -5,15 +5,15 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { BASE_HIDDEN_ABILITY_RATE, BASE_SHINY_CHANCE } from "#balance/rates";
-import { isLinked } from "#coop/bridge";
+import { isLinked } from "#coop/decisions/bridge";
 import {
   coopEncounterDouble,
   coopSelectOptionThenPokemon,
   coopSelectPokemonForOption,
   markLoneEnemy,
-} from "#coop/me-run";
-import { drawUniquePokemonId } from "#coop/pokemon-id";
+} from "#coop/rules/me-run";
 import { isCoop } from "#coop/session";
+import { drawUniquePokemonId } from "#coop/sync/pokemon-id";
 import { initMoveAnim, loadMoveAnimAssets } from "#data/battle-anims";
 import { modifierTypes } from "#data/data-lists";
 import type { IEggOptions } from "#data/egg";

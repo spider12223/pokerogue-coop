@@ -5,10 +5,10 @@
  */
 
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { ownerOf } from "#coop/control";
-import { catchReleaseKey, evolutionCancelKey, learnMoveKey, turnCommandsKey } from "#coop/decision-keys";
+import { ownerOf } from "#coop/decisions/control";
+import { catchReleaseKey, evolutionCancelKey, learnMoveKey, turnCommandsKey } from "#coop/decisions/decision-keys";
+import type { Decision, RejectReason } from "#coop/decisions/sequencer";
 import { keyId } from "#coop/protocol";
-import type { Decision, RejectReason } from "#coop/sequencer";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";

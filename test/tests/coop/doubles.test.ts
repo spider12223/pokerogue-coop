@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { hasUsableDoubleVariant } from "#coop/doubles";
+import { hasUsableDoubleVariant } from "#coop/rules/doubles";
 import { BattleType } from "#enums/battle-type";
 import { ClassicFixedBossWaves } from "#enums/fixed-boss-waves";
 import { MoveId } from "#enums/move-id";

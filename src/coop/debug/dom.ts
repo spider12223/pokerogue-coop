@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { coopText } from "#coop/text";
+import { coopText } from "#coop/ui/text";
 
 /**
  * The controls of the host's debug window (DECISIONS D42): each makes its change in one step. A number applies on Enter or

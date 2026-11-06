@@ -1,7 +1,7 @@
 import type { InfoToggle } from "#app/battle-scene";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
-import { sendIntent } from "#coop/cosmetic-view";
+import { sendIntent } from "#coop/cosmetic/cosmetic-view";
 import { getTypeDamageMultiplierColor } from "#data/type";
 import { BattleType } from "#enums/battle-type";
 import { Button } from "#enums/buttons";

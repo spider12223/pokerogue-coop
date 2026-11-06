@@ -1,5 +1,5 @@
 import { isDev } from "#constants/app-constants";
-import { coopText } from "#coop/text";
+import { coopText } from "#coop/ui/text";
 import { BattleStyle } from "#enums/battle-style";
 import { CandyUpgradeDisplayMode } from "#enums/candy-upgrade-display-mode";
 import { CandyUpgradeNotificationMode } from "#enums/candy-upgrade-notification-mode";

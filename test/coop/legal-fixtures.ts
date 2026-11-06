@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { FighterView, LegalityView, RewardOptionView, RewardView } from "#coop/legal";
-import { OwnerMap } from "#coop/ownership";
+import type { FighterView, LegalityView, RewardOptionView, RewardView } from "#coop/decisions/legal";
 import type { DecisionKey, DecisionKind } from "#coop/protocol";
+import { OwnerMap } from "#coop/rules/ownership";
 
 /**
  * A small game for the legality tests (DECISIONS D24): four Pokémon of the host and the guest, two on the field, a reward

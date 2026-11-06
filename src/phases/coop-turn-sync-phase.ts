@@ -10,7 +10,10 @@
 import { globalScene } from "#app/global-scene";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { Phase } from "#app/phase";
-import { AfkWatcher } from "#coop/afk";
+import { getCosmeticView, sendIntent } from "#coop/cosmetic/cosmetic-view";
+import { isDebugBatch } from "#coop/debug/actions";
+import { applyDebugBatch } from "#coop/debug/apply";
+import { takeDebugBatch } from "#coop/debug/queue";
 import {
   coopDecide,
   coopGate,
@@ -19,17 +22,10 @@ import {
   proposeUnlessLate,
   reportBridgeError,
   showWaitingForPartner,
-} from "#coop/bridge";
-import { deciderOf, requireOwnerOf } from "#coop/control";
-import { getCosmeticView, sendIntent } from "#coop/cosmetic-view";
-import { isDebugBatch } from "#coop/debug/actions";
-import { applyDebugBatch } from "#coop/debug/apply";
-import { takeDebugBatch } from "#coop/debug/queue";
-import { debugTurnKey, sideActionKey, sidePickKey, turnCommandsKey } from "#coop/decision-keys";
-import { type DecisionKey, keyId, type Seat } from "#coop/protocol";
-import type { Decision } from "#coop/sequencer";
-import { requireCoopSession } from "#coop/session";
-import { askCommandFor } from "#coop/takeover-command";
+} from "#coop/decisions/bridge";
+import { deciderOf, requireOwnerOf } from "#coop/decisions/control";
+import { debugTurnKey, sideActionKey, sidePickKey, turnCommandsKey } from "#coop/decisions/decision-keys";
+import type { Decision } from "#coop/decisions/sequencer";
 import {
   commandFromWire,
   commandToWire,
@@ -40,8 +36,12 @@ import {
   type SideActionPayload,
   type SidePickPayload,
   type TurnCommandsPayload,
-} from "#coop/turn-commands";
-import { clearWaitingLine } from "#coop/waiting-line";
+} from "#coop/decisions/turn-commands";
+import { type DecisionKey, keyId, type Seat } from "#coop/protocol";
+import { requireCoopSession } from "#coop/session";
+import { AfkWatcher } from "#coop/ui/afk";
+import { askCommandFor } from "#coop/ui/takeover-command";
+import { clearWaitingLine } from "#coop/ui/waiting-line";
 import { getPokeballName } from "#data/pokeball";
 import { type BattlerIndex, playerBattlerOf } from "#enums/battler-index";
 import { Command } from "#enums/command";

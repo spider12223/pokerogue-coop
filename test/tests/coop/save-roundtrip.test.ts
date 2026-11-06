@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { CoopSaveRefusedError, isCoopSaveBlock } from "#coop/save-block";
+import { CoopSaveRefusedError, isCoopSaveBlock } from "#coop/save/save-block";
 import { endCoopSession, isCoop, requireCoopSession } from "#coop/session";
 import { MoveId } from "#enums/move-id";
 import { PlayerGender } from "#enums/player-gender";

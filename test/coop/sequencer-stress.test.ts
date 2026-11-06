@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { type Decision, Sequencer } from "#coop/decisions/sequencer";
 import { DECISION_KINDS, type DecisionKey, type Seat } from "#coop/protocol";
-import { type Decision, Sequencer } from "#coop/sequencer";
 import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

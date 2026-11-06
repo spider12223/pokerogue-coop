@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { tookOverText } from "#coop/afk";
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { clearDebugQueue, queueDebug } from "#coop/debug/queue";
-import { meChoiceKey } from "#coop/me-choice";
-import { partyEditKey } from "#coop/party-edit";
-import { kindOfAction, type RewardAction, rewardKey } from "#coop/reward-actions";
+import { meChoiceKey } from "#coop/rules/me-choice";
+import { partyEditKey } from "#coop/rules/party-edit";
+import { kindOfAction, type RewardAction, rewardKey } from "#coop/rules/reward-actions";
+import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/rules/trade";
 import { endCoopSession, getCoopSession, requireCoopSession } from "#coop/session";
-import { tradeDoneKey, tradeKey, tradeRequestKey } from "#coop/trade";
+import { tookOverText } from "#coop/ui/afk";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";

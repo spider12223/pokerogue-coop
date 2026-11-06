@@ -5,10 +5,16 @@
  */
 
 import { speciesDataRegistry } from "#app/global-species-data-registry";
-import { controllerOf, ownerOf } from "#coop/control";
-import { evolutionCancelKey, learnMoveKey, sideActionKey, sidePickKey, turnCommandsKey } from "#coop/decision-keys";
+import { controllerOf, ownerOf } from "#coop/decisions/control";
+import {
+  evolutionCancelKey,
+  learnMoveKey,
+  sideActionKey,
+  sidePickKey,
+  turnCommandsKey,
+} from "#coop/decisions/decision-keys";
+import { commandToWire } from "#coop/decisions/turn-commands";
 import { keyId } from "#coop/protocol";
-import { commandToWire } from "#coop/turn-commands";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";
 import { Command } from "#enums/command";

@@ -8,20 +8,10 @@ import { BattleScene } from "#app/battle-scene";
 import { createCoopGameMode } from "#app/game-mode";
 import { settings } from "#app/global-settings-manager";
 import type { Phase } from "#app/phase";
-import type { AccountSnapshot, CoopAccountSnapshot } from "#coop/account-snapshot";
-import { isLinked } from "#coop/bridge";
-import {
-  type Checkpoint,
-  type CheckpointMismatch,
-  describeCheckpointMismatch,
-  firstCheckpointMismatch,
-} from "#coop/checkpoint-log";
-import { tracePhaseStart } from "#coop/checkpoints";
-import { controllerOf, deciderOf, requireOwnerOf, switchTargets } from "#coop/control";
-import { catchReleaseKey } from "#coop/decision-keys";
-import { defaultStarterOwners } from "#coop/ownership";
-import { describePhaseTraceDiff, diffPhaseTraces, type PhaseTraceEntry } from "#coop/phase-trace";
-import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/pinned-settings";
+import { isLinked } from "#coop/decisions/bridge";
+import { controllerOf, deciderOf, requireOwnerOf, switchTargets } from "#coop/decisions/control";
+import { catchReleaseKey } from "#coop/decisions/decision-keys";
+import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/link/pinned-settings";
 import {
   type CoopChallenge,
   type DecisionKey,
@@ -32,12 +22,7 @@ import {
   type Seat,
   type SeatRecord,
 } from "#coop/protocol";
-import type { ResyncPayload } from "#coop/resync";
-import { endCoopSession, requireCoopSession, startCoopSession } from "#coop/session";
-// biome-ignore lint/performance/noNamespaceImport: necessary in order to spy on `simAccount`
-import * as simAccountModule from "#coop/sim-account";
-import { applyCoopRunSeed } from "#coop/sim-rng";
-import { captureStateSnapshot, type StateHashSnapshot } from "#coop/state-hash";
+import { defaultStarterOwners } from "#coop/rules/ownership";
 import {
   applyTrade,
   checkTradeProposal,
@@ -45,7 +30,22 @@ import {
   TradeState,
   tradeDoneKey,
   tradeKey,
-} from "#coop/trade";
+} from "#coop/rules/trade";
+import type { ResyncPayload } from "#coop/save/resync";
+import { endCoopSession, requireCoopSession, startCoopSession } from "#coop/session";
+import type { AccountSnapshot, CoopAccountSnapshot } from "#coop/sync/account-snapshot";
+import {
+  type Checkpoint,
+  type CheckpointMismatch,
+  describeCheckpointMismatch,
+  firstCheckpointMismatch,
+} from "#coop/sync/checkpoint-log";
+import { tracePhaseStart } from "#coop/sync/checkpoints";
+import { describePhaseTraceDiff, diffPhaseTraces, type PhaseTraceEntry } from "#coop/sync/phase-trace";
+// biome-ignore lint/performance/noNamespaceImport: necessary in order to spy on `simAccount`
+import * as simAccountModule from "#coop/sync/sim-account";
+import { applyCoopRunSeed } from "#coop/sync/sim-rng";
+import { captureStateSnapshot, type StateHashSnapshot } from "#coop/sync/state-hash";
 import { BattleType } from "#enums/battle-type";
 import { BattlerIndex } from "#enums/battler-index";
 import { Button } from "#enums/buttons";

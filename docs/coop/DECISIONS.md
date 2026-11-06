@@ -121,7 +121,7 @@ In a game of three the host sequences for both guests, who apply the same decisi
   Both clients, the host included, apply only sequenced decisions, strictly in `seq` order. Early arrivals are buffered.
 - **Validation.** The host refuses (`REJECT`) a proposal whose key is malformed, whose author may not make it, whose key
   was already decided (`duplicate`), whose window another decision closed (`closed`), or whose payload fails the
-  host's check (`invalid`, `validateProposal` in `src/coop/validate.ts`). The proposer is told. Both clients also check
+  host's check (`invalid`, `validateProposal` in `src/coop/decisions/validate.ts`). The proposer is told. Both clients also check
   every sequenced decision before applying it (D24).
 - **Decision keys.** Each decision carries an asserted `DecisionKey {wave, turn, kind, ref}`. A key mismatch counts as a
   desync (`DesyncError`).
@@ -184,7 +184,7 @@ In a game of three the host sequences for both guests, who apply the same decisi
 
 - **Run seed.** The host generates it and sends it in `START`.
 - **Sites that upstream draws unseeded.** In co-op, each simulation site that upstream draws from `Math.random` gets its
-  own seeded stream: a dedicated `executeWithSeedOffset` offset (`simRandInt` in `src/coop/sim-rng.ts`). These draws do
+  own seeded stream: a dedicated `executeWithSeedOffset` offset (`simRandInt` in `src/coop/sync/sim-rng.ts`). These draws do
   not go through the shared stream, so nothing after them shifts. Solo play keeps the unseeded draw. The sites:
   - the gender of an evil-team grunt (`src/battle.ts`);
   - whether a grunt battle is a double (`src/battle.ts`; in co-op every battle is a double anyway, D6);
@@ -196,7 +196,7 @@ In a game of three the host sequences for both guests, who apply the same decisi
 - **Timed events** read the wall clock, which two clients do not share: a co-op run has the events the host chose when
   it started (D33), not the clock's.
 - **`pokemon.id`.** In co-op, uniqueness is asserted when a Pokémon is created. On a collision the id is redrawn
-  deterministically, identically on both clients (`src/coop/pokemon-id.ts`).
+  deterministically, identically on both clients (`src/coop/sync/pokemon-id.ts`).
 - **Call-site tests** (`test/coop/rng-call-sites.test.ts`, `test/coop/account-call-sites.test.ts`) list every remaining
   unseeded or wall-clock call and every direct `gameData` read in `src/`, each with its reason. A new unseeded call on a
   simulation path fails them.
@@ -204,7 +204,7 @@ In a game of three the host sequences for both guests, who apply the same decisi
 ## D4. Account data
 
 - Both accounts are snapshotted at run start into the `coop` block of the session save. During co-op, the simulation
-  never reads live `gameData`: it reads the snapshots (`simAccount()` in `src/coop/sim-account.ts`).
+  never reads live `gameData`: it reads the snapshots (`simAccount()` in `src/coop/sync/sim-account.ts`).
 - **Host snapshot** (world-level values):
   - TID/SID (shininess);
   - Eviolite and Mini Black Hole unlocks;
@@ -267,7 +267,7 @@ A game of three plays 3 of ours against 2 (D40).
 - Every battle is a double. The co-op rule is in `BattleScene.checkIsDouble`, before the "never double" edge cases.
 - The enemy count stays natural: a wild double means 2 enemies, so on a wave that ends in 0 a wild boss becomes two
   bosses. Accepted.
-- **Trainers** use their `DOUBLE` variant where the config has a usable one (`src/coop/doubles.ts`). A trainer without
+- **Trainers** use their `DOUBLE` variant where the config has a usable one (`src/coop/rules/doubles.ts`). A trainer without
   one fights as it is, and the engine sends out its first two Pokémon; a trainer with a single Pokémon fights 2v1.
 - **Final boss:** 2v1, through the existing path.
 - **No enemy reserve:** a forced double whose trainer has no reserve left for a second replacement stays 2v1, through
@@ -320,7 +320,7 @@ In a game of three each player owns 2 of the 6 (D40).
 - **A move aimed at a teammate's Pokémon** (amended 2026-11-03, after a playtest video): when a move that could hit an
   enemy is aimed at a Pokémon of another player, the target screen asks first ("Use Bite on Alex's Squirtle?"). Yes
   uses it; No goes back to the target screen. A move that only goes to allies (Helping Hand) asks nothing
-  (`src/coop/teammate-hit.ts`).
+  (`src/coop/rules/teammate-hit.ts`).
 
 ## D9. Rewards
 
@@ -403,7 +403,7 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   - wave start, after `resetSeed` in `EncounterPhase`;
   - rewards, once `SelectModifierPhase` has generated its options and before they are displayed (D9);
   - wave end, at the end of `BattleEndPhase.start`.
-- **Hash contents** (`src/coop/state-hash.ts`): the RNG states, the parties (with exp, luck, nature, IVs, ability,
+- **Hash contents** (`src/coop/sync/state-hash.ts`): the RNG states, the parties (with exp, luck, nature, IVs, ability,
   gender and owner), the fields, the weather, the modifiers and the reward options (each with its generated
   arguments), the run and wave seeds, the pinned settings (D5) and the run's timed events (D33). Not hashed: `timestamp` and `playTime` (wall
   clock), animation and UI state, local-only settings, and the accounts (they reach the simulation only through the
@@ -485,7 +485,7 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   says "{partner} chose for {Pokémon} while you were away." In a game of three the line names the one who took over
   (D40).
 - The timers can be changed only in dev and test builds (`window.__coop.setAfkTimers`).
-- Take over applies to every decision that goes through the bridge (`takeoverPlan` in `src/coop/takeover.ts`):
+- Take over applies to every decision that goes through the bridge (`takeoverPlan` in `src/coop/decisions/takeover.ts`):
 
 | Decision | What the taker does |
 |---|---|
@@ -688,8 +688,8 @@ and an environment variable.
   the proposals the host parks (a full park refuses, it does not fail the run), a partner's checkpoints, display names
   (no text-markup codes), and every field of a partner's collection.
 - The checks are pure functions of the decision and a small read-only view of the state (`checkDecisionLegal` in
-  `src/coop/legal.ts`, the view in `src/coop/legal-view.ts`), so the same code runs in Node tests with illegal payloads
-  of every kind. The host's validation is `validateProposal` in `src/coop/validate.ts`.
+  `src/coop/decisions/legal.ts`, the view in `src/coop/decisions/legal-view.ts`), so the same code runs in Node tests with illegal payloads
+  of every kind. The host's validation is `validateProposal` in `src/coop/decisions/validate.ts`.
 
 ## D25. AGPL source link
 
@@ -703,7 +703,7 @@ and an environment variable.
 A deployed game has to say what went wrong in a player's browser without the player opening developer tools. The desync
 report (D13) only exists once a run is stopped; this log also covers hangs, errors and resyncs that recovered.
 
-- **The co-op log** (`src/coop/coop-log.ts`) records, from the moment a player chooses Co-op:
+- **The co-op log** (`src/coop/diagnostics/coop-log.ts`) records, from the moment a player chooses Co-op:
   - the session and the lobby (room code, seat, display names, picks, ready, start);
   - every sequenced decision (key, `seq`, author, take over, a short payload) and refused proposals;
   - the link (partner away, back, ended, and why), resyncs and desyncs;
@@ -894,7 +894,7 @@ step; the screens would not.
     Candies and counts are not sent. A collection with `ask` is answered with the receiver's own, so both arrive whoever
     enters first. The starter select opens once the partner's is there (or after 15 s without it, with the player's own
     Pokémon only).
-  - While the lobby is open, `gameData.dexData` and `starterData` are a merge of both (`src/coop/shared-collection.ts`):
+  - While the lobby is open, `gameData.dexData` and `starterData` are a merge of both (`src/coop/link/shared-collection.ts`):
     the forms, shinies, genders, natures, abilities, egg moves and passives either player has, the better IV of each stat,
     the bigger cost reduction. Candies, friendship, the egg pity, counts, ribbons and the custom moveset are the player's own.
   - **Nothing of the partner's is saved to the player's account.** The system save writes the account's own data while
@@ -937,7 +937,7 @@ the same ones again and again. A co-op run prefers the ones it has not met:
 
 - **Remembered:** the trainer type of every wave's trainer battle (`generateNewBattleTrainer`), once, in the session.
   The trainers an encounter offers (Mysterious Challengers) are not.
-- **The pick** (`Arena.randomTrainerType`, `src/coop/trainer-variety.ts`): the tier is drawn as upstream. A trainer of
+- **The pick** (`Arena.randomTrainerType`, `src/coop/rules/trainer-variety.ts`): the tier is drawn as upstream. A trainer of
   that tier is drawn as upstream (`randSeedItem`'s one integer, or none for a single trainer); if the run has met it,
   it is swapped, without a draw, for an unmet one of that tier or of the closest lower tier of the same kind (a gym
   leader only for a gym leader). Only when the run has met all of them does the drawn one come back. The stream moves
@@ -950,7 +950,7 @@ the same ones again and again. A co-op run prefers the ones it has not met:
 ## D35. Play again
 
 At the end of a run (a victory, or a wipe the host did not retry), each player chooses **Play again with {partner}** or
-**Back to title** on the end screen (`src/coop/play-again.ts`). A pair that wants another run does not share a new code.
+**Back to title** on the end screen (`src/coop/link/play-again.ts`). A pair that wants another run does not share a new code.
 
 - **From the run's end on** (`GameOverPhase.handleCoopRunEnd`, on both clients at the same point): the session is
   `runOver`, so the partner leaving is the end screen's to say, not "ended the session". What only a run needs stops
@@ -1017,7 +1017,7 @@ A small chat in every linked session (the lobby, the starter select, the run and
 
 - **On the wire:** `CHAT {text}`, reliable and unsequenced, outside the simulation and its epochs (a line sent just before
   a reload still arrives). A line is at most 500 characters on the wire; `COOP_PROTOCOL_VERSION` is 9 since it.
-- **The text** (`src/coop/chat-text.ts`): a line loses control and invisible characters (bidi overrides, zero-width
+- **The text** (`src/coop/ui/chat-text.ts`): a line loses control and invisible characters (bidi overrides, zero-width
   ones), its white space is collapsed and it is cut at 120 characters. **Every line is filtered where it is shown**, the
   partner's and this player's own, so both screens show the same: common swear words and slurs become stars (their
   endings and look-alikes too, "sh1t", "fuuuck"; whole words only, so "class" and "Cofagrigus" stay), "kill yourself"
@@ -1029,12 +1029,12 @@ A small chat in every linked session (the lobby, the starter select, the run and
   partner stays muted after Play again or a reload. A line typed while the partner is not connected is not sent (it would
   be lost: their next connection starts afresh, D20); a note says so. A player sends at most three lines at once, then one every 1.5 s
   ("Slow down a little."); the receiver drops what floods past five at once and one a second.
-- **The box** (`src/coop/chat.ts`) is the page's, not the canvas's: a **Chat** button at the top right, with the count of
+- **The box** (`src/coop/ui/chat.ts`) is the page's, not the canvas's: a **Chat** button at the top right, with the count of
   lines that came while it was closed; those lines also show under it for 6 s. The **Co-op: chat** key (H, remappable;
   a saved keyboard mapping gets H if it is free) opens it with the cursor in the line; Enter sends, an empty Enter or Esc
   closes. While the line has the keyboard the game gets no key (the box stops each key event before the game's listener
   on the window). Text is written with `textContent` only. The box and what was said go with the session.
-- **Moving the box:** the player drags it by its title bar or its **Chat** button (`src/coop/draggable.ts`); a press that
+- **Moving the box:** the player drags it by its title bar or its **Chat** button (`src/coop/ui/draggable.ts`); a press that
   hardly moves is still a click. The spot is measured from the window's right edge (the box opens to the left, its button
   stays put), kept in the browser (`localStorage`, `coopChatPos`) and kept inside the window; a double click on the title
   bar puts it back at the top right.

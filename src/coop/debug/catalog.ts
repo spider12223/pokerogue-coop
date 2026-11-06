@@ -8,7 +8,7 @@ import { globalScene } from "#app/global-scene";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { tmPoolTiers } from "#balance/tm-pool-tiers";
 import { itemId, parseItemId } from "#coop/debug/item-id";
-import { coopText } from "#coop/text";
+import { coopText } from "#coop/ui/text";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { BerryType } from "#enums/berry-type";
 import { FormChangeItem } from "#enums/form-change-item";

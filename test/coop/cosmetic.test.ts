@@ -10,8 +10,8 @@ import {
   CosmeticReceiver,
   CosmeticSender,
   isCosmeticMessage,
-} from "#coop/cosmetic";
-import { CoopLink } from "#coop/link";
+} from "#coop/cosmetic/cosmetic";
+import { CoopLink } from "#coop/link/link";
 import type { DecisionKey } from "#coop/protocol";
 import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";

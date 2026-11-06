@@ -1,8 +1,8 @@
 import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { Phase } from "#app/phase";
-import { whenCoopBehind } from "#coop/pace-run";
 import { isCoop } from "#coop/session";
+import { whenCoopBehind } from "#coop/ui/pace-run";
 import type { EggHatchData } from "#data/egg-hatch-data";
 import { UiMode } from "#enums/ui-mode";
 

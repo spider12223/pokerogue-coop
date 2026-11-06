@@ -5,13 +5,13 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { ownerOf } from "#coop/control";
-import { turnCommandsKey } from "#coop/decision-keys";
-import { safeLegality } from "#coop/legal";
-import { gameLegalityView } from "#coop/legal-view";
+import { ownerOf } from "#coop/decisions/control";
+import { turnCommandsKey } from "#coop/decisions/decision-keys";
+import { safeLegality } from "#coop/decisions/legal";
+import { gameLegalityView } from "#coop/decisions/legal-view";
+import type { DesyncError } from "#coop/decisions/sequencer";
 import { keyId } from "#coop/protocol";
-import { rewardWindow } from "#coop/reward-actions";
-import type { DesyncError } from "#coop/sequencer";
+import { rewardWindow } from "#coop/rules/reward-actions";
 import { modifierTypes } from "#data/data-lists";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";

@@ -5,7 +5,7 @@
  */
 
 import { endCoopSession, startCoopSession } from "#coop/session";
-import { computeStateHash } from "#coop/state-hash";
+import { computeStateHash } from "#coop/sync/state-hash";
 import { BiomeId } from "#enums/biome-id";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";

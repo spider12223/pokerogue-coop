@@ -13,7 +13,7 @@ import { writeDebugOverrides } from "#coop/debug/overrides";
 import { type DebugWhere, debugBatchApplied } from "#coop/debug/queue";
 import type { Seat } from "#coop/protocol";
 import { type CoopSession, requireCoopSession } from "#coop/session";
-import { writesForPokemon } from "#coop/sim-account";
+import { writesForPokemon } from "#coop/sync/sim-account";
 import { getLevelTotalExp } from "#data/exp";
 import type { Gender } from "#data/gender";
 import { CustomPokemonData } from "#data/pokemon-data";

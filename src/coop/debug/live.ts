@@ -5,9 +5,9 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { ownerOf } from "#coop/control";
 import { el, t } from "#coop/debug/dom";
 import { view } from "#coop/debug/view";
+import { ownerOf } from "#coop/decisions/control";
 import { getCoopSession } from "#coop/session";
 import { TerrainType } from "#data/terrain";
 import { StatusEffect } from "#enums/status-effect";

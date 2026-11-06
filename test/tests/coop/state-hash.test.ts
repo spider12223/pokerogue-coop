@@ -5,16 +5,16 @@
  */
 
 import { settings } from "#app/global-settings-manager";
-import type { AccountSnapshot } from "#coop/account-snapshot";
-import { coopCheckpoint, tracePhaseStart } from "#coop/checkpoints";
 import { endCoopSession, startCoopSession } from "#coop/session";
+import type { AccountSnapshot } from "#coop/sync/account-snapshot";
+import { coopCheckpoint, tracePhaseStart } from "#coop/sync/checkpoints";
 import {
   captureStateSnapshot,
   computeStateHash,
   describeModifierType,
   describeRewardOption,
   registerOpenRewardOptions,
-} from "#coop/state-hash";
+} from "#coop/sync/state-hash";
 import { MoveId } from "#enums/move-id";
 import { PokemonType } from "#enums/pokemon-type";
 import { SpeciesId } from "#enums/species-id";

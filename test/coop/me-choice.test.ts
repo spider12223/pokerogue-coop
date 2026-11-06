@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { checkDecisionLegal } from "#coop/legal";
-import { checkMeChoice, isMeChoice, isMeChoiceOf, meChoiceKey } from "#coop/me-choice";
-import { takeoverPlan } from "#coop/takeover";
+import { checkDecisionLegal } from "#coop/decisions/legal";
+import { takeoverPlan } from "#coop/decisions/takeover";
+import { checkMeChoice, isMeChoice, isMeChoiceOf, meChoiceKey } from "#coop/rules/me-choice";
 import { describe, expect, it } from "vitest";
 import { key, view } from "./legal-fixtures";
 

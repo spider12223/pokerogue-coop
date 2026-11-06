@@ -4,13 +4,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import * as buildInfo from "#coop/build-info";
-import { COOP_SLOT_FILES, COOP_SLOT_VERSION, type CoopSlot, readCoopSlot, writeCoopSlot } from "#coop/coop-slot";
-import { localAccountId, registerContinueHandler, showCoopTitleMenu } from "#coop/lobby";
-import { hostContinue } from "#coop/rejoin";
-import { coopSaveFiles, pickCoopFile } from "#coop/save-files";
+import * as buildInfo from "#coop/link/build-info";
+import { localAccountId, registerContinueHandler, showCoopTitleMenu } from "#coop/link/lobby";
+import { COOP_SLOT_FILES, COOP_SLOT_VERSION, type CoopSlot, readCoopSlot, writeCoopSlot } from "#coop/save/coop-slot";
+import { hostContinue } from "#coop/save/rejoin";
+import { coopSaveFiles, pickCoopFile } from "#coop/save/save-files";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { endCoopSession } from "#coop/session";
-import { removeCoopSlot } from "#coop/wave-save";
 import { Button } from "#enums/buttons";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
