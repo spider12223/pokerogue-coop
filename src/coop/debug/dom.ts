@@ -96,6 +96,7 @@ const clamp = (value: number, min: number, max: number): number => Math.min(max,
 /**
  * A number with − and + buttons. It applies on Enter, when the box is left, and on each press of − or +.
  * @param onCommit - Called with a new value in range
+ * @param zeroText - Shown (grey) instead of 0, which an empty box then means
  */
 export function numberBox(
   value: number,
@@ -104,16 +105,21 @@ export function numberBox(
   onCommit: (value: number) => void,
   step = 1,
   width = 72,
+  zeroText?: string,
 ): HTMLElement {
   let last = value;
   const input = el("input", "");
   input.type = "text";
   input.inputMode = "numeric";
-  input.value = String(value);
+  const shown = (v: number): string => (v === 0 && zeroText !== undefined ? "" : String(v));
+  input.value = shown(value);
+  if (zeroText !== undefined) {
+    input.placeholder = zeroText;
+  }
   input.style.width = `${width}px`;
   const commit = (next: number): void => {
     const v = clamp(Math.trunc(next), min, max);
-    input.value = String(v);
+    input.value = shown(v);
     if (v !== last) {
       last = v;
       onCommit(v);
@@ -121,8 +127,12 @@ export function numberBox(
   };
   const fromText = (): void => {
     const typed = Number(input.value.trim().replace(/[,\s]/g, ""));
+    if (input.value.trim() === "" && zeroText !== undefined && min <= 0) {
+      commit(0);
+      return;
+    }
     if (input.value.trim() === "" || !Number.isFinite(typed)) {
-      input.value = String(last);
+      input.value = shown(last);
       return;
     }
     commit(typed);

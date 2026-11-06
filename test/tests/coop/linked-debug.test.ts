@@ -7,10 +7,13 @@
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import type { DebugBatch } from "#coop/debug/actions";
 import { itemCatalog, makeItemType, partyMembersFor } from "#coop/debug/catalog";
+import { debugShouldTera } from "#coop/debug/enemy-plan";
+import { debugEnemyPlan } from "#coop/debug/hooks";
 import { itemId } from "#coop/debug/item-id";
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
 import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
+import { placeDebugRewards } from "#coop/debug/rewards";
 import { emptyEnemyPlan, emptyWavePlan, type WavePlan } from "#coop/debug/state";
 import type { SectionId } from "#coop/debug/view";
 import { ownerOf } from "#coop/decisions/control";
@@ -577,13 +580,120 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(after.getTeraType()).toBe(PokemonType.WATER);
   });
 
+  it("a fixed wave's trainer keeps its planned member as planned: the rival's own set-up does not undo it", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40).enemyMoveset([]) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug(
+      { t: "jump", v: 8 },
+      {
+        t: "plan",
+        wave: 8,
+        plan: {
+          ...emptyWavePlan(),
+          battle: "trainer",
+          enemies: [
+            { ...emptyEnemyPlan(), level: 77, tera: PokemonType.WATER, moves: [MoveId.SPLASH, 0, 0, 0], boss: 3 },
+            { ...emptyEnemyPlan(), species: SpeciesId.MEW },
+          ],
+        },
+      },
+    );
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const scene = r.ctx.game.scene;
+    expect(scene.currentBattle.waveIndex).toBe(8);
+    expect(scene.currentBattle.trainer?.config.trainerType).toBe(TrainerType.RIVAL);
+    const [starter, second] = scene.getEnemyParty();
+    // (the rival's starter is given its own Tera type, ability and moves after it is made: the plan comes after that)
+    expect(starter.teraType).toBe(PokemonType.WATER);
+    expect(starter.level).toBe(77);
+    expect(starter.getMoveset()[0].moveId).toBe(MoveId.SPLASH);
+    expect(starter.bossSegments).toBe(3);
+    expect(second.species.speciesId).toBe(SpeciesId.MEW);
+  });
+
+  it("a planned Tera type holds against the trainer's own Tera set-up", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    // (an Elite Four member gives one member a Tera of its type when its AI is made: every column is planned)
+    const party = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "trainer",
+      trainer: TrainerType.LORELEI,
+      enemies: Array.from({ length: 6 }, () => ({ ...emptyEnemyPlan(), tera: PokemonType.FAIRY })),
+    });
+    expect(r.ctx.game.scene.currentBattle.trainer?.config.trainerType).toBe(TrainerType.LORELEI);
+    expect(party.map(enemy => enemy.teraType)).toEqual(party.map(() => PokemonType.FAIRY));
+  });
+
+  it("a planned nature holds against our lead's Synchronize", async () => {
+    const r = await start({
+      configure: game => game.override.startingLevel(40).ability(AbilityId.SYNCHRONIZE).nature(Nature.ADAMANT),
+    });
+    const [first, second] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [{ ...emptyEnemyPlan(), nature: Nature.TIMID }],
+    });
+    expect(first.getNature()).toBe(Nature.TIMID);
+    expect(first.hp).toBe(first.getMaxHp());
+    // (the game's own Synchronize still works on the enemy without a planned nature)
+    expect(second.getNature()).toBe(Nature.ADAMANT);
+  });
+
+  it("a planned enemy that fainted does not Terastallize again (once, as a trainer's)", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    const [first] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [{ ...emptyEnemyPlan(), tera: PokemonType.WATER, level: 100, boss: 5 }],
+    });
+    expect(debugShouldTera(first)).toBe(true);
+    r.ctx.game.scene.currentBattle.enemyFaintsHistory.push({ pokemon: first, turn: 1 });
+    expect(debugShouldTera(first)).toBe(false);
+  });
+
+  it("the same move planned in two slots stays in the first", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40).enemyMoveset([]) });
+    const [first] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [{ ...emptyEnemyPlan(), moves: [MoveId.FLAMETHROWER, MoveId.FLAMETHROWER, MoveId.SURF, 0] }],
+    });
+    const moves = first.getMoveset().map(move => move.moveId);
+    expect(moves[0]).toBe(MoveId.FLAMETHROWER);
+    expect(moves.filter(move => move === MoveId.FLAMETHROWER)).toHaveLength(1);
+    expect(moves).toContain(MoveId.SURF);
+  });
+
+  it("a tier pick is rolled against the host's exact items of the screen too", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const party = r.ctx.game.scene.getPlayerParty();
+    regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER);
+    const options = getPlayerModifierTypeOptions(3, party);
+    r.session.debugState.rewards = ["TIER:MASTER", "MASTER_BALL"];
+    let others: string[] = [];
+    placeDebugRewards(options, party, (_tier, rest) => {
+      others = rest.map(option => option.type.id);
+      return null;
+    });
+    expect(others).toContain("MASTER_BALL");
+    expect(options[1].type.id).toBe("MASTER_BALL");
+  });
+
   it("a planned Mystery Encounter is the next wave, whatever the wave", async () => {
     const r = await start({ configure: game => game.override.startingLevel(10) });
     await advanceTo(r.ctx, ["CommandPhase"]);
     queueDebug({
       t: "plan",
       wave: 2,
-      plan: { ...emptyWavePlan(), battle: "me", encounter: MysteryEncounterType.DEPARTMENT_STORE_SALE },
+      plan: {
+        ...emptyWavePlan(),
+        battle: "me",
+        encounter: MysteryEncounterType.DEPARTMENT_STORE_SALE,
+        // (a column on an encounter's plan is for none of its enemies)
+        enemies: [{ ...emptyEnemyPlan(), species: SpeciesId.MEWTWO }],
+      },
     });
     await winFirstWave(r);
     await advanceTo(r.ctx, ["MysteryEncounterPhase", "CommandPhase"]);
@@ -591,6 +701,8 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(battle.waveIndex).toBe(2);
     expect(battle.battleType).toBe(BattleType.MYSTERY_ENCOUNTER);
     expect(battle.mysteryEncounter?.encounterType).toBe(MysteryEncounterType.DEPARTMENT_STORE_SALE);
+    expect(debugEnemyPlan(2)).toBeNull();
+    expect(r.session.debugState.made).toBe(0);
     expect(r.session.desyncMessage).toBeNull();
   });
 
@@ -922,6 +1034,81 @@ describe("Co-op: the host's debug menu (D42)", () => {
     expect(waitingDebug()).toHaveLength(1);
     expect(root.querySelectorAll(".cdw-menu")).toHaveLength(0);
     expect((document.activeElement as HTMLElement | null)?.dataset["keep"]).not.toBe("plan-0-species");
+  });
+
+  it("the Waves tab: the wave being played is not among the other planned waves", async () => {
+    const r = await start();
+    const wild = { ...emptyWavePlan(), battle: "wild" as const, enemies: [{ ...emptyEnemyPlan(), level: 9 }] };
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug({ t: "plan", wave: 2, plan: wild }, { t: "plan", wave: 4, plan: wild });
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.ctx.game.scene.currentBattle.waveIndex).toBe(2);
+    const root = openWindow("waves");
+    expect(Array.from(root.querySelectorAll(".cdw-table td:first-child")).map(cell => cell.textContent)).toEqual([
+      "Wave 4",
+    ]);
+  });
+
+  it("the Waves tab: × on a trainer's member sets it back to the trainer's own, in its place", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const member = (species: SpeciesId) => ({ ...emptyEnemyPlan(), species });
+    queueDebugChange("plan", "plan:2", {
+      t: "plan",
+      wave: 2,
+      plan: {
+        ...emptyWavePlan(),
+        battle: "trainer",
+        enemies: [member(SpeciesId.MEW), member(SpeciesId.MEWTWO), member(SpeciesId.DRAGONITE)],
+      },
+    });
+    const root = openWindow("waves");
+    const clear = (column: number) =>
+      columns(root)[column].querySelector<HTMLButtonElement>(".cdw-ecol-h .cdw-x")!.click();
+    clear(0);
+    expect(waitingDebug()).toEqual([
+      {
+        t: "plan",
+        wave: 2,
+        plan: {
+          ...emptyWavePlan(),
+          battle: "trainer",
+          enemies: [null, member(SpeciesId.MEWTWO), member(SpeciesId.DRAGONITE)],
+        },
+      },
+    ]);
+    // (the last one goes; the empty first one stays: it is the trainer's own)
+    clear(2);
+    expect(waitingDebug()).toEqual([
+      {
+        t: "plan",
+        wave: 2,
+        plan: { ...emptyWavePlan(), battle: "trainer", enemies: [null, member(SpeciesId.MEWTWO)] },
+      },
+    ]);
+    expect(columns(root)).toHaveLength(2);
+  });
+
+  it("the Waves tab's summary counts the options under More; a boss wave is one boss; a level of 0 reads “game's”", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebugChange("plan", "plan:2", {
+      t: "plan",
+      wave: 2,
+      plan: { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), nature: Nature.TIMID }] },
+    });
+    const root = openWindow("waves");
+    expect(root.querySelector(".cdw-sum")?.textContent).toBe(
+      "Wave 2: wild double battle. The game's pick, +1 more; and the game's pick.",
+    );
+    const level = root.querySelector<HTMLInputElement>('[data-keep="plan-1-level"]')!;
+    expect([level.value, level.placeholder]).toEqual(["", "game's"]);
+    const wave = root.querySelector<HTMLInputElement>('[data-keep="plan-wave"]')!;
+    wave.value = "10";
+    wave.dispatchEvent(new Event("change"));
+    pickIn(columns(root)[0].querySelector<HTMLInputElement>(".cdw-pick input")!, "Mewtwo");
+    expect(root.querySelector(".cdw-sum")?.textContent).toBe("Wave 10: wild boss battle. Mewtwo.");
   });
 
   it("the search still finds the Waves tab's planner", async () => {

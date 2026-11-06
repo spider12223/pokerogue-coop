@@ -249,7 +249,12 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
     expect(isDebugState(read)).toBe(true);
     expect(Object.keys(read.plans)).toEqual(["4", "6", "7"]);
     expect(read.plans["4"].battle).toBe("wild");
+    // (six columns: on a fixed wave all of them go on its trainer's team, as the old species did; a wild battle uses two)
     expect(read.plans["4"].enemies.map(e => [e?.species, e?.level, e?.shiny, e?.boss])).toEqual([
+      [6, 30, 0, 3],
+      [25, 30, 0, 3],
+      [6, 30, 0, 3],
+      [25, 30, 0, 3],
       [6, 30, 0, 3],
       [25, 30, 0, 3],
     ]);

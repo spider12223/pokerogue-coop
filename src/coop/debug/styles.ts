@@ -216,7 +216,7 @@ select.cdw-in option { color: #000; text-shadow: none; }
 .cdw-planhead > .cdw-btn:last-child { margin-left: auto; }
 .cdw-hint.cdw-inline { margin-top: 0; }
 .cdw-mini { color: var(--cdw-gold); font-size: 14px; min-width: 22px; }
-.cdw-ecols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; align-items: start; }
+.cdw-ecols { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(300px, calc(50% - 4px)), 1fr)); gap: 8px; align-items: start; }
 .cdw-ecol { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 6px 8px; background: var(--cdw-win); border: 1px solid var(--cdw-line); border-radius: 8px; }
 .cdw-ecol.cdw-set { border-color: rgba(248, 208, 48, 0.45); }
 .cdw-ecol-h { display: flex; align-items: center; gap: 6px; color: var(--cdw-gold); font-size: 16px; }

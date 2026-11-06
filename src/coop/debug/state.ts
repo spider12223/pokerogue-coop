@@ -254,7 +254,7 @@ export function isDebugState(value: unknown): value is DebugState {
 
 /**
  * A plan as the build before per-enemy plans saved it (D42 before its amendment): the species cycled over every enemy
- * made, and one level, shiny and boss bars for them all. Its species go into the columns in turn, its values into each
+ * made, and one level, shiny and boss bars for them all. Its species go into six columns in turn, its values into each
  * column; a "game's" wave with something planned becomes a wild one (where it landed then is not known now).
  * @returns The plan; `null` if it is not one either
  */
@@ -284,8 +284,8 @@ function fromOldPlan(value: unknown): WavePlan | null {
     encounter: encounter as number | null,
   };
   if (planned && kind !== "me" && kind !== "game") {
-    const columns = kind === "trainer" ? MAX_PLANNED_ENEMIES : MAX_WILD_ENEMIES;
-    plan.enemies = Array.from({ length: columns }, (_, column) => ({
+    // (six: on a fixed wave every one goes on its trainer's team, as the old species did; a wild battle uses two)
+    plan.enemies = Array.from({ length: MAX_PLANNED_ENEMIES }, (_, column) => ({
       ...emptyEnemyPlan(),
       species: species.length > 0 ? (species[column % species.length] as number) : null,
       level,

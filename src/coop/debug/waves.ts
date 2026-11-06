@@ -71,6 +71,15 @@ function isFixedWave(wave: number): boolean {
   }
 }
 
+/** @returns Whether `wave` is a boss wave of the run's mode (a wild one is one boss) */
+function isBossWave(wave: number): boolean {
+  try {
+    return globalScene.gameMode.isBoss(wave);
+  } catch {
+    return false;
+  }
+}
+
 /** What a fixed wave is, said from its place in Classic (never by making its trainer: that would draw random numbers) */
 function fixedBattleName(wave: number): string {
   const key = (ClassicFixedBossWaves[wave] as string | undefined) ?? "";
@@ -120,6 +129,17 @@ function describeEnemy(enemy: EnemyPlan | null, nobody: string): string {
   if (enemy.tera !== null) {
     parts.push(t("TeraInto", "Terastallizes ({{type}})", { type: labelOf("types", enemy.tera) }));
   }
+  // (what else is set under More, so a plan of those alone does not read as the game's)
+  const more = [
+    enemy.ability !== 0,
+    enemy.nature !== null,
+    enemy.gender !== null,
+    enemy.moves.some(move => move !== 0),
+    enemy.items.length > 0,
+  ].filter(Boolean).length;
+  if (more > 0) {
+    parts.push(t("PlusMore", "+{{n}} more", { n: more }));
+  }
   return parts.join(", ");
 }
 
@@ -148,6 +168,10 @@ export function planSummary(wave: number, plan: WavePlan): string {
       return `${head} ${t("GamesChoiceLine", "the game's choice.")}`;
     case "wild": {
       const pick = t("GamesPick", "the game's pick");
+      if (isBossWave(wave)) {
+        // (a wild boss comes alone: Enemy 1)
+        return `${head} ${t("WildBoss", "wild boss battle.")} ${capitalized(describeEnemy(plan.enemies[0] ?? null, pick))}.`;
+      }
       const [first, second] = [0, 1].map(slot => describeEnemy(plan.enemies[slot] ?? null, pick));
       return `${head} ${t("WildDouble", "wild double battle.")} ${capitalized(first)}; ${t("And", "and")} ${second}.`;
     }
@@ -318,22 +342,30 @@ function enemyColumn(wave: number, plan: WavePlan, slot: number, label: string, 
       t("SentColumn", "Wave {{wave}}, {{who}}: {{what}}", { wave, who: label, what }),
     );
   };
+  // A member's × sets it back to the trainer's own in its place (the others keep theirs); the last ones go
+  const clearMember = (): void => {
+    const enemies = [...plan.enemies];
+    enemies[slot] = null;
+    while (enemies.length > 0 && enemies.at(-1) === null) {
+      enemies.pop();
+    }
+    savePlan(
+      wave,
+      { ...plan, enemies },
+      t("SentColumn", "Wave {{wave}}, {{who}}: {{what}}", {
+        wave,
+        who: label,
+        what: t("TrainersOwn", "the trainer's own"),
+      }),
+    );
+  };
   const clear = member
-    ? button(
-        "×",
-        () =>
-          savePlan(
-            wave,
-            { ...plan, enemies: plan.enemies.filter((_, at) => at !== slot) },
-            t("SentColumn", "Wave {{wave}}, {{who}}: {{what}}", { wave, who: label, what: t("Removed", "taken out") }),
-          ),
-        "cdw-x",
-      )
+    ? button("×", clearMember, "cdw-x")
     : isEnemyPlanSet(enemy)
       ? button("×", () => edit(emptyEnemyPlan(), t("GamesPick", "the game's pick")), "cdw-x")
       : null;
   if (clear !== null) {
-    clear.title = member ? t("RemoveMember", "Take this member out") : t("ClearColumn", "Back to the game's pick");
+    clear.title = member ? t("ClearMember", "Back to the trainer's own") : t("ClearColumn", "Back to the game's pick");
   }
 
   const fusion =
@@ -393,6 +425,7 @@ function enemyColumn(wave: number, plan: WavePlan, slot: number, label: string, 
       v => edit({ ...enemy, level: v }, v === 0 ? t("LevelGames", "the game's level") : `Lv ${v}`),
       1,
       56,
+      t("GamesShort", "game's"),
     ),
     `plan-${slot}-level`,
   );
@@ -624,8 +657,8 @@ function nextBattleCard(wave: number, next: number, plan: WavePlan): HTMLElement
   );
 }
 
-/** The other planned waves, to see and to open; `null` if there are none */
-function otherWaves(shown: number): HTMLElement | null {
+/** The other planned waves to come, to see and to open; `null` if there are none */
+function otherWaves(shown: number, next: number): HTMLElement | null {
   // Every planned wave, the waiting plans too (a waiting "clear" takes one out)
   const waves = new Set(Object.keys(getCoopSession()?.debugState.plans ?? {}).map(Number));
   for (const entry of debugChanges()) {
@@ -639,6 +672,12 @@ function otherWaves(shown: number): HTMLElement | null {
     }
   }
   waves.delete(shown);
+  // (the wave being played keeps its plan until it is over: it is no wave to plan any more)
+  for (const wave of waves) {
+    if (wave < next) {
+      waves.delete(wave);
+    }
+  }
   if (waves.size === 0) {
     return null;
   }
@@ -740,7 +779,7 @@ export function wavesSection(): HTMLElement[] {
   }
   const wave = view.planWave;
   const cards: HTMLElement[] = [nextBattleCard(wave, next, planOf(wave))];
-  const others = otherWaves(wave);
+  const others = otherWaves(wave, next);
   if (others !== null) {
     cards.push(others);
   }

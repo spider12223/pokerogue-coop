@@ -938,9 +938,6 @@ export class BattleScene extends SceneBase {
     if (activeOverrides.ENEMY_FUSION_OVERRIDE) {
       pokemon.generateFusionSpecies();
     }
-    if (planned !== null) {
-      planAfterMade(pokemon, planned);
-    }
 
     if (boss && !dataSource && !this.gameMode.dailyConfig?.boss?.ivs) {
       const secondaryIvs = getIvsFromId(randSeedInt(4294967296));
@@ -957,6 +954,10 @@ export class BattleScene extends SceneBase {
     }
     if (postProcess) {
       postProcess(pokemon);
+    }
+    // Co-op (D42): the rest of the host's plan, after the trainer's own set-up of the member (a rival's starter...)
+    if (planned !== null) {
+      planAfterMade(pokemon, planned);
     }
 
     if (activeOverrides.ENEMY_IVS_OVERRIDE === null) {

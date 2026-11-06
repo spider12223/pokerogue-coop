@@ -34,25 +34,26 @@ export function placeDebugRewards(
   if (rewards === null) {
     return;
   }
-  for (const [index, id] of rewards.entries()) {
-    if (index >= options.length) {
-      break;
-    }
-    const tier = tierOfItem(id);
-    if (tier !== null) {
-      const rolled = roll(
-        tier,
-        options.filter((_, at) => at !== index),
-      );
-      // (a tier with nothing to offer leaves the option the game rolled)
-      if (rolled?.type != null) {
-        options[index] = rolled;
-      }
-      continue;
-    }
-    const type = makeKnownItemType(id, party);
+  const places = rewards.slice(0, options.length);
+  // The exact items first, then the tier picks: each is rolled against the screen's other options, the host's too
+  for (const [index, id] of places.entries()) {
+    const type = tierOfItem(id) === null ? makeKnownItemType(id, party) : null;
     if (type !== null) {
       options[index].type = type.withTierFromPool(ModifierPoolType.PLAYER, party);
+    }
+  }
+  for (const [index, id] of places.entries()) {
+    const tier = tierOfItem(id);
+    if (tier === null) {
+      continue;
+    }
+    const rolled = roll(
+      tier,
+      options.filter((_, at) => at !== index),
+    );
+    // (a tier with nothing to offer leaves the option the game rolled)
+    if (rolled?.type != null) {
+      options[index] = rolled;
     }
   }
 }

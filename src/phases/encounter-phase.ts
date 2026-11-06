@@ -6,7 +6,7 @@ import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
-import { giveDebugEnemyItems } from "#coop/debug/enemy-plan";
+import { finishDebugEnemies, keepDebugTeraTypes } from "#coop/debug/enemy-plan";
 import { debugKeepsBossBars } from "#coop/debug/hooks";
 import { saveCoopWaveStart } from "#coop/save/wave-save";
 import { isCoop } from "#coop/session";
@@ -288,12 +288,14 @@ export class EncounterPhase extends BattlePhase {
         for (const enemy of globalScene.getEnemyField()) {
           overrideHeldItems(enemy, false);
         }
-        // Co-op (D42): the held items the host planned, on top of the game's
-        giveDebugEnemyItems();
+        // Co-op (D42): a planned enemy's nature (after Synchronize) and its held items, on top of the game's
+        finishDebugEnemies();
       }
 
       if (battle.battleType === BattleType.TRAINER && globalScene.currentBattle.trainer) {
         globalScene.currentBattle.trainer.genAI(globalScene.getEnemyParty());
+        // Co-op (D42): a planned Tera type beats the trainer's own
+        keepDebugTeraTypes();
       }
 
       globalScene.ui.setMode(UiMode.MESSAGE).then(() => {

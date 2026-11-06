@@ -53,8 +53,15 @@ export function planBeforeMade(
   return { species, level, boss };
 }
 
-/** Put the rest of the plan on the enemy just made, before it is set up (`init`): it starts at full HP */
+/**
+ * Put the rest of the plan on the enemy just made, after the trainer's own set-up of it and before it is set up (`init`):
+ * it starts at full HP
+ */
 export function planAfterMade(pokemon: EnemyPokemon, plan: EnemyPlan): void {
+  // (a trainer's set-up may have set the level again)
+  if (plan.level > 0) {
+    pokemon.level = plan.level;
+  }
   if (plan.boss === 1) {
     pokemon.setBoss(false);
   } else if (plan.boss > 1) {
@@ -96,11 +103,14 @@ export function planAfterMade(pokemon: EnemyPokemon, plan: EnemyPlan): void {
   if (plan.tera !== null) {
     pokemon.teraType = plan.tera as PokemonType;
   }
-  // Each planned move in its slot (one the enemy knew elsewhere moves there; the slot's move takes its place)
+  // Each planned move in its slot (one the enemy knew elsewhere moves there; the slot's move takes its place); a move
+  // planned twice stays in its first slot
+  const placed = new Set<number>();
   for (const [slot, move] of plan.moves.entries()) {
-    if (move === 0) {
+    if (move === 0 || placed.has(move)) {
       continue;
     }
+    placed.add(move);
     const at = Math.min(slot, pokemon.moveset.length);
     const known = pokemon.moveset.findIndex(entry => entry?.moveId === move);
     if (known === -1) {
@@ -114,11 +124,19 @@ export function planAfterMade(pokemon: EnemyPokemon, plan: EnemyPlan): void {
   pokemon.generateName();
 }
 
-/** The encounter gave the enemies their items: each planned enemy gets its planned held items too, one per entry */
-export function giveDebugEnemyItems(): void {
+/**
+ * The encounter made its enemies and gave them their items (a fresh battle): a planned enemy gets its planned nature
+ * back (our lead's Synchronize sets the nature of what it meets) and its planned held items, one per entry
+ */
+export function finishDebugEnemies(): void {
   let given = false;
   for (const enemy of globalScene.getEnemyParty()) {
-    for (const id of debugPlannedEnemy(enemy)?.items ?? []) {
+    const plan = debugPlannedEnemy(enemy);
+    if (plan?.nature != null && enemy.getNature() !== plan.nature) {
+      enemy.setNature(plan.nature as Nature);
+      enemy.hp = enemy.getMaxHp();
+    }
+    for (const id of plan?.items ?? []) {
       // (an id that is no held item of this build gives nothing, alike on every client)
       const modifier = makeKnownItemType(id, [enemy])?.newModifier(enemy);
       if (modifier instanceof PokemonHeldItemModifier) {
@@ -135,7 +153,24 @@ export function giveDebugEnemyItems(): void {
   }
 }
 
-/** @returns Whether the host planned this enemy to Terastallize, and it has not yet */
+/**
+ * A trainer's own Tera set-up (its AI, made when the battle is made or loaded) gave a planned enemy another Tera type:
+ * the plan's comes back
+ */
+export function keepDebugTeraTypes(): void {
+  for (const enemy of globalScene.getEnemyParty()) {
+    const tera = debugPlannedEnemy(enemy)?.tera ?? null;
+    if (tera !== null) {
+      enemy.teraType = tera as PokemonType;
+    }
+  }
+}
+
+/** @returns Whether the host planned this enemy to Terastallize, and it has not yet (once, as a trainer's: not after a faint) */
 export function debugShouldTera(pokemon: EnemyPokemon): boolean {
-  return (debugPlannedEnemy(pokemon)?.tera ?? null) !== null && !pokemon.isTerastallized;
+  return (
+    (debugPlannedEnemy(pokemon)?.tera ?? null) !== null
+    && !pokemon.isTerastallized
+    && !globalScene.currentBattle.enemyFaintsHistory.some(entry => entry.pokemon.id === pokemon.id)
+  );
 }
