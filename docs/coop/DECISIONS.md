@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D44, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D45, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -424,7 +424,9 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
 - **Three strikes:** the host counts the desyncs of each wave. The third desync of the same wave is not resynced: the
   host sends `RESYNC` with `stop: true`. Both clients save (the co-op slot already has the wave start), show an error,
   and offer a downloadable report: both phase traces (each client sends its own with the stop) and the two mismatching
-  checkpoints. The run can be continued later (D21).
+  checkpoints, every player's name, this client's reloads and why each came, and each side's last warnings and errors
+  (the co-op log, D26: a desync's message, a decision that failed), so the report says what stopped the run. The run can
+  be continued later (D21).
 - **A decision's code that fails** (an exception in the phase that waits for it) reloads the wave like a desync, instead
   of leaving the phase hung; that phase counts as a safe point. A wave start that does not load (a save this build
   refuses) tells the player why and offers only Back to the title screen.
@@ -1234,6 +1236,21 @@ changes, so they cannot desync a run. Co-op only; solo play keeps upstream's scr
   plus at first, rebindable in the keyboard settings. The background stays as it is; the game's own zoom (a big Pokémon,
   a battle of three) comes on top. Kept in this browser (`coopFieldZoom`). The marks over a Pokémon (intents, pings,
   emotes, D16) follow the zoomed field.
+
+## D45. A download that fails is asked for again
+
+A player had every Pokémon icon of the starter select missing (a box with a green line in each place): the icon atlases
+had not come, and Phaser's loader gives up on a file at the first failure, so the game draws a missing texture there for
+the rest of the session.
+
+- **What:** an image, an atlas (its picture or its frame list: the whole atlas is asked for again), a spritesheet or a
+  data file that fails is asked for again at the end of the loader's queue, twice at most. Sounds are not (the game goes
+  on without one). The loading screen and the battle scene (which downloads Pokémon sprites as they come) both do it.
+- **Solo play too:** this is about the files the site serves, not about co-op; a solo player gets the same retries. A
+  download that never fails behaves as before.
+- **Logged:** each try, and a file given up, goes into the co-op log (D26, kind `load`), so a stop report (D13) or "Report
+  a problem" says which file did not come.
+- `src/coop/diagnostics/load-retry.ts`.
 
 ## See also
 

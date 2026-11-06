@@ -86,6 +86,10 @@ const RETRY_MAX_MS = 120_000;
 export const MAX_DATA_CHARS = 3000;
 /** A report's snapshot goes in at most this many entries */
 export const REPORT_MAX_PARTS = 40;
+/** How many of the last warnings and errors a stop report carries (D13) */
+export const REPORT_PROBLEMS = 30;
+/** A problem's data in a stop report is cut at this length */
+const PROBLEM_DATA_CHARS = 600;
 /** The same entry again within this time of the first (same level, kind, message and data) is counted on the first one */
 const REPEAT_MS = 1000;
 /** How many of the newest entries a repeat is looked for among */
@@ -273,6 +277,17 @@ export class CoopLog {
   /** What is in the log now, oldest first */
   get all(): readonly CoopLogEntry[] {
     return this.entries;
+  }
+
+  /**
+   * The last warnings and errors, oldest first, their data cut short: what a stop report (D13) carries, so it says why
+   * the run reloaded (a desync's message, a decision that failed, a download that did not come)
+   */
+  problems(count = REPORT_PROBLEMS): CoopLogEntry[] {
+    return this.entries
+      .filter(entry => entry.level === "warn" || entry.level === "error")
+      .slice(-count)
+      .map(entry => (entry.data === undefined ? entry : { ...entry, data: toLogData(entry.data, PROBLEM_DATA_CHARS) }));
   }
 
   get sessionId(): string {

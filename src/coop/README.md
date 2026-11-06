@@ -19,11 +19,11 @@ everything else is in a folder per area:
 | `save/` | The save block, the co-op save files, resync, seat tokens, account import and backup |
 | `cosmetic/` | Intents, cursors, pings, emotes, their hotkeys and touch buttons |
 | `ui/` | The UI strings, waiting lines, take over menus, pacing, the chat, the HP bars of a battle of three, each player's zoom and hidden HP boxes |
-| `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector |
+| `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector, retries of failed downloads |
 | `debug/` | The host's debug menu (D42) |
 
 - How it fits together, every module, and where to start a change: [docs/coop/ARCHITECTURE.md](../../docs/coop/ARCHITECTURE.md).
-- The rules and why (cited in the code as `D1`…`D44`): [docs/coop/DECISIONS.md](../../docs/coop/DECISIONS.md).
+- The rules and why (cited in the code as `D1`…`D45`): [docs/coop/DECISIONS.md](../../docs/coop/DECISIONS.md).
 
 Two rules for code here: every co-op branch in the game is gated by `isCoop()`, so a single-player game runs upstream's
 code; and nothing synchronised is keyed by a slot index, `battle.turn` or a local counter (D2).

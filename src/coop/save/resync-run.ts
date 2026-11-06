@@ -463,21 +463,21 @@ export function reportOf(session: CoopSession): ReturnType<typeof buildReport> |
   if (stopped === null || link === null) {
     return null;
   }
-  const names = {
-    host: session.isHost ? link.name : link.theirName,
-    guest: session.isHost ? link.theirName : link.name,
-  };
   return buildReport({
     seat: session.seat,
     epoch: stopped.epoch,
     wave: stopped.wave,
     build: session.build,
-    names,
+    // every player's name, three in a game of three (D40)
+    names: session.names,
     mismatch: session.stopMismatch ?? stopped.mismatch,
     trace: session.trace.dump(),
     checkpoints: lastCheckpoints(session),
     partner: session.partnerReport,
     partnerTrace: session.isHost ? null : stopped.trace,
+    // why each reload came, and what went wrong here: the report says what stopped the run
+    reloads: session.resyncs,
+    problems: coopLog().problems(),
   });
 }
 
@@ -514,6 +514,7 @@ function showStop(
     mismatch: session.stopMismatch,
     trace: session.trace.dump().slice(-REPORT_TRACE_LENGTH),
     checkpoints: lastCheckpoints(session),
+    problems: coopLog().problems(),
   });
   const { ui } = globalScene;
   // The screen comes a moment later: a session that ended meanwhile (the player left, a new run began) does not get it

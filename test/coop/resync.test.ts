@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { REPORT_PROBLEMS } from "#coop/diagnostics/coop-log";
 import type { BuildIdentity } from "#coop/protocol";
 import {
   buildReport,
@@ -105,6 +106,20 @@ describe("what a RESYNC says", () => {
   });
 
   it("checks a request and a report", () => {
+    const problem = { at: "2026-11-06T10:00:00.000Z", n: 4, level: "error", kind: "desync", msg: "illegal decision" };
+    expect(isReportPayload({ mismatch: null, trace: [], checkpoints: [], problems: [problem] })).toBe(true);
+    expect(isReportPayload({ mismatch: null, trace: [], checkpoints: [], problems: "no" })).toBe(false);
+    expect(
+      isReportPayload({ mismatch: null, trace: [], checkpoints: [], problems: [{ ...problem, level: "loud" }] }),
+    ).toBe(false);
+    expect(
+      isReportPayload({
+        mismatch: null,
+        trace: [],
+        checkpoints: [],
+        problems: new Array(REPORT_PROBLEMS + 1).fill(problem),
+      }),
+    ).toBe(false);
     expect(isResyncRequest({ reason: "mismatch", wave: 3, mismatch })).toBe(true);
     expect(isResyncRequest({ reason: "desync", wave: 3, mismatch: null })).toBe(true);
     expect(isResyncRequest({ reason: "rejoin", wave: 3, mismatch: null })).toBe(false); // the host decides those itself
@@ -154,5 +169,38 @@ describe("the report of a stopped run (D13)", () => {
     expect(report.partnerMismatch).toBeNull();
     // it is plain JSON: it can be written to a file
     expect(JSON.parse(JSON.stringify(report))).toEqual(report);
+  });
+});
+
+describe("the report of a stopped run, what made it stop (D13)", () => {
+  const problem = (msg: string) => ({
+    at: "2026-11-06T10:00:00.000Z",
+    n: 1,
+    level: "error" as const,
+    kind: "desync",
+    msg,
+  });
+
+  it("names every player of a game of three, and says why each reload came and what went wrong on each side", () => {
+    const report = buildReport({
+      seat: "guest2",
+      epoch: 6,
+      wave: 2,
+      build,
+      names: { host: "sambosa", guest: "fartnoker", guest2: "Kim" },
+      mismatch: null,
+      trace: trace(3),
+      checkpoints: checkpoints(2),
+      partner: { mismatch: null, trace: trace(2), checkpoints: [], problems: [problem("from the host")] },
+      reloads: [
+        { epoch: 5, reason: "desync", wave: 2 },
+        { epoch: 6, reason: "rejoin", wave: 2 },
+      ],
+      problems: [problem("illegal decision: not your Pokémon")],
+    });
+    expect(report.names).toEqual({ host: "sambosa", guest: "fartnoker", guest2: "Kim" });
+    expect(report.reloads.map(reload => reload.reason)).toEqual(["desync", "rejoin"]);
+    expect(report.problems.guest2?.[0].msg).toBe("illegal decision: not your Pokémon");
+    expect(report.problems.host?.[0].msg).toBe("from the host");
   });
 });

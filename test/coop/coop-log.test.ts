@@ -13,6 +13,7 @@ import {
   LOG_PERSISTED,
   MAX_DATA_CHARS,
   REPORT_MAX_PARTS,
+  REPORT_PROBLEMS,
   splitLogData,
   toLogData,
 } from "#coop/diagnostics/coop-log";
@@ -405,5 +406,27 @@ describe("the co-op log (D26)", () => {
     answers[1](204);
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(done).toBe(true);
+  });
+});
+
+describe("the problems a stop report carries (D13, D26)", () => {
+  it("are the last warnings and errors, newest last, with short data", () => {
+    const { env } = fakeBrowser();
+    const log = new CoopLog(env);
+    log.info("session", "begin");
+    log.warn("resync", "the clients disagree (desync): reloading the wave start", { wave: 2 });
+    log.error("desync", "illegal decision: not your Pokémon", { big: "z".repeat(5000) });
+    log.debug("decision", "TURN_COMMANDS");
+    expect(log.problems().map(entry => [entry.level, entry.kind])).toEqual([
+      ["warn", "resync"],
+      ["error", "desync"],
+    ]);
+    expect(JSON.stringify(log.problems()[1].data).length).toBeLessThan(1000);
+
+    for (let i = 0; i < REPORT_PROBLEMS + 5; i++) {
+      log.warn("load", `failed ${i}`);
+    }
+    expect(log.problems()).toHaveLength(REPORT_PROBLEMS);
+    expect(log.problems().at(-1)?.msg).toBe(`failed ${REPORT_PROBLEMS + 4}`);
   });
 });

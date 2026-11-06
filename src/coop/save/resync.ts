@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { type CoopLogEntry, REPORT_PROBLEMS } from "#coop/diagnostics/coop-log";
 import type { BuildIdentity, Seat, SeatRecord } from "#coop/protocol";
 import type { Checkpoint } from "#coop/sync/checkpoint-log";
 import type { PhaseTraceEntry } from "#coop/sync/phase-trace";
@@ -94,6 +95,8 @@ export interface ReportPayload {
   mismatch: MismatchInfo | null;
   trace: PhaseTraceEntry[];
   checkpoints: Checkpoint[];
+  /** Its last warnings and errors (the co-op log, D26): what went wrong on its side */
+  problems?: CoopLogEntry[];
 }
 
 const isInt = (value: unknown, min: number): value is number => Number.isInteger(value) && (value as number) >= min;
@@ -187,6 +190,25 @@ export function isReportPayload(value: unknown): value is ReportPayload {
     (report["mismatch"] === null || isMismatchInfo(report["mismatch"]))
     && isTrace(report["trace"])
     && isCheckpointList(report["checkpoints"])
+    && (report["problems"] === undefined || isProblemList(report["problems"]))
+  );
+}
+
+const LOG_LEVELS: readonly unknown[] = ["debug", "info", "warn", "error"];
+
+function isProblemList(value: unknown): value is CoopLogEntry[] {
+  return (
+    Array.isArray(value)
+    && value.length <= REPORT_PROBLEMS
+    && value.every(
+      entry =>
+        typeof entry === "object"
+        && entry !== null
+        && typeof entry.at === "string"
+        && typeof entry.kind === "string"
+        && typeof entry.msg === "string"
+        && LOG_LEVELS.includes(entry.level),
+    )
   );
 }
 
@@ -237,6 +259,10 @@ export interface CoopReport {
   checkpoints: SeatRecord<Checkpoint[] | null>;
   /** The mismatch as the partner saw it, if it told */
   partnerMismatch: MismatchInfo | null;
+  /** This client's reloads of the run, oldest first, and why each came */
+  reloads: { epoch: number; reason: ResyncReason; wave: number }[];
+  /** The last warnings and errors of each side (a desync's message, a decision that failed); `null` if they did not arrive */
+  problems: SeatRecord<CoopLogEntry[] | null>;
 }
 
 /** Build the report of a stopped run from what this client has and what the partner sent (or `null`) */
@@ -251,6 +277,8 @@ export function buildReport(input: {
   checkpoints: readonly Checkpoint[];
   partner: ReportPayload | null;
   partnerTrace?: readonly PhaseTraceEntry[] | null;
+  reloads?: readonly { epoch: number; reason: ResyncReason; wave: number }[];
+  problems?: readonly CoopLogEntry[];
 }): CoopReport {
   const mine = input.trace.slice(-REPORT_TRACE_LENGTH);
   const myCheckpoints = input.checkpoints.slice(-REPORT_CHECKPOINT_LENGTH);
@@ -272,5 +300,10 @@ export function buildReport(input: {
     traces,
     checkpoints,
     partnerMismatch: input.partner?.mismatch ?? null,
+    reloads: [...(input.reloads ?? [])],
+    problems: {
+      [input.seat]: [...(input.problems ?? [])],
+      [partnerSeat]: input.partner?.problems ?? null,
+    } as SeatRecord<CoopLogEntry[] | null>,
   };
 }

@@ -12,6 +12,10 @@ export class MockLoader {
     callback();
   }
 
+  on(_event, _callback) {
+    return this;
+  }
+
   setBaseURL(_url) {
     return null;
   }
@@ -33,4 +37,6 @@ export class MockLoader {
   image() {}
 
   atlas(_key, _textureUrl, _atlasUrl) {}
+
+  json(_key, _url) {}
 }

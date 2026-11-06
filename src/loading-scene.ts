@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { activeOverrides } from "#app/overrides";
 import { SceneBase } from "#app/scene-base";
 import { isMobile } from "#app/touch-controls";
+import { retryFailedDownloads } from "#coop/diagnostics/load-retry";
 import { BiomeId } from "#enums/biome-id";
 import { GachaType } from "#enums/gacha-types";
 import { getBiomeHasProps } from "#field/arena";
@@ -26,6 +27,8 @@ export class LoadingScene extends SceneBase {
   }
 
   preload() {
+    // Co-op fork (DECISIONS D45): a download that fails is asked for again
+    retryFailedDownloads(this.load);
     localPing();
     const startingBiome = activeOverrides.STARTING_BIOME_OVERRIDE ?? globalScene?.arena?.biomeId ?? BiomeId.TOWN;
     // TODO: Categorize these into sub-methods that make sense

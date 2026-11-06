@@ -381,7 +381,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `save/` | Saves, reloads and rejoining: the save block, the co-op save files, resync, seat tokens, account import and backup |
 | `cosmetic/` | The cosmetic channel: intents, cursors, pings, emotes, and the hotkeys and touch buttons that send them |
 | `ui/` | The co-op screens and widgets: the UI strings, waiting lines, the take over menus, pacing, the chat, HP bars of three, each player's own view |
-| `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector |
+| `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector, retries of failed downloads |
 | `debug/` | The host's debug menu (D42) |
 
 ### Root
@@ -534,6 +534,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `diagnostics/report-button.ts` | "Report a problem" (`#coopReport` in `index.html`) and the downloadable log | D26 | no |
 | `diagnostics/debug-api.ts` | `window.__coop`, in dev, test and `COOP_E2E` builds only | D17, D22 | no |
 | `diagnostics/stall-detector.ts` | Dev only: a dump of both clients after 20 s without progress | | no |
+| `diagnostics/load-retry.ts` | A download that fails is asked for again, twice at most, and logged (solo too) | D45 | yes |
 
 ### `debug/`
 
@@ -554,7 +555,8 @@ See [The host's debug menu](#the-hosts-debug-menu-d42).
 | `src/phases/game-over-phase.ts`, `post-game-over-phase.ts` | The shared run end and the retry after a wipe | D4a |
 | `src/phases/egg-lapse-phase.ts`, `egg-summary-phase.ts`, `trainer-victory-phase.ts`, `victory-phase.ts` | Eggs, vouchers, the rewards of a lone encounter enemy | D29, D30 |
 | `src/phases/mystery-encounter-phases.ts`, `src/data/mystery-encounters/utils/encounter-phase-utils.ts`, `encounter-pokemon-utils.ts` | Mystery Encounters | D29 |
-| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`); `setFieldScale` adds the player's zoom | D6, D34, D44 |
+| `src/battle-scene.ts` | `checkIsDouble`: every co-op battle is a double; a wave's trainer is remembered (`noteTrainerMet`); `setFieldScale` adds the player's zoom; its loader asks again for a failed download | D6, D34, D44, D45 |
+| `src/loading-scene.ts` | The loading screen asks again for a failed download | D45 |
 | `src/field/pokemon.ts` | `showInfo`: a teammate's bar in a battle of three, the enemy boxes of three, the box's hide handle | D40, D44 |
 | `src/field/arena.ts` | `randomTrainerType` asks `pickCoopTrainer` in co-op | D34 |
 | `src/phase-manager.ts` | `coopRestartWith`: replaces whatever runs with the resync phase | D13 |

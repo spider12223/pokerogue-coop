@@ -36,6 +36,7 @@ import {
   debugMoneyMultiplier,
   takeDebugJump,
 } from "#coop/debug/hooks";
+import { retryFailedDownloads } from "#coop/diagnostics/load-retry";
 import { arrangeCoopParty } from "#coop/rules/arrange";
 import { withCoopDoubleVariant } from "#coop/rules/doubles";
 import { noteTrainerMet } from "#coop/rules/trainer-variety";
@@ -417,6 +418,8 @@ export class BattleScene extends SceneBase {
     addUiThemeOverrides();
 
     this.load.setBaseURL();
+    // Co-op fork (DECISIONS D45): a download that fails (a Pokémon's sprite, a biome) is asked for again
+    retryFailedDownloads(this.load);
 
     this.spritePipeline = new SpritePipeline(this.game);
     this.renderer.pipelines.add("Sprite", this.spritePipeline);
