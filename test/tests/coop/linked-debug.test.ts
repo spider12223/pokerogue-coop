@@ -16,12 +16,15 @@ import { ownerOf } from "#coop/decisions/control";
 import { debugTurnKey } from "#coop/decisions/decision-keys";
 import type { Decision } from "#coop/decisions/sequencer";
 import type { DecisionKey } from "#coop/protocol";
+import { modifierTypes } from "#data/data-lists";
 import { TerrainType } from "#data/terrain";
 import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
 import { BerryType } from "#enums/berry-type";
 import { BiomeId } from "#enums/biome-id";
 import { FormChangeItem } from "#enums/form-change-item";
+import { ModifierPoolType } from "#enums/modifier-pool-type";
+import { ModifierTier } from "#enums/modifier-tier";
 import { MoveId } from "#enums/move-id";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { Nature } from "#enums/nature";
@@ -39,6 +42,7 @@ import type {
   ModifierTypeOption,
   TmModifierType,
 } from "#modifiers/modifier-type";
+import { getPlayerModifierTypeOptions, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
 import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
 import {
   type LinkedRun,
@@ -49,6 +53,7 @@ import {
   rewardScreen,
   winWave,
 } from "#test/helpers/coop-linked";
+import { getModifierPoolForType } from "#utils/modifier-utils";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -461,6 +466,108 @@ describe("Co-op: the host's debug menu (D42)", () => {
     pickerSkips(r);
     await advanceTo(r.ctx, ["CommandPhase"]);
     expect(r.session.desyncMessage).toBeNull();
+  });
+
+  /** The ids of the reward pool's Master tier */
+  const masterIds = () =>
+    new Set(getModifierPoolForType(ModifierPoolType.PLAYER)[ModifierTier.MASTER].map(entry => entry.modifierType.id));
+
+  it("the tier picks come first among the game's picks, Master first; a tier pick is no item to give", async () => {
+    await start();
+    const picks = itemCatalog()
+      .filter(item => item.family === "random")
+      .slice(0, 5);
+    expect(picks.map(item => item.id)).toEqual([
+      "TIER:MASTER",
+      "TIER:ROGUE",
+      "TIER:ULTRA",
+      "TIER:GREAT",
+      "TIER:COMMON",
+    ]);
+    expect(picks.map(item => item.name)).toEqual([
+      "Master-tier item (the game picks)",
+      "Rogue-tier item (the game picks)",
+      "Ultra-tier item (the game picks)",
+      "Great-tier item (the game picks)",
+      "Common-tier item (the game picks)",
+    ]);
+    expect(makeItemType("TIER:MASTER")).toBeNull();
+  });
+
+  it("the next reward screen: a Master-tier pick and an exact item, at their places", async () => {
+    const r = await start();
+    expect(await winWave(r)).toBe(true);
+    const before = r.ctx.game.scene.phaseManager.getCurrentPhase();
+    queueDebug({ t: "rewards", items: ["TIER:MASTER", "LEFTOVERS"] });
+    await vi.waitUntil(() => r.ctx.game.scene.phaseManager.getCurrentPhase() !== before, {
+      interval: 5,
+      timeout: 4000,
+    });
+    await openUi(r.ctx, "SelectModifierPhase");
+    const ids = (rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] }).typeOptions.map(
+      option => option.type.id,
+    );
+    expect(masterIds()).toContain(ids[0]);
+    expect(ids[1]).toBe("LEFTOVERS");
+    pickerSkips(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("as the guest: the host's tier pick and item are on this client's reward screen too", async () => {
+    let sent = false;
+    const r = await start({
+      seat: "guest",
+      policy: {
+        auto: ["TURN_COMMANDS", "LEARN_MOVE", "EVOLUTION_CANCEL", "DEBUG"],
+        other: key => {
+          if (key.kind !== "DEBUG" || !String(key.ref).startsWith("t")) {
+            return;
+          }
+          const actions = sent ? [] : [{ t: "rewards", items: ["LEFTOVERS", "TIER:MASTER"] }, { t: "win" }];
+          sent = true;
+          return { actions };
+        },
+      },
+    });
+    expect(await playTurn(r)).toBe("SelectModifierPhase");
+    await openUi(r.ctx, "SelectModifierPhase");
+    const ids = (rewardScreen(r) as unknown as { typeOptions: ModifierTypeOption[] }).typeOptions.map(
+      option => option.type.id,
+    );
+    expect(ids[0]).toBe("LEFTOVERS");
+    expect(masterIds()).toContain(ids[1]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the same state and the same random numbers roll the same tier picks", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const party = r.ctx.game.scene.getPlayerParty();
+    regenerateModifierPoolThresholds(party, ModifierPoolType.PLAYER);
+    const roll = (): string[] => {
+      r.session.debugState.rewards = ["TIER:MASTER", "TIER:ROGUE", "TIER:ULTRA"];
+      return getPlayerModifierTypeOptions(3, party).map(option => option.type.id);
+    };
+    const random = Phaser.Math.RND.state();
+    const first = roll();
+    Phaser.Math.RND.state(random);
+    expect(roll()).toEqual(first);
+    expect(masterIds()).toContain(first[0]);
+    expect(r.session.debugState.rewards).toBeNull();
+  });
+
+  it("a tier pick on a screen of guaranteed items only (a Mystery Encounter's) takes its first option", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    r.session.debugState.rewards = ["TIER:MASTER"];
+    regenerateModifierPoolThresholds(r.ctx.game.scene.getPlayerParty(), ModifierPoolType.PLAYER);
+    const options = getPlayerModifierTypeOptions(1, r.ctx.game.scene.getPlayerParty(), undefined, {
+      guaranteedModifierTypeFuncs: [modifierTypes.POTION],
+      fillRemaining: false,
+    });
+    expect(options).toHaveLength(1);
+    expect(masterIds()).toContain(options[0].type.id);
   });
 
   it("the host gives exact held items: Charcoal and a Mega Stone; the change log says the turn", async () => {

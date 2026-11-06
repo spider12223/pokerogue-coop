@@ -5,7 +5,6 @@
  */
 
 import { activeOverrides, defaultOverrides } from "#app/overrides";
-import { parseItemId } from "#coop/debug/item-id";
 import type { DebugState } from "#coop/debug/state";
 import { BattleType } from "#enums/battle-type";
 
@@ -24,7 +23,6 @@ const MANAGED = [
   "BATTLE_TYPE_OVERRIDE",
   "RANDOM_TRAINER_OVERRIDE",
   "MYSTERY_ENCOUNTER_OVERRIDE",
-  "ITEM_REWARD_OVERRIDE",
   "WAIVE_SHOP_FEES_OVERRIDE",
   "WAIVE_ROLL_FEE_OVERRIDE",
 ] as const satisfies readonly (keyof typeof defaultOverrides)[];
@@ -65,16 +63,7 @@ function wantedOverrides(state: DebugState, wave: number): ManagedOverrides {
   } else if (plan?.battle === "me" && plan.encounter !== null) {
     out.MYSTERY_ENCOUNTER_OVERRIDE = plan.encounter;
   }
-  if (state.rewards !== null) {
-    // An exact item of a family (an evolution item, a Mega Stone...) is the family's override with its kind
-    out.ITEM_REWARD_OVERRIDE = state.rewards.flatMap(id => {
-      const item = parseItemId(id);
-      if (item === null) {
-        return [];
-      }
-      return item.arg === null ? [{ name: item.key }] : [{ name: item.key, type: item.arg }];
-    }) as ManagedOverrides["ITEM_REWARD_OVERRIDE"];
-  }
+  // (the next reward screen's items are placed by the screen itself: `debug/rewards.ts`)
   out.WAIVE_SHOP_FEES_OVERRIDE = modes.freeShop;
   out.WAIVE_ROLL_FEE_OVERRIDE = modes.freeRerolls;
   return out;

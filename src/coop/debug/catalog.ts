@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { globalScene } from "#app/global-scene";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { tmPoolTiers } from "#balance/tm-pool-tiers";
-import { itemId, parseItemId } from "#coop/debug/item-id";
+import { itemId, parseItemId, TIER_KEY, TIER_PICKS, type TierPick, tierOfItem } from "#coop/debug/item-id";
+import { makeKnownItemType } from "#coop/debug/make-item";
 import { coopText } from "#coop/ui/text";
 import { allMoves, modifierTypes } from "#data/data-lists";
 import { BerryType } from "#enums/berry-type";
@@ -128,6 +128,15 @@ const EXPANSIONS: Readonly<Record<string, Expansion>> = {
 /** The families whose items are for some Pokémon only: the window says which of the team */
 const FITTING: readonly ItemFamily[] = ["evolution", "forms", "tms"];
 
+/** What a tier pick (`item-id.ts`) is called in the catalog */
+const TIER_NAMES: Readonly<Record<TierPick, string>> = {
+  MASTER: "Master",
+  ROGUE: "Rogue",
+  ULTRA: "Ultra",
+  GREAT: "Great",
+  COMMON: "Common",
+};
+
 let catalog: CatalogItem[] | null = null;
 let byId: Map<string, CatalogItem> | null = null;
 
@@ -184,6 +193,16 @@ function build(): CatalogItem[] {
   // Making the items draws nothing at random, and the battle's random numbers stay as they are on every client
   const random = Phaser.Math.RND.state();
   try {
+    // The tier picks first among what the game picks, the rarest first
+    for (const tier of TIER_PICKS) {
+      items.push({
+        id: itemId(TIER_KEY, tier),
+        name: `${coopText("debugTierPick", "{{tier}}-tier item", { tier: TIER_NAMES[tier] })} (${coopText("debugGamePicks", "the game picks")})`,
+        family: "random",
+        held: false,
+        team: false,
+      });
+    }
     for (const key of Object.keys(modifierTypes)) {
       let type: ModifierType;
       try {
@@ -271,16 +290,11 @@ export function isKnownItem(id: string): boolean {
  * @returns Its type, with the id of its key; `null` if the id is no item, or the family has nothing to pick
  */
 export function makeItemType(id: string, party?: readonly Pokemon[]): ModifierType | null {
-  if (!isKnownItem(id)) {
+  // (a tier pick is rolled on the reward screen; it is no item to give)
+  if (!isKnownItem(id) || tierOfItem(id) !== null) {
     return null;
   }
-  const item = parseItemId(id)!;
-  const func = modifierTypes[item.key as keyof typeof modifierTypes];
-  let type: ModifierType | null = func();
-  if (type instanceof ModifierTypeGenerator) {
-    type = type.generateType(party ?? globalScene.getPlayerParty(), item.arg === null ? undefined : [item.arg]);
-  }
-  return type?.withIdFromFunc(func) ?? null;
+  return makeKnownItemType(id, party);
 }
 
 /** @returns The Pokémon of the party an item is for (an evolution item, a Mega Stone, a TM); none for any other item */

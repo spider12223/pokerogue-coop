@@ -8,6 +8,7 @@ import { activeOverrides } from "#app/overrides";
 import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { getTmNumber, tmPoolTiers } from "#balance/tm-pool-tiers";
 import { consumeDebugRewards } from "#coop/debug/hooks";
+import { placeDebugRewards } from "#coop/debug/rewards";
 import { getBerryEffectDescription, getBerryName } from "#data/berry";
 import { getDailyEventSeedLuck } from "#data/daily-run";
 import { allMoves, modifierTypes } from "#data/data-lists";
@@ -2525,7 +2526,10 @@ export function getPlayerModifierTypeOptions(
   }
 
   overridePlayerModifierTypeOptions(options, party);
-  // Co-op (D42): the items the host chose were for this screen only
+  // Co-op (D42): the host's items for this screen, in its order (an exact item, or one rolled from a tier); for it only
+  placeDebugRewards(options, party, (tier, others) =>
+    getModifierTypeOptionWithRetry(others, retryCount, party, tier, false),
+  );
   consumeDebugRewards();
 
   return options;

@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { ModifierTier } from "#enums/modifier-tier";
+
 /**
  * How the host's debug menu (DECISIONS D42) names an exact item in its batches and its saved state: the key of the game's
  * item (`RARE_CANDY`), or, for a family the game picks from at random (evolution items, Mega Stones, TMs, berries...), the
@@ -44,4 +46,21 @@ export function parseItemId(value: unknown): ParsedItemId | null {
 
 export function isItemId(value: unknown): value is string {
   return parseItemId(value) !== null;
+}
+
+/**
+ * A tier pick: the reward screen rolls one item of that tier for its place, as the game rolls a tier-locked option
+ * (`debug/rewards.ts`). Named `TIER:<tier>`, from the rarest; it is no item of its own (none to give).
+ */
+export const TIER_KEY = "TIER";
+export const TIER_PICKS = ["MASTER", "ROGUE", "ULTRA", "GREAT", "COMMON"] as const;
+export type TierPick = (typeof TIER_PICKS)[number];
+
+/** @returns The tier a tier pick rolls from; `null` for any other id */
+export function tierOfItem(id: string): ModifierTier | null {
+  const item = parseItemId(id);
+  if (item?.key !== TIER_KEY || !(TIER_PICKS as readonly unknown[]).includes(item.arg)) {
+    return null;
+  }
+  return ModifierTier[item.arg as TierPick];
 }

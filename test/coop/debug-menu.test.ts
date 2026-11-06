@@ -127,7 +127,7 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
     expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(defaultOverrides.ENEMY_LEVEL_OVERRIDE);
   });
 
-  it("the modes and the next reward screen stay until they are changed; no menu: the defaults", () => {
+  it("the modes stay until they are changed; no menu: the defaults", () => {
     const state = emptyDebugState();
     state.modes.freeShop = true;
     state.modes.enemyLevel = 3;
@@ -135,10 +135,11 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
     writeDebugOverrides(state, 9);
     expect(activeOverrides.WAIVE_SHOP_FEES_OVERRIDE).toBe(true);
     expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(3);
-    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual([{ name: "MASTER_BALL" }]);
+    // (the next reward screen's items are the screen's own to place: no override)
+    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual([]);
     writeDebugOverrides(null, 9);
     expect(activeOverrides.WAIVE_SHOP_FEES_OVERRIDE).toBe(false);
-    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual([]);
+    expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(0);
   });
 
   it("the build identity does not see the menu's overrides: a rejoining player still matches (D1)", () => {
@@ -234,15 +235,13 @@ describe("Co-op debug menu: exact items (D42, amended)", () => {
     expect(isDebugAction({ t: "rewards", items: ["EVOLUTION_ITEM:x y"] })).toBe(false);
   });
 
-  it("the next reward screen's exact items go to the game's item override with their kind", () => {
+  it("the next reward screen's items, exact or of a tier, are not written to the game's item override", () => {
     const state = emptyDebugState();
-    state.rewards = ["EVOLUTION_ITEM:12", "SPECIES_STAT_BOOSTER:LIGHT_BALL", "MASTER_BALL"];
+    state.rewards = ["EVOLUTION_ITEM:12", "SPECIES_STAT_BOOSTER:LIGHT_BALL", "MASTER_BALL", "TIER:MASTER"];
     writeDebugOverrides(state, 4);
-    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual([
-      { name: "EVOLUTION_ITEM", type: 12 },
-      { name: "SPECIES_STAT_BOOSTER", type: "LIGHT_BALL" },
-      { name: "MASTER_BALL" },
-    ]);
+    // the reward screen places them itself (`debug/rewards.ts`), in the host's order
+    expect(activeOverrides.ITEM_REWARD_OVERRIDE).toEqual(defaultOverrides.ITEM_REWARD_OVERRIDE);
+    expect(isDebugAction({ t: "rewards", items: ["TIER:MASTER", "RARE_CANDY"] })).toBe(true);
   });
 });
 
