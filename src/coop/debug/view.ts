@@ -30,6 +30,8 @@ export const view = {
   itemSearch: "",
   /** The wave being planned (0: the next one) */
   planWave: 0,
+  /** The enemy columns with "More" open, as `<wave>:<column>` */
+  openMore: [] as string[],
 };
 
 let redrawMain: () => void = () => {};

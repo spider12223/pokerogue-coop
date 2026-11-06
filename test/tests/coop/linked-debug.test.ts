@@ -12,6 +12,7 @@ import { writeDebugOverrides } from "#coop/debug/overrides";
 import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
 import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
 import { emptyEnemyPlan, emptyWavePlan, type WavePlan } from "#coop/debug/state";
+import type { SectionId } from "#coop/debug/view";
 import { ownerOf } from "#coop/decisions/control";
 import { debugTurnKey } from "#coop/decisions/decision-keys";
 import type { Decision } from "#coop/decisions/sequencer";
@@ -795,6 +796,123 @@ describe("Co-op: the host's debug menu (D42)", () => {
     });
     expect(options).toHaveLength(1);
     expect(masterIds()).toContain(options[0].type.id);
+  });
+
+  /** Open the debug window (its own document, as `window.open` gives it) on a section */
+  function openWindow(section: SectionId): HTMLElement {
+    const popupDoc = document.implementation.createHTMLDocument("");
+    const popup = {
+      document: popupDoc,
+      closed: false,
+      focus: () => {},
+      close: () => {
+        popup.closed = true;
+      },
+    };
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+    startDebugPanel();
+    toggleDebugPanel();
+    showDebugSection(section);
+    return popupDoc.getElementById("coopDebug")!;
+  }
+
+  /** Type into a search list of the window and pick the first entry that comes up */
+  function pickIn(box: HTMLInputElement, text: string): void {
+    box.dispatchEvent(new Event("focus"));
+    box.value = text;
+    box.dispatchEvent(new Event("input"));
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+  }
+
+  const columns = (root: HTMLElement) => Array.from(root.querySelectorAll<HTMLElement>(".cdw-ecol"));
+
+  it("the Waves tab: one pick on a Game's wave plans a wild battle; the summary says so", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const root = openWindow("waves");
+    expect(root.querySelector(".cdw-sum")?.textContent).toBe("Wave 2: the game's choice.");
+    expect(columns(root)).toHaveLength(2);
+    pickIn(columns(root)[0].querySelector<HTMLInputElement>(".cdw-pick input")!, "Charizard");
+    expect(waitingDebug()).toEqual([
+      {
+        t: "plan",
+        wave: 2,
+        plan: { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), species: SpeciesId.CHARIZARD }] },
+      },
+    ]);
+    expect(root.querySelector(".cdw-sum")?.textContent).toBe(
+      "Wave 2: wild double battle. Charizard; and the game's pick.",
+    );
+    expect(root.querySelector(".cdw-seg .cdw-on")?.textContent).toBe("Wild");
+  });
+
+  it("the Waves tab: More opens one column, says how many options it holds, and stays open when the window redraws", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const root = openWindow("waves");
+    const moreOf = (column: number) => columns(root)[column].querySelector<HTMLButtonElement>(".cdw-morebtn")!;
+    expect(root.querySelectorAll(".cdw-morebox")).toHaveLength(0);
+    moreOf(0).click();
+    expect(root.querySelectorAll(".cdw-morebox")).toHaveLength(1);
+    expect(columns(root)[0].querySelector(".cdw-morebox")).not.toBeNull();
+    const nature = columns(root)[0].querySelector<HTMLSelectElement>(".cdw-morebox select")!;
+    nature.value = String(Nature.TIMID);
+    nature.dispatchEvent(new Event("change"));
+    expect(waitingDebug()).toEqual([
+      {
+        t: "plan",
+        wave: 2,
+        plan: { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), nature: Nature.TIMID }] },
+      },
+    ]);
+    expect(moreOf(0).textContent).toContain("(1)");
+    await playTurn(r);
+    expect(waitingDebug()).toEqual([]);
+    expect(r.session.debugState.plans["2"]?.enemies[0]?.nature).toBe(Nature.TIMID);
+    expect(root.querySelectorAll(".cdw-morebox")).toHaveLength(1);
+    expect(moreOf(0).textContent).toContain("(1)");
+  });
+
+  it("the Waves tab: a fixed wave names its battle and plans the trainer's team", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const root = openWindow("waves");
+    const wave = root.querySelector<HTMLInputElement>('[data-keep="plan-wave"]')!;
+    wave.value = "5";
+    wave.dispatchEvent(new Event("change"));
+    expect(root.textContent).toContain("Wave 5: the youngster's battle. It always happens.");
+    // (no kind to choose: the fixed battle stays)
+    expect(Array.from(root.querySelectorAll(".cdw-seg button")).map(b => b.textContent)).not.toContain("Mystery");
+    Array.from(root.querySelectorAll<HTMLButtonElement>("button"))
+      .find(b => b.textContent === "+ Add a team member")!
+      .click();
+    pickIn(columns(root)[0].querySelector<HTMLInputElement>(".cdw-pick input")!, "Dragonite");
+    expect(waitingDebug()).toEqual([
+      {
+        t: "plan",
+        wave: 5,
+        plan: {
+          ...emptyWavePlan(),
+          battle: "trainer",
+          enemies: [{ ...emptyEnemyPlan(), species: SpeciesId.DRAGONITE }],
+        },
+      },
+    ]);
+    expect(root.querySelector(".cdw-sum")?.textContent).toBe(
+      "Wave 5: the youngster's battle (fixed). Dragonite; the rest of the team is the trainer's own.",
+    );
+  });
+
+  it("the search still finds the Waves tab's planner", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const root = openWindow("waves");
+    const search = root.querySelector<HTMLInputElement>(".cdw-search")!;
+    for (const word of ["fusion", "shiny", "terastallize"]) {
+      search.value = word;
+      search.dispatchEvent(new Event("input"));
+      expect(root.querySelectorAll(".cdw-ecol").length, word).toBeGreaterThan(0);
+    }
   });
 
   it("the host gives exact held items: Charcoal and a Mega Stone; the change log says the turn", async () => {

@@ -211,6 +211,26 @@ select.cdw-in option { color: #000; text-shadow: none; }
 @keyframes cdw-flash { from { background: rgba(248, 208, 48, 0.35); } to { background: var(--cdw-panel); } }
 @media (prefers-reduced-motion: reduce) { .cdw-entry.cdw-new { animation: none; } .cdw-sw i::after { transition: none; } }
 .cdw-empty { color: var(--cdw-dim); font-size: 15px; padding: 2px; }
+.cdw-plan { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
+.cdw-planhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.cdw-planhead > .cdw-btn:last-child { margin-left: auto; }
+.cdw-hint.cdw-inline { margin-top: 0; }
+.cdw-mini { color: var(--cdw-gold); font-size: 14px; min-width: 22px; }
+.cdw-ecols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; align-items: start; }
+.cdw-ecol { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 6px 8px; background: var(--cdw-win); border: 1px solid var(--cdw-line); border-radius: 8px; }
+.cdw-ecol.cdw-set { border-color: rgba(248, 208, 48, 0.45); }
+.cdw-ecol-h { display: flex; align-items: center; gap: 6px; color: var(--cdw-gold); font-size: 16px; }
+.cdw-ecol-h .cdw-x { margin-left: auto; }
+.cdw-ecol .cdw-icon { grid-row: auto; }
+.cdw-icon-none { display: inline-block; border: 1px dashed var(--cdw-line); border-radius: 4px; }
+.cdw-morebtn { align-self: flex-start; padding: 0 2px; background: transparent; border: none; color: var(--cdw-dim); cursor: pointer; font-size: 15px; }
+.cdw-morebtn:hover { color: var(--cdw-text); }
+.cdw-morebox { display: flex; flex-direction: column; gap: 4px; padding-top: 5px; border-top: 1px dashed var(--cdw-line); }
+.cdw-morebox .cdw-mini { min-width: 86px; }
+.cdw-seg button.cdw-s1, .cdw-seg button.cdw-s1.cdw-on { color: var(--cdw-gold); }
+.cdw-seg button.cdw-s2, .cdw-seg button.cdw-s2.cdw-on { color: var(--cdw-blue); }
+.cdw-seg button.cdw-s3, .cdw-seg button.cdw-s3.cdw-on { color: var(--cdw-red); }
+.cdw-sum { margin: 2px 0 0; }
 .cdw-gap { height: 12px; flex: none; }
 .cdw-foot { margin-top: auto; padding-top: 10px; }
 .cdw-section-h { margin: 14px 0 6px; color: var(--cdw-gold); border-bottom: 1px solid var(--cdw-line); }

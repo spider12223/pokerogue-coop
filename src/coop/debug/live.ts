@@ -5,6 +5,7 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { el, t } from "#coop/debug/dom";
 import { view } from "#coop/debug/view";
 import { ownerOf } from "#coop/decisions/control";
@@ -78,13 +79,12 @@ const statusOf = (pokemon: Pokemon): string | null => STATUS_SHORT[pokemon.statu
 /** The party icons, cut from the game's atlases once */
 const icons = new Map<string, string | null>();
 
-function iconUrl(pokemon: Pokemon): string | null {
+/** The icon of an atlas frame as an image address, cut once; `null` where there is none (or no canvas: tests) */
+function atlasIconUrl(key: string, frameName: string): string | null {
   if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) {
     return null;
   }
   try {
-    const key = pokemon.getIconAtlasKey();
-    const frameName = pokemon.getIconId();
     const cacheKey = `${key}/${frameName}`;
     if (icons.has(cacheKey)) {
       return icons.get(cacheKey) ?? null;
@@ -120,8 +120,7 @@ function iconUrl(pokemon: Pokemon): string | null {
   }
 }
 
-export function pokemonIcon(pokemon: Pokemon, className = "cdw-icon"): HTMLElement {
-  const url = iconUrl(pokemon);
+function iconOf(url: string | null, className: string): HTMLElement {
   if (url === null) {
     return el("span", className);
   }
@@ -129,6 +128,28 @@ export function pokemonIcon(pokemon: Pokemon, className = "cdw-icon"): HTMLEleme
   image.src = url;
   image.alt = "";
   return image;
+}
+
+export function pokemonIcon(pokemon: Pokemon, className = "cdw-icon"): HTMLElement {
+  let url: string | null = null;
+  try {
+    url = atlasIconUrl(pokemon.getIconAtlasKey(), pokemon.getIconId());
+  } catch {
+    url = null;
+  }
+  return iconOf(url, className);
+}
+
+/** The icon of a species, its first form (a planned enemy: no Pokémon is made yet) */
+export function speciesIcon(speciesId: number, className = "cdw-icon"): HTMLElement {
+  let url: string | null = null;
+  try {
+    const species = speciesDataRegistry.getSpecies(speciesId);
+    url = atlasIconUrl(species.getIconAtlasKey(0, false, 0), species.getIconId(false, 0, false, 0));
+  } catch {
+    url = null;
+  }
+  return iconOf(url, className);
 }
 
 export function hpBar(pokemon: Pokemon): HTMLElement {

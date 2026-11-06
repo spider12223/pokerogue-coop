@@ -5,16 +5,9 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { speciesDataRegistry } from "#app/global-species-data-registry";
 import type { DebugAction } from "#coop/debug/actions";
-import {
-  type CatalogItem,
-  catalogItem,
-  ITEM_FAMILIES,
-  type ItemFamily,
-  itemCatalog,
-  partyMembersFor,
-} from "#coop/debug/catalog";
+import { type CatalogItem, catalogItem, ITEM_FAMILIES, itemCatalog, partyMembersFor } from "#coop/debug/catalog";
+import { currentWave, enumChoices, familyName, itemChoices, keep, labelOf, list } from "#coop/debug/choices";
 import {
   button,
   type Choice,
@@ -31,34 +24,21 @@ import {
 } from "#coop/debug/dom";
 import { hpBar, ownerTag, party, pokemonIcon, titleOf } from "#coop/debug/live";
 import { debugChanges, debugSendsNow } from "#coop/debug/queue";
-import {
-  type DebugModes,
-  emptyEnemyPlan,
-  emptyWavePlan,
-  MAX_LEVEL,
-  MAX_MULTIPLIER,
-  MAX_PLANNED_ENEMIES,
-  MAX_PLANNED_REWARDS,
-  type WavePlan,
-} from "#coop/debug/state";
+import { type DebugModes, MAX_LEVEL, MAX_MULTIPLIER, MAX_PLANNED_REWARDS } from "#coop/debug/state";
 import { change, isPending, pendingAction, redraw, type SectionId, view } from "#coop/debug/view";
+import { wavesSection } from "#coop/debug/waves";
 import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
-import { allAbilities, allMoves } from "#data/data-lists";
+import { allMoves } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import { getNatureName } from "#data/nature";
 import { TerrainType } from "#data/terrain";
-import { BiomeId } from "#enums/biome-id";
-import { MysteryEncounterType } from "#enums/mystery-encounter-type";
-import { Nature } from "#enums/nature";
 import { PokeballType } from "#enums/pokeball";
 import { PokemonType } from "#enums/pokemon-type";
 import { StatusEffect } from "#enums/status-effect";
-import { TrainerType } from "#enums/trainer-type";
 import { WeatherType } from "#enums/weather-type";
 import type { PlayerPokemon } from "#field/pokemon";
 import { MegaEvolutionAccessModifier, type PersistentModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
-import { getBiomeName } from "#utils/common";
 
 /**
  * The sections of the host's debug window (DECISIONS D42): Pokémon, Enemies & Field, Waves, Rewards & Shop, Modes, and the
@@ -66,75 +46,6 @@ import { getBiomeName } from "#utils/common";
  * at once on a reward screen.
  * @module
  */
-
-// #region Lists
-
-const lists = new Map<string, Choice[]>();
-
-function enumChoices(values: Record<string, string | number>, skip: readonly number[] = []): Choice[] {
-  return Object.entries(values)
-    .filter(([, value]) => typeof value === "number" && !skip.includes(value))
-    .map(([key, value]) => ({ label: titleOf(key), value: value as number }));
-}
-
-function list(name: string): Choice[] {
-  const known = lists.get(name);
-  if (known !== undefined) {
-    return known;
-  }
-  let made: Choice[];
-  switch (name) {
-    case "species":
-      made = speciesDataRegistry.getAllSpecies().map(species => ({ label: species.name, value: species.speciesId }));
-      break;
-    case "moves":
-      made = allMoves
-        .slice(1)
-        .map(move => ({ label: move.name, value: move.id, note: titleOf(PokemonType[move.type]) }));
-      break;
-    case "abilities":
-      made = allAbilities.slice(1).map(ability => ({ label: ability.name, value: ability.id }));
-      break;
-    case "natures":
-      made = enumChoices(Nature as unknown as Record<string, number>).map(choice => ({
-        ...choice,
-        label: getNatureName(choice.value as Nature, true, false, true),
-      }));
-      break;
-    case "trainers":
-      made = enumChoices(TrainerType as unknown as Record<string, number>, [TrainerType.UNKNOWN]);
-      break;
-    case "encounters":
-      made = enumChoices(MysteryEncounterType as unknown as Record<string, number>);
-      break;
-    case "biomes":
-      made = enumChoices(BiomeId as unknown as Record<string, number>).map(choice => ({
-        ...choice,
-        label: getBiomeName(choice.value as BiomeId),
-      }));
-      break;
-    case "types":
-      made = enumChoices(PokemonType as unknown as Record<string, number>, [PokemonType.UNKNOWN]);
-      break;
-    default:
-      made = [];
-  }
-  // (two entries with one name: the second says its number)
-  const seen = new Set<string>();
-  for (const choice of made) {
-    if (seen.has(choice.label)) {
-      choice.label = `${choice.label} #${choice.value}`;
-    }
-    seen.add(choice.label);
-  }
-  lists.set(name, made);
-  return made;
-}
-
-const labelOf = (name: string, value: number | null): string =>
-  value === null ? "" : (list(name).find(choice => choice.value === value)?.label ?? String(value));
-
-// #endregion
 
 // #region Helpers
 
@@ -149,10 +60,6 @@ function seats(): Seat[] {
 
 function seatName(seat: Seat): string {
   return getCoopSession()?.nameOf(seat) ?? seat;
-}
-
-function currentWave(): number {
-  return globalScene.currentBattle?.waveIndex ?? 0;
 }
 
 function modes(): DebugModes | null {
@@ -186,15 +93,6 @@ function modeSwitch(mode: "freeShop" | "freeRerolls" | "noDamage" | "oneHit" | "
   return switchButton(label ?? name, on, next =>
     setMode(mode, next, `${name}: ${next ? t("On", "on") : t("Off", "off")}`),
   );
-}
-
-/** The number a picker and a number box are found by again after the window is drawn again */
-function keep<T extends HTMLElement>(node: T, id: string): T {
-  const input = node.matches("input, select") ? node : node.querySelector<HTMLElement>("input, select");
-  if (input !== null) {
-    input.dataset["keep"] = id;
-  }
-  return node;
 }
 
 // #endregion
@@ -266,27 +164,6 @@ function modifierName(modifier: PersistentModifier): string {
   } catch {
     return titleOf(modifier.type.id);
   }
-}
-
-/** The catalog's items of a kind, as a list to pick from; the ones for our team first */
-function itemChoices(keepItem: (item: CatalogItem) => boolean, members: readonly PlayerPokemon[] = []): Choice[] {
-  const choices: Choice[] = [];
-  for (const item of itemCatalog()) {
-    if (!keepItem(item)) {
-      continue;
-    }
-    const fits = members.length === 0 ? [] : partyMembersFor(item.id, members);
-    choices.push({
-      label: item.name,
-      value: item.id,
-      note:
-        fits.length > 0
-          ? t("Fits", "fits {{who}}", { who: fits.map(p => p.name).join(", ") })
-          : familyName(item.family),
-      fits: fits.length > 0,
-    });
-  }
-  return choices.sort((a, b) => Number(b.fits ?? false) - Number(a.fits ?? false));
 }
 
 function whoCard(pokemon: PlayerPokemon): HTMLElement {
@@ -1033,269 +910,7 @@ function enemiesSection(): HTMLElement[] {
 
 // #endregion
 
-// #region Waves
-
-/** The plan of a wave as it will be once what waits is sent */
-function planOf(wave: number): WavePlan {
-  const waiting = pendingAction(`plan:${wave}`);
-  if (waiting?.t === "plan") {
-    return structuredClone(waiting.plan ?? emptyWavePlan());
-  }
-  return structuredClone(getCoopSession()?.debugState.plans[String(wave)] ?? emptyWavePlan());
-}
-
-function savePlan(wave: number, plan: WavePlan | null, note: string): void {
-  change(note, `plan:${wave}`, { t: "plan", wave, plan: plan === null ? null : structuredClone(plan) });
-  redraw();
-}
-
-function planSummary(plan: WavePlan): string {
-  const kind = {
-    game: t("KindGame", "Game's choice"),
-    wild: t("KindWild", "Wild"),
-    trainer: t("KindTrainer", "Trainer"),
-    me: t("KindMe", "Mystery Encounter"),
-  }[plan.battle];
-  return [
-    kind,
-    plan.enemies
-      .flatMap(enemy => (enemy?.species == null ? [] : [speciesDataRegistry.getSpecies(enemy.species).name]))
-      .join(", "),
-    plan.trainer === null ? "" : labelOf("trainers", plan.trainer),
-    plan.encounter === null ? "" : labelOf("encounters", plan.encounter),
-  ]
-    .filter(part => part !== "")
-    .join(" · ");
-}
-
-function wavesSection(): HTMLElement[] {
-  const next = currentWave() + 1;
-  if (view.planWave < next) {
-    view.planWave = next;
-  }
-  const wave = view.planWave;
-  const plan = planOf(wave);
-  const note = t("SentPlan", "Wave {{wave}}: plan changed", { wave });
-  const state = getCoopSession()?.debugState;
-  const fields: HTMLElement[] = [];
-
-  fields.push(
-    field(
-      t("PlanWave", "Plan wave"),
-      {
-        wide: true,
-        hint: t("PlanHint", "Every change saves the plan. There's no Save button."),
-        pending: isPending(`plan:${wave}`),
-      },
-      keep(
-        numberBox(wave, next, 100_000, v => {
-          view.planWave = v;
-          redraw();
-        }),
-        "plan-wave",
-      ),
-      segmented(
-        [
-          { label: t("KindGame", "Game's choice"), value: "game" as const },
-          { label: t("KindWild", "Wild"), value: "wild" as const },
-          { label: t("KindTrainer", "Trainer"), value: "trainer" as const },
-          { label: t("KindMe", "Mystery Encounter"), value: "me" as const },
-        ],
-        plan.battle,
-        battle => savePlan(wave, { ...plan, battle }, note),
-      ),
-      button(
-        t("ClearPlan", "Clear plan"),
-        () => savePlan(wave, null, t("SentClearPlan", "Wave {{wave}}: plan cleared", { wave })),
-        "cdw-btn cdw-small",
-      ),
-    ),
-  );
-  fields.push(
-    field(
-      t("Enemies", "Enemies, in order"),
-      {
-        wide: true,
-        hint: t("EnemiesHint", "Pick a species and it joins the plan (up to {{n}}).", { n: MAX_PLANNED_ENEMIES }),
-      },
-      el(
-        "div",
-        "cdw-chips",
-        ...plan.enemies.map((enemy, index) =>
-          chip(enemy?.species == null ? "?" : speciesDataRegistry.getSpecies(enemy.species).name, () => {
-            plan.enemies.splice(index, 1);
-            savePlan(wave, plan, note);
-          }),
-        ),
-        plan.enemies.length < MAX_PLANNED_ENEMIES
-          ? keep(
-              picker(
-                () => list("species"),
-                t("AddEnemy", "Add an enemy…"),
-                choice => {
-                  plan.enemies.push({ ...emptyEnemyPlan(), species: choice.value as number });
-                  savePlan(wave, { ...plan, battle: plan.battle === "game" ? "wild" : plan.battle }, note);
-                },
-              ),
-              "plan-species",
-            )
-          : null,
-      ),
-    ),
-  );
-  fields.push(
-    field(
-      t("Trainer", "Trainer"),
-      { hint: t("TrainerHint", "For a trainer battle.") },
-      plan.trainer === null
-        ? null
-        : chip(labelOf("trainers", plan.trainer), () => savePlan(wave, { ...plan, trainer: null }, note)),
-      picker(
-        () => list("trainers"),
-        t("TrainerSearch", "Any trainer…"),
-        choice => savePlan(wave, { ...plan, battle: "trainer", trainer: choice.value as number }, note),
-      ),
-    ),
-  );
-  fields.push(
-    field(
-      t("Encounter", "Mystery Encounter"),
-      { hint: t("EncounterHint", "For a Mystery Encounter.") },
-      plan.encounter === null
-        ? null
-        : chip(labelOf("encounters", plan.encounter), () => savePlan(wave, { ...plan, encounter: null }, note)),
-      picker(
-        () => list("encounters"),
-        t("EncounterSearch", "Any encounter…"),
-        choice => savePlan(wave, { ...plan, battle: "me", encounter: choice.value as number }, note),
-      ),
-    ),
-  );
-
-  // Every planned wave, the waiting plans too (a waiting "clear" takes one out)
-  const waves = new Set(Object.keys(state?.plans ?? {}).map(Number));
-  for (const entry of debugChanges()) {
-    const action = entry.actions.at(-1);
-    if (entry.state === "pending" && action?.t === "plan") {
-      if (action.plan === null) {
-        waves.delete(action.wave);
-      } else {
-        waves.add(action.wave);
-      }
-    }
-  }
-  const rows = [...waves]
-    .sort((a, b) => a - b)
-    .map(w => {
-      const row = el(
-        "tr",
-        "",
-        el("td", "", t("WaveN", "Wave {{n}}", { n: w })),
-        el("td", "", planSummary(planOf(w))),
-        el(
-          "td",
-          "",
-          button(
-            t("Edit", "Edit"),
-            () => {
-              view.planWave = w;
-              redraw();
-            },
-            "cdw-btn cdw-small",
-          ),
-          " ",
-          button(
-            t("Clear", "Clear"),
-            () => savePlan(w, null, t("SentClearPlan", "Wave {{wave}}: plan cleared", { wave: w })),
-            "cdw-btn cdw-small",
-          ),
-        ),
-      );
-      return row;
-    });
-  fields.push(
-    field(
-      t("Planned", "Planned waves"),
-      { wide: true },
-      rows.length === 0
-        ? el("span", "cdw-empty", t("NoPlans", "No wave planned."))
-        : el("table", "cdw-table", el("tbody", "", ...rows)),
-    ),
-  );
-
-  const jumpWaiting = pendingAction("jump");
-  const jump = jumpWaiting?.t === "jump" ? jumpWaiting.v : (state?.jump ?? null);
-  let jumpTo = Math.max(next + 1, jump ?? next + 9);
-  fields.push(
-    field(
-      t("Jump", "Jump ahead"),
-      { hint: t("JumpHint", "After this wave, the run goes on at that wave."), pending: isPending("jump") },
-      keep(
-        numberBox(jumpTo, next + 1, 100_000, v => {
-          jumpTo = v;
-        }),
-        "jump",
-      ),
-      button(
-        t("JumpButton", "Jump after this wave"),
-        () => change(t("SentJump", "Next wave: {{v}}", { v: jumpTo }), "jump", { t: "jump", v: jumpTo }),
-        "cdw-btn cdw-small",
-      ),
-      jump === null
-        ? null
-        : chip(t("JumpSet", "to wave {{v}}", { v: jump }), () =>
-            change(t("SentNoJump", "No jump"), "jump", { t: "jump", v: null }),
-          ),
-    ),
-  );
-  const biomeWaiting = pendingAction("biome");
-  const biome = biomeWaiting?.t === "biome" ? biomeWaiting.v : (state?.biome ?? null);
-  fields.push(
-    field(
-      t("Biome", "Next biome"),
-      { hint: t("BiomeHint", "Pick one; you go there after this wave."), pending: isPending("biome") },
-      biome === null
-        ? null
-        : chip(getBiomeName(biome as BiomeId), () =>
-            change(t("SentNoBiome", "No biome change"), "biome", { t: "biome", v: null }),
-          ),
-      picker(
-        () => list("biomes"),
-        t("BiomeSearch", "Any biome…"),
-        choice =>
-          change(t("SentBiome", "Next biome: {{what}}", { what: choice.label }), "biome", {
-            t: "biome",
-            v: choice.value as number,
-          }),
-        180,
-      ),
-    ),
-  );
-  return [el("div", "cdw-grid", ...fields)];
-}
-
-// #endregion
-
 // #region Rewards & Shop
-
-export function familyName(family: ItemFamily): string {
-  return {
-    balls: t("FamBalls", "Poké Balls"),
-    pokemon: t("FamPokemon", "Pokémon items"),
-    berries: t("FamBerries", "Berries"),
-    held: t("FamHeld", "Held items"),
-    boosters: t("FamBoosters", "Type boosters"),
-    evolution: t("FamEvolution", "Evolution items"),
-    forms: t("FamForms", "Mega Stones & forms"),
-    tms: t("FamTms", "TMs"),
-    mints: t("FamMints", "Mints"),
-    tera: t("FamTera", "Tera Shards"),
-    battle: t("FamBattle", "Battle items"),
-    team: t("FamTeam", "Team items"),
-    other: t("FamOther", "Other"),
-    random: t("FamRandom", "Game picks"),
-  }[family];
-}
 
 /** The next reward screen's items as they will be once what waits is sent */
 function rewardDraft(): string[] {
