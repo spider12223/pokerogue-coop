@@ -28,9 +28,10 @@ import { TurnCommandManager } from "#app/turn-command-manager";
 import { UiInputs } from "#app/ui-inputs";
 import { STARTING_WAVE } from "#balance/misc";
 import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
+import { planAfterMade, planBeforeMade } from "#coop/debug/enemy-plan";
 import {
   debugBeginWave,
-  debugEnemySpecies,
+  debugEnemyPlan,
   debugExpMultiplier,
   debugForcesEncounter,
   debugMoneyMultiplier,
@@ -926,16 +927,18 @@ export class BattleScene extends SceneBase {
       // The fact that a Pokemon is a boss or not can change based on its Species and level
       boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
     }
-    // Co-op (D42): the species the host planned for this wave's enemies (not one loaded from a save)
-    const planned = dataSource ? null : debugEnemySpecies(this.currentBattle?.waveIndex ?? 0);
+    // Co-op (D42): what the host planned for this enemy of the wave (not one loaded from a save)
+    const planned = dataSource ? null : debugEnemyPlan(this.currentBattle?.waveIndex ?? 0);
     if (planned !== null) {
-      species = speciesDataRegistry.getSpecies(planned);
-      boss = this.getEncounterBossSegments(this.currentBattle.waveIndex, level, species) > 1;
+      ({ species, level, boss } = planBeforeMade(planned, species, level, boss));
     }
 
     const pokemon = new EnemyPokemon(species, level, trainerSlot, boss, shinyLock, dataSource, forRival);
     if (activeOverrides.ENEMY_FUSION_OVERRIDE) {
       pokemon.generateFusionSpecies();
+    }
+    if (planned !== null) {
+      planAfterMade(pokemon, planned);
     }
 
     if (boss && !dataSource && !this.gameMode.dailyConfig?.boss?.ivs) {

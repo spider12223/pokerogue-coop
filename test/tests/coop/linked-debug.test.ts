@@ -11,7 +11,7 @@ import { itemId } from "#coop/debug/item-id";
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
 import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
-import { emptyWavePlan } from "#coop/debug/state";
+import { emptyEnemyPlan, emptyWavePlan } from "#coop/debug/state";
 import { ownerOf } from "#coop/decisions/control";
 import { debugTurnKey } from "#coop/decisions/decision-keys";
 import type { Decision } from "#coop/decisions/sequencer";
@@ -167,7 +167,14 @@ describe("Co-op: the host's debug menu (D42)", () => {
   it("“win” ends the wave at once; the plan of the next wave makes its enemies", async () => {
     const r = await start({ configure: game => game.override.startingLevel(5) });
     await advanceTo(r.ctx, ["CommandPhase"]);
-    const plan = { ...emptyWavePlan(), battle: "wild" as const, species: [SpeciesId.MEWTWO, SpeciesId.MEW], level: 3 };
+    const plan = {
+      ...emptyWavePlan(),
+      battle: "wild" as const,
+      enemies: [
+        { ...emptyEnemyPlan(), species: SpeciesId.MEWTWO, level: 3 },
+        { ...emptyEnemyPlan(), species: SpeciesId.MEW, level: 3 },
+      ],
+    };
     queueDebug({ t: "plan", wave: 2, plan }, { t: "win" });
     queueTurnCommands(r.ctx);
     expect(await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"])).toBe("SelectModifierPhase");
@@ -335,7 +342,8 @@ describe("Co-op: the host's debug menu (D42)", () => {
   it("“Full HP” on a boss brings back its health bars too, after “1 HP” broke them", async () => {
     const r = await start({ configure: game => game.override.startingLevel(10) });
     await advanceTo(r.ctx, ["CommandPhase"]);
-    queueDebug({ t: "plan", wave: 2, plan: { ...emptyWavePlan(), battle: "wild", boss: 3, level: 5 } });
+    const bossOf5 = { ...emptyEnemyPlan(), boss: 3, level: 5 };
+    queueDebug({ t: "plan", wave: 2, plan: { ...emptyWavePlan(), battle: "wild", enemies: [bossOf5, bossOf5] } });
     await winFirstWave(r);
     await advanceTo(r.ctx, ["CommandPhase"]);
     const boss = r.ctx.game.scene.getEnemyField().find(enemy => enemy.isActive(true))!;

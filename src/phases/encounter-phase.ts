@@ -6,6 +6,7 @@ import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
+import { debugKeepsBossBars } from "#coop/debug/hooks";
 import { saveCoopWaveStart } from "#coop/save/wave-save";
 import { isCoop } from "#coop/session";
 import { coopCheckpoint } from "#coop/sync/checkpoints";
@@ -234,7 +235,8 @@ export class EncounterPhase extends BattlePhase {
       if (!overridedBossSegments && battle.enemyParty.filter(p => p.isBoss()).length > 1) {
         for (const enemyPokemon of battle.enemyParty) {
           // If the enemy pokemon is a boss and wasn't populated from data source, then update the number of segments
-          if (enemyPokemon.isBoss() && !enemyPokemon.isPopulatedFromDataSource) {
+          // Co-op (D42): boss bars the host planned stay as planned
+          if (enemyPokemon.isBoss() && !enemyPokemon.isPopulatedFromDataSource && !debugKeepsBossBars(enemyPokemon)) {
             enemyPokemon.setBoss(
               true,
               Math.ceil(enemyPokemon.bossSegments * (enemyPokemon.getSpeciesForm().baseTotal / totalBst)),

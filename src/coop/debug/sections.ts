@@ -33,11 +33,12 @@ import { hpBar, ownerTag, party, pokemonIcon, titleOf } from "#coop/debug/live";
 import { debugChanges, debugSendsNow } from "#coop/debug/queue";
 import {
   type DebugModes,
+  emptyEnemyPlan,
   emptyWavePlan,
   MAX_LEVEL,
   MAX_MULTIPLIER,
+  MAX_PLANNED_ENEMIES,
   MAX_PLANNED_REWARDS,
-  MAX_PLANNED_SPECIES,
   type WavePlan,
 } from "#coop/debug/state";
 import { change, isPending, pendingAction, redraw, type SectionId, view } from "#coop/debug/view";
@@ -1057,12 +1058,11 @@ function planSummary(plan: WavePlan): string {
   }[plan.battle];
   return [
     kind,
-    plan.species.map(id => speciesDataRegistry.getSpecies(id).name).join(", "),
+    plan.enemies
+      .flatMap(enemy => (enemy?.species == null ? [] : [speciesDataRegistry.getSpecies(enemy.species).name]))
+      .join(", "),
     plan.trainer === null ? "" : labelOf("trainers", plan.trainer),
     plan.encounter === null ? "" : labelOf("encounters", plan.encounter),
-    plan.level > 0 ? `Lv ${plan.level}` : "",
-    plan.boss > 0 ? t("BossCount", "{{n}} boss bars", { n: plan.boss }) : "",
-    plan.shiny === null ? "" : plan.shiny ? t("Shiny", "Shiny") : t("NotShinyWord", "not shiny"),
   ]
     .filter(part => part !== "")
     .join(" · ");
@@ -1116,60 +1116,30 @@ function wavesSection(): HTMLElement[] {
       t("Enemies", "Enemies, in order"),
       {
         wide: true,
-        hint: t("EnemiesHint", "Pick a species and it joins the plan (up to {{n}}).", { n: MAX_PLANNED_SPECIES }),
+        hint: t("EnemiesHint", "Pick a species and it joins the plan (up to {{n}}).", { n: MAX_PLANNED_ENEMIES }),
       },
       el(
         "div",
         "cdw-chips",
-        ...plan.species.map((id, index) =>
-          chip(speciesDataRegistry.getSpecies(id).name, () => {
-            plan.species.splice(index, 1);
+        ...plan.enemies.map((enemy, index) =>
+          chip(enemy?.species == null ? "?" : speciesDataRegistry.getSpecies(enemy.species).name, () => {
+            plan.enemies.splice(index, 1);
             savePlan(wave, plan, note);
           }),
         ),
-        plan.species.length < MAX_PLANNED_SPECIES
+        plan.enemies.length < MAX_PLANNED_ENEMIES
           ? keep(
               picker(
                 () => list("species"),
                 t("AddEnemy", "Add an enemy…"),
                 choice => {
-                  plan.species.push(choice.value as number);
-                  savePlan(wave, plan, note);
+                  plan.enemies.push({ ...emptyEnemyPlan(), species: choice.value as number });
+                  savePlan(wave, { ...plan, battle: plan.battle === "game" ? "wild" : plan.battle }, note);
                 },
               ),
               "plan-species",
             )
           : null,
-      ),
-    ),
-  );
-  fields.push(
-    field(
-      t("LevelBoss", "Level · boss bars"),
-      { hint: t("ZeroGame", "Level 0: the game's.") },
-      keep(
-        numberBox(plan.level, 0, MAX_LEVEL, v => savePlan(wave, { ...plan, level: v }, note)),
-        "plan-level",
-      ),
-      segmented(
-        [0, 2, 3, 4, 5].map(v => ({ label: v === 0 ? t("GameChoice", "Game's") : String(v), value: v })),
-        plan.boss,
-        boss => savePlan(wave, { ...plan, boss }, note),
-      ),
-    ),
-  );
-  fields.push(
-    field(
-      t("Shiny", "Shiny"),
-      {},
-      segmented(
-        [
-          { label: t("GameChoice", "Game's"), value: null },
-          { label: t("Yes", "Yes"), value: true },
-          { label: t("No", "No"), value: false },
-        ],
-        plan.shiny,
-        shiny => savePlan(wave, { ...plan, shiny }, note),
       ),
     ),
   );

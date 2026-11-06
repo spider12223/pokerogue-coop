@@ -19,7 +19,6 @@ import { BattleType } from "#enums/battle-type";
 const MANAGED = [
   "ENEMY_LEVEL_OVERRIDE",
   "ENEMY_SHINY_OVERRIDE",
-  "ENEMY_HEALTH_SEGMENTS_OVERRIDE",
   "BATTLE_TYPE_OVERRIDE",
   "RANDOM_TRAINER_OVERRIDE",
   "MYSTERY_ENCOUNTER_OVERRIDE",
@@ -50,9 +49,9 @@ function wantedOverrides(state: DebugState, wave: number): ManagedOverrides {
   const out = Object.fromEntries(MANAGED.map(key => [key, defaultOverrides[key]])) as unknown as ManagedOverrides;
   const plan = state.plans[String(wave)] ?? null;
   const { modes } = state;
-  out.ENEMY_LEVEL_OVERRIDE = plan?.level || modes.enemyLevel;
-  out.ENEMY_SHINY_OVERRIDE = plan?.shiny ?? (modes.shinyEnemies ? true : defaultOverrides.ENEMY_SHINY_OVERRIDE);
-  out.ENEMY_HEALTH_SEGMENTS_OVERRIDE = plan?.boss ?? defaultOverrides.ENEMY_HEALTH_SEGMENTS_OVERRIDE;
+  // (a planned enemy's own level, shiny and boss bars are put on it when it is made: `debug/enemy-plan.ts`)
+  out.ENEMY_LEVEL_OVERRIDE = modes.enemyLevel;
+  out.ENEMY_SHINY_OVERRIDE = modes.shinyEnemies ? true : defaultOverrides.ENEMY_SHINY_OVERRIDE;
   if (plan?.battle === "wild") {
     out.BATTLE_TYPE_OVERRIDE = BattleType.WILD;
   } else if (plan?.battle === "trainer") {

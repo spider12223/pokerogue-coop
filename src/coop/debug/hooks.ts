@@ -6,8 +6,17 @@
 
 import { globalScene } from "#app/global-scene";
 import { writeDebugOverrides } from "#coop/debug/overrides";
-import { beginDebugWave, type DebugState, nextPlannedSpecies } from "#coop/debug/state";
+import {
+  beginDebugWave,
+  type DebugState,
+  type EnemyPlan,
+  isEnemyPlanSet,
+  nextPlannedEnemy,
+  type WavePlan,
+} from "#coop/debug/state";
 import { getCoopSession } from "#coop/session";
+import { BattleType } from "#enums/battle-type";
+import type { EnemyPokemon } from "#field/pokemon";
 
 /**
  * Where the game reads the host's debug menu (DECISIONS D42). Each hook does nothing outside a co-op run whose host turned
@@ -51,12 +60,49 @@ export function takeDebugJump(current: number): number | null {
 }
 
 /**
- * @param wave - The wave of the enemy that is made
- * @returns The species the host planned for the next enemy of the wave; `null`: the game's
+ * @returns The plan of the wave being played, if its enemy columns are for this battle: a Wild plan's for a wild battle,
+ * a Trainer plan's for a trainer battle, and any plan's for a fixed wave's battle (its trainer's team: the fixed battle
+ * stays, D42 amended); never a Mystery Encounter's
  */
-export function debugEnemySpecies(wave: number): number | null {
+function planOfBattle(): WavePlan | null {
   const state = debugState();
-  return state === null ? null : nextPlannedSpecies(state, wave);
+  const battle = globalScene.currentBattle;
+  const plan = state === null || battle == null ? undefined : state.plans[String(battle.waveIndex)];
+  if (plan === undefined) {
+    return null;
+  }
+  if (globalScene.gameMode.isFixedBattle(battle.waveIndex)) {
+    return battle.battleType === BattleType.TRAINER ? plan : null;
+  }
+  const kind = { wild: BattleType.WILD, trainer: BattleType.TRAINER, game: null, me: null }[plan.battle];
+  return kind !== null && battle.battleType === kind ? plan : null;
+}
+
+/**
+ * An enemy of the wave is made fresh (not loaded from a save): it is counted, and takes the next column of the plan.
+ * @param wave - The wave of the enemy
+ * @returns What the host planned for that enemy; `null`: the game's
+ */
+export function debugEnemyPlan(wave: number): EnemyPlan | null {
+  const state = debugState();
+  if (state === null || planOfBattle() === null) {
+    return null;
+  }
+  return nextPlannedEnemy(state, wave)?.plan ?? null;
+}
+
+/**
+ * @returns What the host planned for an enemy already made, by its place in the team (the column it was made from;
+ * read from the state, so a reload finds it again); `null`: nothing
+ */
+export function debugPlannedEnemy(pokemon: EnemyPokemon): EnemyPlan | null {
+  const plan = planOfBattle()?.enemies[pokemon.initialTeamIndex];
+  return isEnemyPlanSet(plan) ? plan : null;
+}
+
+/** @returns Whether the host set the boss bars of this enemy: the game does not share them out in a double battle */
+export function debugKeepsBossBars(pokemon: EnemyPokemon): boolean {
+  return (debugPlannedEnemy(pokemon)?.boss ?? 0) > 1;
 }
 
 /** @returns Whether the host planned a Mystery Encounter for `wave` */

@@ -23,11 +23,16 @@ import {
 } from "#coop/debug/queue";
 import {
   beginDebugWave,
+  defaultModes,
   emptyDebugState,
+  emptyEnemyPlan,
   emptyWavePlan,
   isDebugState,
   isEmptyDebugState,
-  nextPlannedSpecies,
+  isWavePlan,
+  nextPlannedEnemy,
+  readDebugState,
+  type WavePlan,
 } from "#coop/debug/state";
 import { overridesAreDefaults } from "#coop/link/build-info";
 import { hashCanonical } from "#coop/protocol";
@@ -59,7 +64,16 @@ const EVERY_KIND: DebugAction[] = [
   { t: "owner", p: 1, seat: "guest" },
   { t: "money", v: 1_000_000 },
   { t: "balls", ball: 4, v: 99 },
-  { t: "plan", wave: 12, plan: { ...emptyWavePlan(), battle: "trainer", trainer: 5, species: [150, 151] } },
+  {
+    t: "plan",
+    wave: 12,
+    plan: {
+      ...emptyWavePlan(),
+      battle: "trainer",
+      trainer: 5,
+      enemies: [{ ...emptyEnemyPlan(), species: 150 }, null, { ...emptyEnemyPlan(), fusion: "random", shiny: 1 }],
+    },
+  },
   { t: "plan", wave: 12, plan: null },
   { t: "rewards", items: ["MASTER_BALL", "RARE_CANDY"] },
   { t: "rewards", items: null },
@@ -113,15 +127,21 @@ describe("Co-op debug menu: batches (D42)", () => {
 describe("Co-op debug menu: state and overrides (D42)", () => {
   afterEach(() => writeDebugOverrides(null, 0));
 
-  it("a wave's plan is what the overrides say while that wave is played, and only then", () => {
+  it("a wave's kind and trainer are what the overrides say while that wave is played; its enemies' values are not", () => {
     const state = emptyDebugState();
-    state.plans["5"] = { ...emptyWavePlan(), battle: "trainer", trainer: 12, level: 77, boss: 3, shiny: true };
+    state.plans["5"] = {
+      ...emptyWavePlan(),
+      battle: "trainer",
+      trainer: 12,
+      enemies: [{ ...emptyEnemyPlan(), level: 77, boss: 3, shiny: 0 }],
+    };
     writeDebugOverrides(state, 5);
     expect(activeOverrides.BATTLE_TYPE_OVERRIDE).toBe(BattleType.TRAINER);
     expect(activeOverrides.RANDOM_TRAINER_OVERRIDE).toEqual({ trainerType: 12 });
-    expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(77);
-    expect(activeOverrides.ENEMY_HEALTH_SEGMENTS_OVERRIDE).toBe(3);
-    expect(activeOverrides.ENEMY_SHINY_OVERRIDE).toBe(true);
+    // (each enemy's level, boss bars and shiny are put on that enemy when it is made: `debug/enemy-plan.ts`)
+    expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(defaultOverrides.ENEMY_LEVEL_OVERRIDE);
+    expect(activeOverrides.ENEMY_HEALTH_SEGMENTS_OVERRIDE).toBe(defaultOverrides.ENEMY_HEALTH_SEGMENTS_OVERRIDE);
+    expect(activeOverrides.ENEMY_SHINY_OVERRIDE).toBe(defaultOverrides.ENEMY_SHINY_OVERRIDE);
     writeDebugOverrides(state, 6);
     expect(activeOverrides.BATTLE_TYPE_OVERRIDE).toBe(defaultOverrides.BATTLE_TYPE_OVERRIDE);
     expect(activeOverrides.ENEMY_LEVEL_OVERRIDE).toBe(defaultOverrides.ENEMY_LEVEL_OVERRIDE);
@@ -146,27 +166,103 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
     const before = hashCanonical(identityOverrides());
     const state = emptyDebugState();
     state.modes.freeRerolls = true;
-    state.plans["2"] = { ...emptyWavePlan(), battle: "wild", level: 50 };
+    state.plans["2"] = { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), level: 50 }] };
     writeDebugOverrides(state, 2);
     expect(hashCanonical(identityOverrides())).toBe(before);
     expect(hashCanonical(activeOverrides)).not.toBe(before);
     expect(overridesAreDefaults()).toBe(true);
   });
 
-  it("a new wave forgets the plans of the waves before it; its planned species come in order, then again", () => {
+  it("a new wave forgets the plans of the waves before it; its enemies take the columns in turn, none past the plan", () => {
     const state = emptyDebugState();
-    state.plans["3"] = { ...emptyWavePlan(), species: [1, 4] };
-    state.plans["4"] = { ...emptyWavePlan(), species: [7] };
+    const first = { ...emptyEnemyPlan(), species: 1 };
+    const third = { ...emptyEnemyPlan(), species: 4, level: 9 };
+    state.plans["3"] = { ...emptyWavePlan(), battle: "wild", enemies: [first] };
+    state.plans["4"] = { ...emptyWavePlan(), battle: "trainer", enemies: [first, { ...emptyEnemyPlan() }, third] };
     beginDebugWave(state, 4);
     expect(Object.keys(state.plans)).toEqual(["4"]);
-    expect([1, 2, 3].map(() => nextPlannedSpecies(state, 4))).toEqual([7, 7, 7]);
-    state.plans["5"] = { ...emptyWavePlan(), species: [1, 4] };
+    // (a column with nothing set plans nothing; every enemy made still counts)
+    expect([1, 2, 3, 4].map(() => nextPlannedEnemy(state, 4))).toEqual([
+      { slot: 0, plan: first },
+      null,
+      { slot: 2, plan: third },
+      null,
+    ]);
     beginDebugWave(state, 5);
-    expect([1, 2, 3].map(() => nextPlannedSpecies(state, 5))).toEqual([1, 4, 1]);
-    expect(nextPlannedSpecies(state, 6)).toBeNull();
+    expect(state.made).toBe(0);
+    expect(nextPlannedEnemy(state, 5)).toBeNull();
   });
 
-  it("the state goes into the save block and is read back; a damaged one is refused", () => {
+  it("a wave's plan holds one plan per enemy and comes back as it was written; a bad one is refused", () => {
+    const plan: WavePlan = {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [
+        {
+          ...emptyEnemyPlan(),
+          species: 6,
+          fusion: 94,
+          shiny: 2,
+          level: 50,
+          boss: 1,
+          ability: 22,
+          nature: 10,
+          gender: 1,
+          tera: 1,
+          moves: [53, 0, 0, 0],
+          items: ["LEFTOVERS", "LEFTOVERS"],
+        },
+        null,
+      ],
+    };
+    expect(isWavePlan(JSON.parse(JSON.stringify(plan)))).toBe(true);
+    const enemy = plan.enemies[0]!;
+    for (const bad of [
+      { enemies: Array.from({ length: 7 }, () => null) },
+      { enemies: [{ ...enemy, shiny: 3 }] },
+      { enemies: [{ ...enemy, fusion: "x" }] },
+      { enemies: [{ ...enemy, boss: 6 }] },
+      { enemies: [{ ...enemy, moves: [1, 2, 3, 4, 5] }] },
+      { enemies: [{ ...enemy, items: Array.from({ length: 9 }, () => "LEFTOVERS") }] },
+      { enemies: [{ ...enemy, items: ["left overs"] }] },
+      { species: [6] },
+    ]) {
+      expect(isWavePlan({ ...plan, ...bad }), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("an old save's plans are converted: species into the columns in turn, the wave's level, shiny and boss in each", () => {
+    const old = {
+      plans: {
+        "4": { battle: "game", species: [6, 25], level: 30, shiny: true, boss: 3, trainer: null, encounter: null },
+        "6": { battle: "trainer", species: [9], level: 0, shiny: false, boss: 0, trainer: 12, encounter: null },
+        "7": { battle: "me", species: [], level: 0, shiny: null, boss: 0, trainer: null, encounter: 3 },
+        "9": { nonsense: 1 },
+      },
+      rewards: ["RARE_CANDY"],
+      jump: null,
+      biome: 4,
+      modes: { ...defaultModes(), freeShop: true },
+      made: 0,
+    };
+    const read = readDebugState(JSON.parse(JSON.stringify(old)))!;
+    expect(isDebugState(read)).toBe(true);
+    expect(Object.keys(read.plans)).toEqual(["4", "6", "7"]);
+    expect(read.plans["4"].battle).toBe("wild");
+    expect(read.plans["4"].enemies.map(e => [e?.species, e?.level, e?.shiny, e?.boss])).toEqual([
+      [6, 30, 0, 3],
+      [25, 30, 0, 3],
+    ]);
+    expect(read.plans["6"]).toMatchObject({ battle: "trainer", trainer: 12 });
+    expect(read.plans["6"].enemies.map(e => [e?.species, e?.shiny])).toEqual(Array.from({ length: 6 }, () => [9, -1]));
+    expect(read.plans["7"]).toEqual({ ...emptyWavePlan(), battle: "me", encounter: 3 });
+    expect([read.rewards, read.biome, read.modes.freeShop]).toEqual([["RARE_CANDY"], 4, true]);
+    // what cannot be read is dropped, the rest kept; nothing at all to read: none
+    expect(readDebugState({ ...read, jump: -1, biome: 5 })).toMatchObject({ jump: null, biome: 5 });
+    expect(readDebugState("debug")).toBeNull();
+  });
+
+  it("the state goes into the save block and is read back; a damaged one does not refuse the save", () => {
     const state = emptyDebugState();
     expect(isEmptyDebugState(state)).toBe(true);
     state.jump = 30;
@@ -198,7 +294,9 @@ describe("Co-op debug menu: state and overrides (D42)", () => {
       },
     };
     expect(isCoopSaveBlock({ ...block, debug: saved })).toBe(true);
-    expect(isCoopSaveBlock({ ...block, debug: { ...saved, jump: -1 } })).toBe(false);
+    // (a debug state that cannot be read never refuses the save: it is read back without what is damaged)
+    expect(isCoopSaveBlock({ ...block, debug: { ...saved, jump: -1 } })).toBe(true);
+    expect(isCoopSaveBlock({ ...block, debug: { plans: { "8": { battle: "game", species: [4] } } } })).toBe(true);
     expect(isCoopSaveBlock(block)).toBe(true);
   });
 });

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type DebugState, emptyDebugState, isEmptyDebugState } from "#coop/debug/state";
+import { type DebugState, emptyDebugState, isEmptyDebugState, readDebugState } from "#coop/debug/state";
 import type { RewardView } from "#coop/decisions/legal";
 import { type AfkTimers, DEFAULT_AFK_TIMERS } from "#coop/decisions/takeover";
 import type { SettingsOverlayPort } from "#coop/link/handshake";
@@ -407,7 +407,7 @@ export class CoopSession {
     this.trainers = saved.trainers ?? [];
     this.resumeAt = saved.resumeAt ?? null;
     // (the wave that is loaded writes the overrides of its plan, D42)
-    this.debugState = this.debug && saved.debug !== undefined ? structuredClone(saved.debug) : emptyDebugState();
+    this.debugState = (this.debug ? readDebugState(saved.debug) : null) ?? emptyDebugState();
   }
 
   /**

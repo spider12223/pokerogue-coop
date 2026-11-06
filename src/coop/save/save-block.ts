@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type DebugState, isDebugState } from "#coop/debug/state";
+import type { DebugState } from "#coop/debug/state";
 import { isTimedEventNames, type Seat, type SeatRecord } from "#coop/protocol";
 import { isOwnerRecord } from "#coop/rules/ownership";
 import { type CoopAccountSnapshot, isCoopAccountSnapshot } from "#coop/sync/account-snapshot";
@@ -40,7 +40,10 @@ export interface CoopSaveBlock {
   trainers?: number[];
   /** A save taken when a reward screen opened (D19): a reload goes back to that screen, not to the wave start */
   resumeAt?: RewardResume;
-  /** The plans and modes of the host's debug menu (D42); a run without cheats has none */
+  /**
+   * The plans and modes of the host's debug menu (D42); a run without cheats has none. Read back with
+   * `readDebugState`: an older build's converted, a damaged one without what is damaged.
+   */
   debug?: DebugState;
 }
 
@@ -140,7 +143,7 @@ export function isCoopSaveBlock(value: unknown): value is CoopSaveBlock {
     && (block["events"] === undefined || isTimedEventNames(block["events"]))
     && (block["trainers"] === undefined || isTrainerTypeList(block["trainers"]))
     && (block["resumeAt"] === undefined || isRewardResume(block["resumeAt"]))
-    && (block["debug"] === undefined || isDebugState(block["debug"]))
+    // (the debug state is read with `readDebugState` on load: what cannot be read is dropped, never the save)
   );
 }
 
