@@ -101,6 +101,51 @@ const catchOne: Scenario = {
   },
 };
 
+/**
+ * --seat catches until it has all a player may keep while the party has room (3 each, 2 in a game of three: D10, D40): the
+ * next catch asks it to release one of its own. A player's report: the game called the party full with five in it.
+ * A ball can be thrown at one foe only: on the first turn of a wave the others knock one foe out, then --seat throws. One
+ * catch a wave, the reward screen is skipped in between.
+ */
+const catchAtCap: Scenario = {
+  id: "battle:catch-cap",
+  area: "Battle",
+  summary: "--seat catches one a wave until it has its share, with room in the party: the question of the next catch",
+  vars: { seat: null, level: 40, party: 2 },
+  async play(run, vars) {
+    await run.toRun({
+      MOVESET_OVERRIDE: [MoveId.TACKLE, MoveId.GROWL],
+      DISABLE_STANDARD_TRAINERS_OVERRIDE: true,
+      MYSTERY_ENCOUNTER_RATE_OVERRIDE: 0,
+    });
+    await run.drive({
+      until: states =>
+        states.some(
+          state => (state.seat === vars.seat && state.ui === "OPTION_SELECT") || state.wave > 4 || state.turn >= 10,
+        ),
+      answer: (state): Action | null | undefined => {
+        const thrower = state.seat === vars.seat;
+        switch (state.ui) {
+          case "COMMAND":
+            // turn 1: one foe is knocked out (by the others; Growl does nothing); then --seat throws
+            return { cursor: thrower && state.turn >= 2 ? BALL : FIGHT, press: "ACTION" };
+          case "FIGHT":
+            return { cursor: thrower || state.turn >= 2 ? 1 : 0, press: "ACTION" };
+          case "TARGET_SELECT":
+            return { cursor: FIRST_FOE, press: "ACTION" };
+          case "BALL":
+            return { cursor: PokeballType.POKEBALL, press: "ACTION" };
+          case "MODIFIER_SELECT":
+            // the picker skips the reward screen ("yes" is the bot's); the others wait
+            return state.reward?.ready && state.reward.picker === state.seat ? { press: "CANCEL" } : null;
+          default:
+            return undefined;
+        }
+      },
+    });
+  },
+};
+
 const faint: Scenario = {
   id: "battle:faint",
   area: "Battle",
@@ -114,4 +159,4 @@ const faint: Scenario = {
   },
 };
 
-export const battleScenarios: Scenario[] = [turn, switchOut, catchOne, faint];
+export const battleScenarios: Scenario[] = [turn, switchOut, catchOne, catchAtCap, faint];

@@ -12,6 +12,7 @@ import type { Decision } from "#coop/sequencer";
 import { getCoopSession } from "#coop/session";
 import { commandToWire } from "#coop/turn-commands";
 import { modifierTypes } from "#data/data-lists";
+import { catchPokemon } from "#data/mystery-encounters/utils/encounter-pokemon-utils";
 import { BiomeId } from "#enums/biome-id";
 import { Button } from "#enums/buttons";
 import { Challenges } from "#enums/challenges";
@@ -372,6 +373,77 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const answer = seen.find(decision => keyId(decision.key) === key);
       expect(answer).toMatchObject({ author: "host", payload: { release: null } });
       expect(partyIds(r)).toEqual(before);
+    });
+
+    it("tells a thrower at the cap, with room in the party, that they have their three: not that the party is full", async () => {
+      let r: LinkedRun | null = null;
+      const partner = ballThrowingPartner(() => r!);
+      // The host has its three and the guest two: five in the party (a player's report: "the game thought I had a full
+      // party at 5 Pokémon")
+      r = await start({
+        species: SIX.slice(0, 5),
+        starterOwners: ["host", "guest", "host", "guest", "host"],
+        policy: partner.policy,
+      });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      expect(partyIds(r)).toHaveLength(5);
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const shown: string[] = [];
+      const showText = game.scene.ui.showText.bind(game.scene.ui);
+      vi.spyOn(game.scene.ui, "showText").mockImplementation((text, ...rest) => {
+        shown.push(text);
+        return showText(text, ...rest);
+      });
+
+      game.doThrowPokeball(PokeballType.MASTER_BALL);
+      game.onNextPrompt("AttemptCapturePhase", UiMode.OPTION_SELECT, () => {
+        const handler = game.scene.ui.getHandler() as OptionSelectUiHandler;
+        (handler as unknown as { unblockInput(): void }).unblockInput();
+        handler.setCursor(3);
+        handler.processInput(Button.ACTION);
+      });
+      await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+
+      expect(shown).toContain(
+        `You already have 3 Pokémon of your own.\nRelease one to make room for ${enemy.getNameToRender()}?`,
+      );
+      expect(shown.filter(text => text.startsWith("Your party is full"))).toEqual([]);
+      expect(partyIds(r)).toHaveLength(5);
+    });
+
+    it("tells an encounter's chooser at the cap the same, with room in the party (D29)", async () => {
+      let r: LinkedRun | null = null;
+      const partner = ballThrowingPartner(() => r!);
+      r = await start({
+        species: SIX.slice(0, 5),
+        starterOwners: ["host", "guest", "host", "guest", "host"],
+        policy: partner.policy,
+      });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const shown: string[] = [];
+      const showText = game.scene.ui.showText.bind(game.scene.ui);
+      vi.spyOn(game.scene.ui, "showText").mockImplementation((text, ...rest) => {
+        shown.push(text);
+        return showText(text, ...rest);
+      });
+      // A Pokémon an encounter gives (the Salesman's, the Safari Zone's) goes to the chooser, here the host with its three
+      r.session.meChooser = "host";
+
+      const caught = catchPokemon(enemy, null, PokeballType.POKEBALL, false);
+      await vi.waitUntil(() => game.scene.ui.mode === UiMode.OPTION_SELECT, { interval: 10, timeout: 8000 });
+      const handler = game.scene.ui.getHandler() as OptionSelectUiHandler;
+      (handler as unknown as { unblockInput(): void }).unblockInput();
+      handler.setCursor(3);
+      handler.processInput(Button.ACTION);
+      await caught;
+
+      expect(shown).toContain(
+        `You already have 3 Pokémon of your own.\nRelease one to make room for ${enemy.getNameToRender()}?`,
+      );
+      expect(partyIds(r)).toHaveLength(5);
     });
   });
 

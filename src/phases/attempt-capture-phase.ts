@@ -4,6 +4,7 @@ import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
 import { IS_TEST, isBeta, isDev } from "#constants/app-constants";
 import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/bridge";
+import { noRoomQuestion } from "#coop/catch-room";
 import { chatNote } from "#coop/chat";
 import { catchReleaseKey } from "#coop/decision-keys";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
@@ -469,7 +470,7 @@ export class AttemptCapturePhase extends PokemonPhase {
                 },
               };
               const promptRelease = (): void => {
-                ui.showText(i18next.t("battle:partyFull", { pokemonName: pokemon.getNameToRender() }), null, () => {
+                ui.showText(noRoomQuestion(thrower, pokemon.getNameToRender()), null, () => {
                   ui.setMode(UiMode.OPTION_SELECT, addToPartyMenuConfig);
                 });
               };

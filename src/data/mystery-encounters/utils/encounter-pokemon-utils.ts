@@ -5,6 +5,7 @@ import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { coopDecide, isLinked, reportBridgeError } from "#coop/bridge";
+import { noRoomQuestion } from "#coop/catch-room";
 import { catchReleaseKey } from "#coop/decision-keys";
 import { coopSeatFull, meAutoAnswers, meChooser, showChooserWaiting } from "#coop/me-run";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/prompt-payloads";
@@ -824,7 +825,7 @@ export async function catchPokemon(
             };
 
             const promptRelease = (): void => {
-              ui.showText(i18next.t("battle:partyFull", { pokemonName: pokemon.getNameToRender() }), null, () => {
+              ui.showText(noRoomQuestion(coopOwner, pokemon.getNameToRender()), null, () => {
                 ui.setMode(UiMode.OPTION_SELECT, addToPartyMenuConfig);
               });
             };
