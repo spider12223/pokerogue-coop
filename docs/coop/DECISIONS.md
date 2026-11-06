@@ -1209,7 +1209,8 @@ like any other run.
     family's key and which one (`EVOLUTION_ITEM:12`, `RARE_FORM_CHANGE_ITEM:3`, `RARE_SPECIES_STAT_BOOSTER:LIGHT_BALL`).
     The catalog lists every exact item of every family (`catalog.ts`); a family's key alone stays as "the game picks".
     The reward screen places the host's items itself, in the host's order (`debug/rewards.ts`; they no longer go to
-    `ITEM_REWARD_OVERRIDE`), made as the game's own override makes them; a held or team item is made the same way. An id that names no item of this build is left out on every client.
+    `ITEM_REWARD_OVERRIDE`), made as the game's own override makes them; a held or team item is made the same way.
+    An id that names no item of this build is left out on every client.
     Mega Stones are offered with or without the Mega Bracelet: a held stone works either way (the bracelet only gates
     the random reward pool: `modifier-type.ts` `FormChangeItemModifierTypeGenerator`).
   - *Held items:* a new action takes one away (`drop`: the Pokémon, the place in its held items, and the item's key;
@@ -1218,21 +1219,26 @@ like any other run.
 - **Amended (the next-battle planner, 2026-11-06):** Sam found the Waves tab too much at once (nine cards; a planned
   species needed "Wild" chosen by hand; no shiny rarity). It is one **Next battle** card now (layout A of the mockups):
   - *The card:* the wave (the next one first; the number box plans a later one), its kind (Game's, Wild, Trainer,
-    Mystery), one column per enemy, and one line on what the wave will be. "Game's" is nothing planned, like Reset.
+    Mystery), one column per enemy, and one line on what the wave will be (it counts what is set under More, and a
+    wild boss wave is one boss). "Game's" is nothing planned, like Reset.
     Picking anything for an enemy of a Game's wave makes it wild in the same change. Wild has Enemy 1 and 2 (a game of
     three also has two enemies, D40; a lone boss uses Enemy 1); Trainer has the trainer and up to 6 team members (an
-    empty one, or one past the trainer's team size, is the trainer's own); Mystery has the encounter. Then the other
-    planned waves, and After this wave (the jump and the biome, as before).
+    empty one, or one past the trainer's team size, is the trainer's own; a member's × sets it back to that in its
+    place); Mystery has the encounter. Then the other planned waves to come (not the one being played), and After this
+    wave (the jump and the biome, as before).
   - *A column:* the species and its icon, a fusion (a species, or a random partner the game picks as it fuses a wild
-    Pokémon), the level, shiny (Game's, No, ★, ★★, ★★★); under **More** (closed until opened, it says how many it
-    holds): boss bars (Game's, No, 2 to 5), ability, nature, Terastallize, gender, the four moves (each in its slot),
-    held items (on top of the game's, up to 8).
+    Pokémon), the level (0 reads "game's"), shiny (Game's, No, ★, ★★, ★★★); under **More** (closed until opened, it
+    says how many it holds): boss bars (Game's, No, 2 to 5), ability, nature, Terastallize, gender, the four moves (each
+    in its slot; a move planned twice stays in the first), held items (on top of the game's, up to 8).
   - *The plan* (`WavePlan.enemies`): column k is for the k-th enemy made fresh in the wave, a wild battle's in field
     order, a trainer's team in order; a Wild plan's columns apply to a wild battle, a Trainer plan's to a trainer
     battle, never to a Mystery Encounter. `addEnemyPokemon` makes a planned enemy with the plan's species, level and boss
-    rule, then puts the rest on it (`debug/enemy-plan.ts`; a given fusion species goes through `generateFusionSpecies`).
-    Its held items come after the game's; it Terastallizes on its first turn through the game's own Tera step. What
-    comes after it is made (items, Tera) reads the plan by the enemy's place in its team, so a reload finds it again.
+    rule, then puts the rest on it after the trainer's own set-up of the member (`postProcess`: a rival's starter gets
+    its own Tera type and moves) (`debug/enemy-plan.ts`; a given fusion species goes through `generateFusionSpecies`).
+    Its nature comes back after our lead's Synchronize, its Tera type after the trainer's AI (an Elite Four member's
+    Tera of its type; on a load too), its held items after the game's. It Terastallizes once, on its first turn,
+    through the game's own Tera step (not again after a faint, as a trainer's). What comes after it is made (nature,
+    items, Tera) reads the plan by the enemy's place in its team, so a reload finds it again.
     The plan's level, shiny and boss bars are no longer wave-wide overrides; planned boss bars are not shared out in a
     double battle as the game's are.
   - *Fixed waves* (Classic's rival, evil team, Elite Four and champion battles): the fixed battle stays (Sam). The
@@ -1240,12 +1246,13 @@ like any other run.
   - *A wild plan stops the game's own Mystery Encounter roll:* `BattleType.WILD` is 0, so the battle type override
     alone did not (upstream's TODO), and a Wild plan of waves 10 to 180 could turn into an encounter.
   - *Saves:* the save block's debug state is read with `readDebugState`: an older build's plans are converted (the
-    species into the columns in turn, the wave's level, shiny and boss into each; "shiny" becomes ★), and a damaged
-    part is dropped. It never refuses the save.
+    species into six columns in turn, so a fixed wave's trainer gets them all as before; the wave's level, shiny and
+    boss into each; "shiny" becomes ★), and a damaged part is dropped. It never refuses the save.
   - *Random-tier items:* the catalog's Game picks start with a Master-, Rogue-, Ultra-, Great- and Common-tier item
-    (`TIER:<tier>`). On the screen each is rolled from its tier as the game rolls a tier-locked option (no luck
-    upgrade, no copy of the screen's other options where it can avoid one), with the battle's random numbers in the
-    host's order, so every player sees the same item. A tier pick is no item to give.
+    (`TIER:<tier>`). On the screen the host's exact items are placed first, then each tier pick is rolled from its tier
+    as the game rolls a tier-locked option (no luck upgrade, no copy of the screen's other options, the host's too,
+    where it can avoid one), with the battle's random numbers in the host's order, so every player sees the same item.
+    A tier pick is no item to give.
 
 ## D43. The relay counts rooms
 
