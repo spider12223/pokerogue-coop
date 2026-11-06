@@ -105,6 +105,14 @@ export function debugKeepsBossBars(pokemon: EnemyPokemon): boolean {
   return (debugPlannedEnemy(pokemon)?.boss ?? 0) > 1;
 }
 
+/**
+ * @returns Whether the host planned a wild battle for `wave`: the game's own Mystery Encounter roll does not turn it into
+ * one (the battle type override alone does not stop it: `BattleType.WILD` is 0)
+ */
+export function debugBlocksEncounter(wave: number): boolean {
+  return debugState()?.plans[String(wave)]?.battle === "wild";
+}
+
 /** @returns Whether the host planned a Mystery Encounter for `wave` */
 export function debugForcesEncounter(wave: number): boolean {
   return debugState()?.plans[String(wave)]?.battle === "me";

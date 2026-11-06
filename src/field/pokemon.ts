@@ -3259,8 +3259,10 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
   /**
    * Generate a fusion species and add it to this Pokémon
    * @param forStarter - Whether this fusion is being generated for a starter Pokémon; default `false`
+   * @param species - The species to fuse with (co-op D42: a planned enemy's); default: an override's, or a random one
+   * that fits
    */
-  public generateFusionSpecies(forStarter?: boolean): void {
+  public generateFusionSpecies(forStarter?: boolean, species?: PokemonSpecies): void {
     const hiddenAbilityChance = new ValueHolder(BASE_HIDDEN_ABILITY_RATE);
     if (!this.hasTrainer()) {
       globalScene.applyModifiers(HiddenAbilityRateBoosterModifier, true, hiddenAbilityChance);
@@ -3286,7 +3288,9 @@ export abstract class Pokemon extends Phaser.GameObjects.Container {
 
     let fusionOverride: PokemonSpecies | undefined;
 
-    if (forStarter && this.isPlayer() && activeOverrides.STARTER_FUSION_SPECIES_OVERRIDE) {
+    if (species !== undefined) {
+      fusionOverride = species;
+    } else if (forStarter && this.isPlayer() && activeOverrides.STARTER_FUSION_SPECIES_OVERRIDE) {
       fusionOverride = speciesDataRegistry.getSpecies(activeOverrides.STARTER_FUSION_SPECIES_OVERRIDE);
     } else if (this.isEnemy() && activeOverrides.ENEMY_FUSION_SPECIES_OVERRIDE) {
       fusionOverride = speciesDataRegistry.getSpecies(activeOverrides.ENEMY_FUSION_SPECIES_OVERRIDE);

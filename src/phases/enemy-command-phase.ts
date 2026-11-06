@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { debugShouldTera } from "#coop/debug/enemy-plan";
 import { AbilityId } from "#enums/ability-id";
 import { BattlerIndex } from "#enums/battler-index";
 import { BattlerTagType } from "#enums/battler-tag-type";
@@ -106,7 +107,8 @@ export class EnemyCommandPhase extends FieldPhase {
   }
 
   private shouldTera(pokemon: EnemyPokemon): boolean {
-    return !!globalScene.currentBattle.trainer?.shouldTera(pokemon);
+    // Co-op (D42): or the host planned it to Terastallize
+    return !!globalScene.currentBattle.trainer?.shouldTera(pokemon) || debugShouldTera(pokemon);
   }
 
   getFieldIndex(): number {

@@ -31,6 +31,7 @@ import { FRIENDSHIP_GAIN_FROM_BATTLE } from "#balance/starters";
 import { planAfterMade, planBeforeMade } from "#coop/debug/enemy-plan";
 import {
   debugBeginWave,
+  debugBlocksEncounter,
   debugEnemyPlan,
   debugExpMultiplier,
   debugForcesEncounter,
@@ -1476,7 +1477,9 @@ export class BattleScene extends SceneBase {
     // Co-op (D42): or wherever the host's debug menu planned one
     if (
       debugForcesEncounter(waveIndex)
-      || (!activeOverrides.BATTLE_TYPE_OVERRIDE && this.isWaveMysteryEncounter(resolved.battleType, waveIndex))
+      || (!activeOverrides.BATTLE_TYPE_OVERRIDE
+        && !debugBlocksEncounter(waveIndex)
+        && this.isWaveMysteryEncounter(resolved.battleType, waveIndex))
     ) {
       resolved.battleType = BattleType.MYSTERY_ENCOUNTER;
       // Reset to base spawn weight

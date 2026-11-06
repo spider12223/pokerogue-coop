@@ -11,12 +11,13 @@ import { itemId } from "#coop/debug/item-id";
 import { writeDebugOverrides } from "#coop/debug/overrides";
 import { debugPanelInfo, showDebugSection, startDebugPanel, stopDebugPanel, toggleDebugPanel } from "#coop/debug/panel";
 import { clearDebugQueue, debugChanges, queueDebug, queueDebugChange, waitingDebug } from "#coop/debug/queue";
-import { emptyEnemyPlan, emptyWavePlan } from "#coop/debug/state";
+import { emptyEnemyPlan, emptyWavePlan, type WavePlan } from "#coop/debug/state";
 import { ownerOf } from "#coop/decisions/control";
 import { debugTurnKey } from "#coop/decisions/decision-keys";
 import type { Decision } from "#coop/decisions/sequencer";
 import type { DecisionKey } from "#coop/protocol";
 import { modifierTypes } from "#data/data-lists";
+import { Gender } from "#data/gender";
 import { TerrainType } from "#data/terrain";
 import { AbilityId } from "#enums/ability-id";
 import { BattleType } from "#enums/battle-type";
@@ -35,6 +36,7 @@ import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { TrainerType } from "#enums/trainer-type";
 import { WeatherType } from "#enums/weather-type";
+import type { EnemyPokemon } from "#field/pokemon";
 import { AttackTypeBoosterModifier, PokemonFormChangeItemModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type {
   EvolutionItemModifierType,
@@ -43,7 +45,7 @@ import type {
   TmModifierType,
 } from "#modifiers/modifier-type";
 import { getPlayerModifierTypeOptions, regenerateModifierPoolThresholds } from "#modifiers/modifier-type";
-import { advanceTo, openUi, queueTurnCommands } from "#test/helpers/coop-harness";
+import { advanceTo, openUi, queueTurnCommands, reloadWave } from "#test/helpers/coop-harness";
 import {
   type LinkedRun,
   type LinkedScenario,
@@ -355,6 +357,223 @@ describe("Co-op: the host's debug menu (D42)", () => {
     await advanceTo(r.ctx, ["TurnStartPhase"]);
     expect(boss.hp).toBe(boss.getMaxHp());
     expect(boss.bossSegmentIndex).toBe(boss.bossSegments - 1);
+  });
+
+  /** The host plans wave 2 with the batch that wins wave 1; wave 2's enemies are made */
+  async function planWave2(r: LinkedRun, plan: WavePlan): Promise<EnemyPokemon[]> {
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug({ t: "plan", wave: 2, plan });
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.ctx.game.scene.currentBattle.waveIndex).toBe(2);
+    return r.ctx.game.scene.getEnemyParty();
+  }
+
+  /** Everything a plan can set on an enemy, and its id */
+  const snapshot = (enemy: EnemyPokemon) => ({
+    id: enemy.id,
+    species: enemy.species.speciesId,
+    fusion: enemy.fusionSpecies?.speciesId ?? null,
+    shiny: [enemy.shiny, enemy.variant, enemy.fusionShiny, enemy.fusionVariant],
+    level: enemy.level,
+    hp: [enemy.hp, enemy.getMaxHp()],
+    ability: enemy.getAbility().id,
+    nature: enemy.getNature(),
+    gender: enemy.gender,
+    tera: enemy.teraType,
+    moves: enemy.moveset.map(move => move.moveId),
+    items: enemy.getHeldItems().map(item => [item.type.id, item.stackCount]),
+    boss: enemy.bossSegments,
+  });
+
+  it("a wild plan: Charizard fused with Gengar, ★★★, Lv 50, every option; the second enemy is the game's pick", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40).enemyMoveset([]) });
+    const [first, second] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [
+        {
+          ...emptyEnemyPlan(),
+          species: SpeciesId.CHARIZARD,
+          fusion: SpeciesId.GENGAR,
+          shiny: 2,
+          level: 50,
+          ability: AbilityId.INTIMIDATE,
+          nature: Nature.TIMID,
+          gender: Gender.FEMALE,
+          tera: PokemonType.FIRE,
+          moves: [MoveId.FLAMETHROWER, 0, 0, 0],
+          items: ["LEFTOVERS", "LEFTOVERS"],
+        },
+      ],
+    });
+    expect(r.ctx.game.scene.currentBattle.battleType).toBe(BattleType.WILD);
+    expect(first.species.speciesId).toBe(SpeciesId.CHARIZARD);
+    expect(first.fusionSpecies?.speciesId).toBe(SpeciesId.GENGAR);
+    expect([first.shiny, first.variant, first.fusionShiny, first.fusionVariant]).toEqual([true, 2, true, 2]);
+    expect(first.level).toBe(50);
+    expect(first.hp).toBe(first.getMaxHp());
+    expect(first.getAbility().id).toBe(AbilityId.INTIMIDATE);
+    expect([first.getNature(), first.gender, first.teraType]).toEqual([Nature.TIMID, Gender.FEMALE, PokemonType.FIRE]);
+    expect(first.getMoveset()[0].moveId).toBe(MoveId.FLAMETHROWER);
+    expect(first.getHeldItems().find(item => item.type.id === "LEFTOVERS")?.stackCount).toBe(2);
+    expect(second.species.speciesId).not.toBe(SpeciesId.CHARIZARD);
+    expect(second.isFusion()).toBe(false);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("the host and the guest make the same planned enemies, a random fusion too", async () => {
+    const plan: WavePlan = {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [
+        { ...emptyEnemyPlan(), species: SpeciesId.PIKACHU, fusion: "random", shiny: 1, items: ["LEFTOVERS"] },
+        { ...emptyEnemyPlan(), level: 9, nature: Nature.BOLD },
+      ],
+    };
+    const host = (await planWave2(await start(), plan)).map(snapshot);
+    run?.close();
+    run = null;
+    clearDebugQueue();
+    writeDebugOverrides(null, 0);
+
+    let sent = false;
+    const r = await start({
+      seat: "guest",
+      policy: {
+        auto: ["TURN_COMMANDS", "LEARN_MOVE", "EVOLUTION_CANCEL", "DEBUG"],
+        other: key => {
+          if (key.kind !== "DEBUG" || !String(key.ref).startsWith("t")) {
+            return;
+          }
+          const actions = sent ? [] : [{ t: "plan", wave: 2, plan }, { t: "win" }];
+          sent = true;
+          return { actions };
+        },
+      },
+    });
+    expect(await playTurn(r)).toBe("SelectModifierPhase");
+    await openUi(r.ctx, "SelectModifierPhase");
+    pickerSkips(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const guest = r.ctx.game.scene.getEnemyParty().map(snapshot);
+    expect(guest).toEqual(host);
+    expect(host[0].fusion).not.toBeNull();
+    expect(host[0].shiny).toEqual([true, 1, true, 1]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("boss bars, and “not a boss”", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    const [mewtwo, other] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      enemies: [
+        { ...emptyEnemyPlan(), species: SpeciesId.MEWTWO, boss: 1 },
+        { ...emptyEnemyPlan(), boss: 4 },
+      ],
+    });
+    expect(mewtwo.species.speciesId).toBe(SpeciesId.MEWTWO);
+    expect(mewtwo.isBoss()).toBe(false);
+    expect(other.bossSegments).toBe(4);
+  });
+
+  it("a wild plan stops the game's Mystery Encounter roll", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40).mysteryEncounterChance(100) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug(
+      { t: "jump", v: 12 },
+      {
+        t: "plan",
+        wave: 12,
+        plan: { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), species: SpeciesId.MEWTWO }] },
+      },
+    );
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const battle = r.ctx.game.scene.currentBattle;
+    expect(battle.waveIndex).toBe(12);
+    expect(battle.battleType).toBe(BattleType.WILD);
+    expect(r.ctx.game.scene.getEnemyParty()[0].species.speciesId).toBe(SpeciesId.MEWTWO);
+  });
+
+  it("a trainer plan: its members come first, then the trainer's own; six against a small team make no error", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    const party = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "trainer",
+      trainer: TrainerType.YOUNGSTER,
+      enemies: [
+        { ...emptyEnemyPlan(), species: SpeciesId.DRAGONITE },
+        { ...emptyEnemyPlan(), level: 77 },
+        ...Array.from({ length: 4 }, () => ({ ...emptyEnemyPlan(), species: SpeciesId.MEW })),
+      ],
+    });
+    const battle = r.ctx.game.scene.currentBattle;
+    expect(battle.battleType).toBe(BattleType.TRAINER);
+    expect(battle.trainer?.config.trainerType).toBe(TrainerType.YOUNGSTER);
+    expect(party.length).toBeGreaterThanOrEqual(2);
+    expect(party[0].species.speciesId).toBe(SpeciesId.DRAGONITE);
+    expect(party[1].level).toBe(77);
+    expect(party[1].species.speciesId).not.toBe(SpeciesId.DRAGONITE);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("a fixed wave keeps its battle; the plan's members are that trainer's", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    queueDebug(
+      { t: "jump", v: 5 },
+      {
+        t: "plan",
+        wave: 5,
+        plan: { ...emptyWavePlan(), battle: "wild", enemies: [{ ...emptyEnemyPlan(), species: SpeciesId.DRAGONITE }] },
+      },
+    );
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    const scene = r.ctx.game.scene;
+    expect(scene.currentBattle.waveIndex).toBe(5);
+    expect(scene.gameMode.isFixedBattle(5)).toBe(true);
+    expect(scene.currentBattle.battleType).toBe(BattleType.TRAINER);
+    expect(scene.getEnemyParty()[0].species.speciesId).toBe(SpeciesId.DRAGONITE);
+  });
+
+  it("a planned Terastallize: on its first turn, once", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40) });
+    const [first] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      // (strong enough to live through our attacks: a knocked out Pokémon is no longer Terastallized)
+      enemies: [{ ...emptyEnemyPlan(), tera: PokemonType.WATER, level: 100, boss: 5 }],
+    });
+    expect(first.isTerastallized).toBe(false);
+    await playTurn(r);
+    expect(first.isTerastallized).toBe(true);
+    expect(first.getTeraType()).toBe(PokemonType.WATER);
+    await playTurn(r);
+    expect(first.isTerastallized).toBe(true);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("a planned Terastallize after a reload of its wave, before its first turn: still on that turn", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(40).enemyLevel(0) });
+    // (the harness's enemy level override would also level the reloaded enemies: off here)
+    const [before] = await planWave2(r, {
+      ...emptyWavePlan(),
+      battle: "wild",
+      // (strong enough to live through our attacks: a knocked out Pokémon is no longer Terastallized)
+      enemies: [{ ...emptyEnemyPlan(), tera: PokemonType.WATER, level: 100, boss: 5 }],
+    });
+    expect(before.isTerastallized).toBe(false);
+    reloadWave(r.ctx, 2);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await playTurn(r);
+    const after = r.ctx.game.scene.getEnemyParty()[0];
+    // (the wave was made again from its save: a new Pokémon, which still Terastallizes on its first turn)
+    expect(after).not.toBe(before);
+    expect(after.isTerastallized).toBe(true);
+    expect(after.getTeraType()).toBe(PokemonType.WATER);
   });
 
   it("a planned Mystery Encounter is the next wave, whatever the wave", async () => {
