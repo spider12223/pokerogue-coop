@@ -521,6 +521,29 @@ export class Sequencer {
   }
 
   /**
+   * A window of decisions that come in any order, each awaited on its own (a turn's commands, D2): every key is awaited
+   * before any decision that has come is handed out. Awaited one after the other, a decision of a later key that is next in
+   * the sequence would find only the earlier keys awaited, and be a desync: the host sequences a window's decisions in the
+   * order they come, which in a game of three need not be the order of the keys, and a player who opens the window last
+   * finds the others' already sequenced (D40).
+   * @returns One promise per entry, in their order
+   */
+  awaitEach<P = unknown>(entries: readonly WindowEntry[]): Promise<Decision<P>>[] {
+    const waits = entries.map(
+      entry =>
+        this.register(
+          entry.key,
+          false,
+          entry.authors === undefined ? {} : { authors: entry.authors },
+          undefined,
+          false,
+        ) as Promise<Decision<P>>,
+    );
+    this.settle();
+    return waits;
+  }
+
+  /**
    * An open window with several ways out (the reward screen, D9): resolve with the first sequenced decision that has any
    * of the entries' keys. Each entry says who may propose its key. The keys that were not used are closed: the host
    * rejects a proposal that arrives for one later (`closed`) instead of keeping it, and tells its author.
@@ -585,6 +608,8 @@ export class Sequencer {
     all: boolean,
     options: AwaitOptions,
     window?: { keyAuthors: Map<string, readonly Seat[] | undefined>; closeOnResolve: boolean },
+    /** Hand out what has come at once; `false`: the caller does when its whole window is awaited (`awaitEach`) */
+    settleNow = true,
   ): Promise<AnyDecision | AnyDecision[]> {
     if (this.failure) {
       return Promise.reject(this.failure);
@@ -617,11 +642,21 @@ export class Sequencer {
         resolve,
         reject,
       });
-      if (this.role === "host") {
-        this.flushParked();
+      if (settleNow) {
+        this.settle();
       }
-      this.drain();
     });
+  }
+
+  /** The awaits changed: the host sequences what was parked for them, and the ready decisions are handed out */
+  private settle(): void {
+    if (this.failure || this.closed) {
+      return;
+    }
+    if (this.role === "host") {
+      this.flushParked();
+    }
+    this.drain();
   }
 
   /** Hand ready decisions, in order, to the awaits that expect them. */

@@ -137,6 +137,52 @@ describe("Sequencer: three seats (D40)", () => {
     expect(refused).toEqual(["authorMismatch"]);
   });
 
+  /**
+   * A player's report: the game of three reloaded its wave start "for no reason", again and again, until the run stopped.
+   * The turn's commands are a window (D2): the host sequences them in the order they come, which is not the order of the
+   * slots, and a player who chooses last finds the others' already sequenced when its window opens.
+   */
+  describe("the turn's window of the last one to choose (D2, D40)", () => {
+    // the commands of the host's, the guest's and the second guest's Pokémon, in the order of their slots
+    const window = [k(1, 10), k(1, 11), k(1, 12)];
+
+    /** The second guest chooses first; the host second, which sequences the second guest's command before its own */
+    async function othersHaveChosen(three: ReturnType<typeof setupThree>) {
+      const { host, guest2 } = three;
+      const onGuest2 = guest2.awaitEach(window.map(key => ({ key })));
+      guest2.propose(window[2], "guest2's");
+      await settleThree();
+      const onHost = host.awaitEach(window.map(key => ({ key })));
+      host.propose(window[0], "host's");
+      await settleThree();
+      expect(host.lastApplied).toBe(2);
+      return { onHost, onGuest2 };
+    }
+
+    it("takes the decisions that came before it, in the host's order, and then its own", async () => {
+      const three = setupThree();
+      const { onHost, onGuest2 } = await othersHaveChosen(three);
+      const onGuest = three.guest.awaitEach(window.map(key => ({ key })));
+      three.guest.propose(window[1], "guest's");
+      const [host, guest, guest2] = await Promise.all([onHost, onGuest, onGuest2].map(waits => Promise.all(waits)));
+      expect(guest!.map(decision => [decision.seq, decision.payload])).toEqual([
+        [2, "host's"],
+        [3, "guest's"],
+        [1, "guest2's"],
+      ]);
+      expect(host).toEqual(guest);
+      expect(guest2).toEqual(guest);
+      expect(three.guest.desync).toBeNull();
+    });
+
+    it("awaited one key after the other, the same decisions were a desync", async () => {
+      const three = setupThree();
+      await othersHaveChosen(three);
+      // (what the turn's phase did: the first key awaited finds the second guest's decision next in the sequence)
+      await expect(three.guest.awaitDecision(window[0])).rejects.toBeInstanceOf(DesyncError);
+    });
+  });
+
   it("goes on with one guest when the other's connection drops", async () => {
     const { room, host, guest2 } = setupThree();
     room.guests.get("guest")!.close();

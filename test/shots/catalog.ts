@@ -10,6 +10,7 @@ import { betweenWavesScenarios } from "./scenarios/between-waves.ts";
 import { encounterScenarios } from "./scenarios/encounters.ts";
 import { joiningScenarios } from "./scenarios/joining.ts";
 import { runScenarios } from "./scenarios/run.ts";
+import { soakScenarios } from "./scenarios/soak.ts";
 import { togetherScenarios } from "./scenarios/together.ts";
 import { COMMON, VARIABLES, type Variable, type VariableName } from "./variables.ts";
 
@@ -21,6 +22,7 @@ export const CATALOG: readonly Scenario[] = [
   ...runScenarios,
   ...togetherScenarios,
   ...encounterScenarios,
+  ...soakScenarios,
 ];
 
 /** The variables a scenario takes: the common ones and its own */

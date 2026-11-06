@@ -138,8 +138,12 @@ export class CoopTurnSyncPhase extends Phase {
     ];
     let arrived = 0;
     const arrivedKeys = new Set<string>();
-    const waits = participants.map(part =>
-      sequencer.awaitDecision<TurnCommandsPayload>(part.key, { authors: [part.controller] }).then(decision => {
+    // (all at once: in a game of three the others' commands may already be here, in the order the host sequenced them, D40)
+    const awaited = sequencer.awaitEach<TurnCommandsPayload>(
+      participants.map(part => ({ key: part.key, authors: [part.controller] })),
+    );
+    const waits = participants.map((part, index) =>
+      awaited[index].then(decision => {
         arrived++;
         arrivedKeys.add(keyId(part.key));
         // Co-op (D16): the cosmetic "ready" may have been lost; the sequenced command is the proof

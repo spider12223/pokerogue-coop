@@ -427,7 +427,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 
 | Module | What it does | Rules | Pure |
 |---|---|---|---|
-| `decisions/sequencer.ts` | `Sequencer`: `seq`, windows (`awaitDecision`, `awaitOneOf`, `awaitAll`), validation, parking, `REJECT`, take over, legality (`setLegality`), epochs (`resetForEpoch`, `reserveSeq`), `DesyncError` | D2, D17, D18, D24 | yes |
+| `decisions/sequencer.ts` | `Sequencer`: `seq`, windows (`awaitDecision`, `awaitEach`, `awaitOneOf`, `awaitAll`; a window is opened whole), validation, parking, `REJECT`, take over, legality (`setLegality`), epochs (`resetForEpoch`, `reserveSeq`), `DesyncError` | D2, D17, D18, D24 | yes |
 | `decisions/decision-keys.ts` | The keys of turn, switch and prompt decisions | D2 | yes |
 | `decisions/prompt-payloads.ts` | Payloads of the prompts (learn-move, evolution, biome, catch release) and their guards | D2, D10 | yes |
 | `decisions/turn-commands.ts` | A turn command on the wire and back; side action and side pick payloads | D2, D8 | yes |

@@ -129,8 +129,13 @@ In a game of three the host sequences for both guests, who apply the same decisi
   - `ref` is a number (a `pokemon.id`, or `NO_REF` = -1) or a string (a composite, below). It must be unique within the
     wave for its kind.
 - **Decision windows.** The game opens a window: the set of keys it currently expects. Sequenced decisions may resolve
-  open keys in any order (`awaitAll`, and `awaitOneOf` for a window where the first decision closes the others). A key
-  outside the window throws `DesyncError`.
+  open keys in any order (`awaitAll`, `awaitEach` for keys each awaited on its own, and `awaitOneOf` for a window where
+  the first decision closes the others). A key outside the window throws `DesyncError`.
+  - A window is opened whole, before any decision that has already come is handed to it: the host sequences a window's
+    decisions in the order they come, and a client that opens the window last (its player chose last) finds them
+    there. Opened one key at a time, the first key found another key's decision next in the sequence: in a game of
+    three, a player who chose last reloaded the wave as a desync on every such turn until the run stopped (amended
+    after a player's report).
 - **`turn` in keys.** Only decisions made inside a battle turn carry `battle.turn`: `TURN_COMMANDS`, `SIDE_ACTION`,
   `SIDE_PICK`, `FAINT_SWITCH` and `PIVOT_SWITCH`. Every prompt and between-wave decision uses `turn = 0` and a `ref`
   that is unique within the wave.

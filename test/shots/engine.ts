@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Browser, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Page } from "@playwright/test";
 import {
   type Client,
   choosePlayers,
@@ -152,6 +152,7 @@ export class ShotRun {
     const opened = await Promise.all(
       this.seats.map(async seat => {
         const context = await newClientContext(this.browser, this.vars.speed === "fast");
+        await failSomeDownloads(context, seat);
         return [seat, await openClient(context, seat)] as const;
       }),
     );
@@ -328,7 +329,7 @@ export class ShotRun {
   /** What the player's game shows; a page that is loading (a reload) shows nothing yet */
   async state(seat: Seat): Promise<ClientState> {
     try {
-      return await this.readState(seat);
+      return (await this.readState(seat)) ?? loadingState(seat);
     } catch (error) {
       // between two documents, or before the game has its debug API: loading; anything else is a real error
       const loading = await this.client(seat)
@@ -341,10 +342,14 @@ export class ShotRun {
     }
   }
 
-  private readState(seat: Seat): Promise<ClientState> {
+  private readState(seat: Seat): Promise<ClientState | null> {
     return this.client(seat).page.evaluate(
       async ({ who, scenePath }) => {
         const coop = (window as any).__coop;
+        // (a page that is loading has no debug API yet: asking again whether it has one could see it appear meanwhile)
+        if (coop === undefined) {
+          return null;
+        }
         const { globalScene } = await import(scenePath);
         const reward = coop.reward;
         return {
@@ -729,6 +734,34 @@ export class ShotRun {
   }
 
   // #endregion
+}
+
+/**
+ * `SHOT_FAIL_DOWNLOADS=<seat>:<percent>`: that player's browser fails about that share of the game's image and data files,
+ * always the same ones (chosen by their path), so that asking again fails too: a download that never comes (D45).
+ */
+async function failSomeDownloads(context: BrowserContext, seat: Seat): Promise<void> {
+  const [who, percent] = (process.env["SHOT_FAIL_DOWNLOADS"] ?? "").split(":");
+  const share = Number(percent);
+  if (who !== seat || !(share > 0)) {
+    return;
+  }
+  const failed: string[] = [];
+  await context.route(/\/images\/.+\.(png|json)(\?|$)/, route => {
+    const path = new URL(route.request().url()).pathname;
+    let hash = 0;
+    for (const char of path) {
+      hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    }
+    if (hash % 100 < share) {
+      if (!failed.includes(path)) {
+        failed.push(path);
+        console.log(`  (${seat} fails ${path})`);
+      }
+      return route.fulfill({ status: 503, body: "busy" });
+    }
+    return route.continue();
+  });
 }
 
 /** A page between two documents (a reload), or one whose game has not started yet */
