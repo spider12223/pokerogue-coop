@@ -100,10 +100,15 @@ on a second screen; the game keeps running. Only the host has it; friends only s
   held items (give any, take one away), heal, give a Pokémon to another player, remove one, or add any Pokémon to anyone.
 - **Enemies & Field:** knock out, 1 HP, full HP or the level of an enemy (or all of them), stat stages, status, weather,
   terrain.
-- **Waves:** choose what a later wave is (wild, trainer, Mystery Encounter), which Pokémon come and at what level,
-  boss bars, shiny; jump ahead to a later wave; pick the next biome.
+- **Waves:** the **Next battle** card plans the next wave (or a later one): pick its kind, or just pick a Pokémon and
+  it is a wild battle. Each enemy gets its species, a fusion (with a Pokémon you pick, or a random one), its level and
+  shiny rarity (★, ★★, ★★★); **More** holds its boss bars, ability, nature, Terastallize, gender, moves and held items.
+  A trainer battle can have up to 6 team members planned; the rival, evil team, Elite Four and champion battles always
+  happen, with your Pokémon on their team. One line says what the wave will be. Below: the other planned waves, a jump
+  ahead to a later wave, and the next biome.
 - **Rewards & Shop:** the **whole item catalog**, every exact item: each Mega Stone, evolution item, TM, berry, mint,
-  Tera Shard and so on. Click up to 8 for the next reward screen (on a reward screen, it changes at once). The items that
+  Tera Shard and so on, and in **Game picks** a random item of a tier (Master, Rogue, Ultra, Great, Common). Click up
+  to 8 for the next reward screen (on a reward screen, it changes at once). The items that
   fit your team come first. Mega Stones work when held even without a Mega Bracelet; the bracelet only lets the game roll
   them by itself, and the window offers it. Also free shop and rerolls, money, Poké Balls, team items.
 - **Modes:** no damage for your team, one-hit knockouts, shiny enemies, every enemy's level, EXP and money multipliers,

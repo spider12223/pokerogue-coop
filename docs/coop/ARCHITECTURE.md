@@ -337,10 +337,14 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
 actions of a `DEBUG` batch and their checks), `apply.ts` (carrying a batch out; the host marks it applied in the log),
 `queue.ts` (the host's change log: pending changes, the batches sent, the applied ones; an open reward step is its sink),
 `overrides.ts` (writing that state into the game's `activeOverrides`, and the overrides the build identity compares),
-`item-id.ts` and `catalog.ts` (exact item ids and every item of the game), `hooks.ts` (where the game reads the state:
-`newBattle`, `addEnemyPokemon`, the Mystery Encounter check, the biome, the reward options, damage, EXP and money).
+`item-id.ts` and `catalog.ts` (exact item ids, tier picks, and every item of the game), `make-item.ts` (the game's item of
+an id), `rewards.ts` (the next reward screen's items in their places, a tier pick rolled), `hooks.ts` (where the game
+reads the state: `newBattle`, `addEnemyPokemon`, which battle a plan's columns are for, the Mystery Encounter check and
+roll, the biome, the reward options, damage, EXP and money), `enemy-plan.ts` (a planned enemy: before and after it is
+made, its held items after the encounter's, its Tera on its first turn).
 The debug window: `window.ts` (its own browser window, or the panel over the game), `styles.ts`, `dom.ts` (one-step
-controls), `live.ts` (both teams and the field), `sections.ts` (the five sections and the quick buttons), `view.ts`
+controls), `live.ts` (both teams and the field, icons), `sections.ts` (the five sections and the quick buttons),
+`waves.ts` (the Waves section: the next-battle planner), `choices.ts` (the lists the sections pick from), `view.ts`
 (what it shows) and `panel.ts` (drawing it: the live side on change, a section never under the cursor or a box being
 typed in). The batch rides in the turn's window (`CoopTurnSyncPhase`) and in each reward step's window (`rewardWindow`).
 

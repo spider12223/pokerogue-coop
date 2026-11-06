@@ -1167,11 +1167,12 @@ like any other run.
   - *Party:* level, IVs, nature, any ability, any passive (unlocked), friendship, species and form, fusion, shiny and
     variant, gender, Tera type, the four moves, held items, heal or revive, give to another player, remove, and add any
     Pokémon (species, level, shiny) to any player's share.
-  - *Waves:* a plan for any later wave (the game's, wild, trainer or Mystery Encounter; the enemies' species in order,
-    their level, boss bars, shiny; the trainer; the encounter), a jump to a later wave, and the biome after this wave.
-  - *Rewards:* up to 8 items of the next reward screen, any item of the game (on an open reward screen: at once, the
-    screen is drawn again); the screen offers at least as many options as were chosen. Free shop and free rerolls,
-    money, Poké Balls, items of the whole team.
+  - *Waves:* a plan for any later wave (the game's, wild, trainer or Mystery Encounter; for each enemy its species,
+    fusion, level, shiny and its rarity, boss bars, ability, nature, gender, moves, held items and a type it
+    Terastallizes into; the trainer; the encounter), a jump to a later wave, and the biome after this wave.
+  - *Rewards:* up to 8 items of the next reward screen, any item of the game or a random one of a tier (on an open
+    reward screen: at once, the screen is drawn again); the screen offers at least as many options as were chosen. Free
+    shop and free rerolls, money, Poké Balls, items of the whole team.
   - *Battle:* win the wave, knock out / 1 HP / full HP / level of an enemy or all of them, stat stages, status, weather,
     terrain.
   - *Fun:* our Pokémon take no damage, our hits knock out, shiny enemies, EXP and money multipliers, a level for every
@@ -1183,8 +1184,9 @@ like any other run.
   turn's commands, or as the step's decision. The host picks every random value first (an added Pokémon's seed), so
   every client makes the same. An action that does not fit (a Pokémon that left, a full party, the last Pokémon of a
   player, one on the field to remove or give away) is skipped on every client alike.
-- **Later waves** go through the game's own overrides (`activeOverrides`): every client writes them from the run's debug
-  state when a wave is made, and only the ones the menu set. The state (plans, next rewards, jump, biome, modes) is in
+- **Later waves:** a wave's kind and trainer go through the game's own overrides (`activeOverrides`): every client writes
+  them from the run's debug state when a wave is made, and only the ones the menu set; each planned enemy is made from
+  its own plan (amendment below). The state (plans, next rewards, jump, biome, modes) is in
   the co-op save block (`debug`), so a reload, a resync or a rejoin keeps it. A plan is dropped once its wave is over;
   the next reward screen's items once that screen is made; a jump and a biome once used. The build identity (D1) leaves
   out what the menu wrote, so a rejoining player still matches.
@@ -1206,13 +1208,44 @@ like any other run.
   - *Exact items:* an item is named by an id (`src/coop/debug/item-id.ts`): the game's key (`RARE_CANDY`), or a random
     family's key and which one (`EVOLUTION_ITEM:12`, `RARE_FORM_CHANGE_ITEM:3`, `RARE_SPECIES_STAT_BOOSTER:LIGHT_BALL`).
     The catalog lists every exact item of every family (`catalog.ts`); a family's key alone stays as "the game picks".
-    The reward screen's items go to `ITEM_REWARD_OVERRIDE` with their kind (`type`), as the game's own override does;
-    a held or team item is made the same way. An id that names no item of this build is left out on every client.
+    The reward screen places the host's items itself, in the host's order (`debug/rewards.ts`; they no longer go to
+    `ITEM_REWARD_OVERRIDE`), made as the game's own override makes them; a held or team item is made the same way. An id that names no item of this build is left out on every client.
     Mega Stones are offered with or without the Mega Bracelet: a held stone works either way (the bracelet only gates
     the random reward pool: `modifier-type.ts` `FormChangeItemModifierTypeGenerator`).
   - *Held items:* a new action takes one away (`drop`: the Pokémon, the place in its held items, and the item's key;
     skipped if that place no longer holds that item).
   - The old panel's drag (`coopDebugPos`) is gone; the chat box still moves (D38).
+- **Amended (the next-battle planner, 2026-11-06):** Sam found the Waves tab too much at once (nine cards; a planned
+  species needed "Wild" chosen by hand; no shiny rarity). It is one **Next battle** card now (layout A of the mockups):
+  - *The card:* the wave (the next one first; the number box plans a later one), its kind (Game's, Wild, Trainer,
+    Mystery), one column per enemy, and one line on what the wave will be. "Game's" is nothing planned, like Reset.
+    Picking anything for an enemy of a Game's wave makes it wild in the same change. Wild has Enemy 1 and 2 (a game of
+    three also has two enemies, D40; a lone boss uses Enemy 1); Trainer has the trainer and up to 6 team members (an
+    empty one, or one past the trainer's team size, is the trainer's own); Mystery has the encounter. Then the other
+    planned waves, and After this wave (the jump and the biome, as before).
+  - *A column:* the species and its icon, a fusion (a species, or a random partner the game picks as it fuses a wild
+    Pokémon), the level, shiny (Game's, No, ★, ★★, ★★★); under **More** (closed until opened, it says how many it
+    holds): boss bars (Game's, No, 2 to 5), ability, nature, Terastallize, gender, the four moves (each in its slot),
+    held items (on top of the game's, up to 8).
+  - *The plan* (`WavePlan.enemies`): column k is for the k-th enemy made fresh in the wave, a wild battle's in field
+    order, a trainer's team in order; a Wild plan's columns apply to a wild battle, a Trainer plan's to a trainer
+    battle, never to a Mystery Encounter. `addEnemyPokemon` makes a planned enemy with the plan's species, level and boss
+    rule, then puts the rest on it (`debug/enemy-plan.ts`; a given fusion species goes through `generateFusionSpecies`).
+    Its held items come after the game's; it Terastallizes on its first turn through the game's own Tera step. What
+    comes after it is made (items, Tera) reads the plan by the enemy's place in its team, so a reload finds it again.
+    The plan's level, shiny and boss bars are no longer wave-wide overrides; planned boss bars are not shared out in a
+    double battle as the game's are.
+  - *Fixed waves* (Classic's rival, evil team, Elite Four and champion battles): the fixed battle stays (Sam). The
+    card names it and plans that trainer's team; any plan's columns go on the fixed trainer's members.
+  - *A wild plan stops the game's own Mystery Encounter roll:* `BattleType.WILD` is 0, so the battle type override
+    alone did not (upstream's TODO), and a Wild plan of waves 10 to 180 could turn into an encounter.
+  - *Saves:* the save block's debug state is read with `readDebugState`: an older build's plans are converted (the
+    species into the columns in turn, the wave's level, shiny and boss into each; "shiny" becomes ★), and a damaged
+    part is dropped. It never refuses the save.
+  - *Random-tier items:* the catalog's Game picks start with a Master-, Rogue-, Ultra-, Great- and Common-tier item
+    (`TIER:<tier>`). On the screen each is rolled from its tier as the game rolls a tier-locked option (no luck
+    upgrade, no copy of the screen's other options where it can avoid one), with the battle's random numbers in the
+    host's order, so every player sees the same item. A tier pick is no item to give.
 
 ## D43. The relay counts rooms
 
