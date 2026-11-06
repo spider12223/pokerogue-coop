@@ -903,6 +903,27 @@ describe("Co-op: the host's debug menu (D42)", () => {
     );
   });
 
+  it("a pick from a list leaves the box: the window drawn again does not open the list again over what is below", async () => {
+    const r = await start();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    // (over the game, in this document: a box here can have the focus)
+    vi.spyOn(window, "open").mockReturnValue(null);
+    startDebugPanel();
+    toggleDebugPanel();
+    showDebugSection("waves");
+    const root = document.getElementById("coopDebug")!;
+    const box = columns(root)[0].querySelector<HTMLInputElement>(".cdw-pick input")!;
+    box.focus();
+    expect(document.activeElement).toBe(box);
+    expect(root.querySelectorAll(".cdw-menu")).toHaveLength(1);
+    box.value = "Charizard";
+    box.dispatchEvent(new Event("input"));
+    box.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(waitingDebug()).toHaveLength(1);
+    expect(root.querySelectorAll(".cdw-menu")).toHaveLength(0);
+    expect((document.activeElement as HTMLElement | null)?.dataset["keep"]).not.toBe("plan-0-species");
+  });
+
   it("the search still finds the Waves tab's planner", async () => {
     const r = await start();
     await advanceTo(r.ctx, ["CommandPhase"]);

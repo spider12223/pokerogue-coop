@@ -223,6 +223,8 @@ export function picker(
     }
     input.value = "";
     close();
+    // (the box is left: the window drawn again after the pick does not open its list again over what is below)
+    input.blur();
     onPick(choice);
   };
   const draw = (): void => {

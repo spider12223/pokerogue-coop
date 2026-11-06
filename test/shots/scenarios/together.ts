@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { type ClientState, choose } from "../engine.ts";
 import type { Scenario } from "../scenario.ts";
 import { partnerOf } from "../variables.ts";
@@ -160,6 +160,91 @@ const debugWindow: Scenario = {
   },
 };
 
+/** Type into a search list of the debug window and pick what comes up first */
+async function pickInWindow(box: Locator, text: string): Promise<void> {
+  await box.click();
+  await box.fill(text);
+  await box.press("Enter");
+}
+
+const debugWaves: Scenario = {
+  id: "coop:debug-waves",
+  area: "Co-op",
+  summary:
+    "the host plans the next battle in the debug window's Waves tab (D42 amended): Charizard fused with Gengar, ★★★, Lv 50, More open; a trainer's team; a Master-tier item among Game picks; then the battle and its reward screen on every screen",
+  async play(run) {
+    await run.open();
+    await run.host.page.evaluate(async path => {
+      const { settings } = await import(path);
+      settings.update("general", "coopDebugMenu", true);
+    }, "/src/globals/global-settings-manager.ts");
+    await run.toRun();
+    await run.drive({ until: atCommand, shoot: () => false });
+    const opened = run.host.page.waitForEvent("popup");
+    await run.host.page.keyboard.press("F8");
+    const popup = await opened;
+    await popup.setViewportSize({ width: 1340, height: 900 });
+    const root = popup.locator("#coopDebug");
+    await root.locator(".cdw-live .cdw-mon").first().waitFor();
+    await popup.evaluate(() => document.fonts.ready);
+    run.watch("debug window", popup);
+
+    await root.locator(".cdw-tabs button", { hasText: "Waves" }).click();
+    await run.shot("waves-empty", true);
+    const first = () => root.locator(".cdw-ecol").first();
+    await pickInWindow(first().locator(".cdw-pick input").first(), "Charizard");
+    await pickInWindow(first().locator(".cdw-pick input").nth(1), "Gengar");
+    await first().locator(".cdw-seg button", { hasText: "★★★" }).click();
+    const level = first().locator('[data-keep="plan-0-level"]');
+    await level.fill("50");
+    await level.press("Enter");
+    await first().locator(".cdw-morebtn").click();
+    await first().locator(".cdw-morebox select").first().selectOption({ index: 11 });
+    await pickInWindow(first().locator(".cdw-morebox .cdw-pick input").last(), "Leftovers");
+    await popup.waitForTimeout(200);
+    await run.shot("planned", true);
+
+    // A later wave: a trainer and its team
+    const wave = root.locator('[data-keep="plan-wave"]');
+    await wave.fill("3");
+    await wave.press("Enter");
+    await root.locator(".cdw-seg button", { hasText: "Trainer" }).click();
+    await pickInWindow(root.locator('[data-keep="plan-trainer"]'), "Lance");
+    await root.locator("button", { hasText: "+ Add a team member" }).click();
+    await pickInWindow(first().locator(".cdw-pick input").first(), "Dragonite");
+    await popup.waitForTimeout(200);
+    await run.shot("trainer", true);
+
+    // Game picks: a Master-tier item for the next reward screen
+    await root.locator(".cdw-tabs button", { hasText: "Rewards & Shop" }).click();
+    await root.locator('[data-family="random"]').click();
+    await root.locator(".cdw-items .cdw-item", { hasText: "Master-tier item" }).click();
+    await popup.waitForTimeout(200);
+    await run.shot("game-picks", true);
+
+    // Win this wave: its reward screen starts with the Master-tier item, then the planned battle
+    await root.locator(".cdw-tabs button", { hasText: "Waves" }).click();
+    await root.locator(".cdw-quick button", { hasText: "Win" }).first().click();
+    await run.drive({
+      until: states => states.every(state => state.ui === "MODIFIER_SELECT" && state.reward?.ready === true),
+      shoot: () => false,
+    });
+    await run.shot("reward-screen", true);
+    // (its picker skips it: cancel, then "yes"; the others wait)
+    await run.drive({
+      until: states => states.every(state => state.wave === 2 && state.ui === "COMMAND"),
+      answer: state => {
+        if (state.ui !== "MODIFIER_SELECT") {
+          return;
+        }
+        return state.reward?.ready && state.reward.picker === state.seat ? { press: "CANCEL" } : null;
+      },
+      shoot: () => false,
+    });
+    await run.shot("battle", true);
+  },
+};
+
 /** Where the hide handle of a box of the field is on the page: an enemy's or ours, and the field index (D44) */
 async function handleOnPage(page: Page, enemy: boolean, index: number): Promise<{ x: number; y: number }> {
   return page.evaluate(
@@ -226,4 +311,4 @@ const view: Scenario = {
   },
 };
 
-export const togetherScenarios: Scenario[] = [chat, pings, away, reconnect, debugWindow, view];
+export const togetherScenarios: Scenario[] = [chat, pings, away, reconnect, debugWindow, debugWaves, view];
