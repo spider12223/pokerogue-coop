@@ -3,6 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { activeOverrides } from "#app/overrides";
 import { handleTutorial, Tutorial } from "#app/tutorial";
+import { saveCoopAccount } from "#coop/save/account-save";
 import { isCoop } from "#coop/session";
 import type { IEggOptions } from "#data/egg";
 import { Egg, getLegendaryGachaSpeciesForTimestamp } from "#data/egg";
@@ -519,17 +520,20 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.eggGachaOptionsContainer.setVisible(false);
     this.setTransitioning(true);
 
-    // Co-op: only the account is saved; the run is saved at the start of a wave, to the co-op slot (D19)
-    const saveSuccess = await (globalScene.currentBattle && !isCoop()
-      ? globalScene.gameData.saveAll(true, true, true)
-      : globalScene.gameData.saveSystem()
-    ).then(success => {
-      if (!success) {
-        globalScene.reset(true);
-        return false;
-      }
-      return true;
-    });
+    // Co-op: only the account is saved; the run is saved at the start of a wave, to the co-op slot (D19). An account the
+    // browser refuses to save is told, and the machine goes on: a reset would end the run of both players
+    const saveSuccess = isCoop()
+      ? await saveCoopAccount().then(() => true)
+      : await (globalScene.currentBattle
+          ? globalScene.gameData.saveAll(true, true, true)
+          : globalScene.gameData.saveSystem()
+        ).then(success => {
+          if (!success) {
+            globalScene.reset(true);
+            return false;
+          }
+          return true;
+        });
 
     if (!saveSuccess) {
       return;

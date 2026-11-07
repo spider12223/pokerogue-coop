@@ -115,6 +115,22 @@ describe("the co-op log (D26)", () => {
     expect(second.all.at(-1)!.n).toBe(LOG_PERSISTED + 21);
   });
 
+  it("gives its copy in the browser's storage up to a save the player keeps (D19), and goes on in memory", async () => {
+    const browser = fakeBrowser();
+    const log = new CoopLog(browser.env);
+    log.error("error", "before");
+    expect(browser.store.has("coopLog")).toBe(true);
+
+    expect(log.releaseStorage()).toBe(true);
+    expect(browser.store.has("coopLog")).toBe(false);
+    // not written again on this page, and there is nothing more to give up
+    log.error("error", "after");
+    await browser.advance(5000);
+    expect(browser.store.has("coopLog")).toBe(false);
+    expect(log.releaseStorage()).toBe(false);
+    expect(log.all.map(entry => entry.msg)).toEqual(["before", "after"]);
+  });
+
   it("sends nothing until it has a server, then the entries in batches, and each one once", async () => {
     const { env, posts, advance } = fakeBrowser();
     const log = new CoopLog(env);

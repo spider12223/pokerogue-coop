@@ -557,6 +557,15 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   the run gave it (caught Pokémon, which the starter select shows; candies, eggs, vouchers) survives a closed tab. The
   menu's **Save and Quit** in a co-op run saves the account and then ends the session as "End session" does (D20); the
   run itself is the wave-start save.
+- **A save the browser refuses (after M8, from a player's report).** A browser keeps little per site (Chrome: 5,242,880
+  characters, measured; others may keep less), and a local account (about 0.5 to 0.6 million), 25 runs of history and
+  the co-op log (up to 0.6 million) take a good part of it. A write that does not fit is not lost without a word:
+  - The co-op log gives its copy in the browser's storage up for the rest of the page (it goes on in memory, and is
+    still sent), and the account, the host's save file or the run history is written again.
+  - What still does not fit is told to the player, as a chat note (D38) once per session for the account and once for
+    the host's run, and written to the co-op log. A host's save file that does not fit is removed, as before.
+  - Save and Quit says it in the message box before it leaves, on a line of this player's own (D27). The end screen
+    (D35) and the egg machine (D30) go on: a reset would end the run of both players.
 - **Host a game** over a saved run asks first: the new run's first wave replaces the slot. A wave-start save that does
   not fit in local storage removes the slot of the earlier wave (Continue would silently take the run back to it).
 
@@ -909,6 +918,10 @@ step; the screens would not.
     the merge is in place. In a merged entry, what the screen changes is written to the player's own entry: candies spent,
     a passive or cost reduction bought (the next one after the bigger of the two), the custom moveset. A passive only the
     partner unlocked can be turned on and off there; that choice lasts until the lobby closes.
+  - **On a Pokémon only the partner caught, the player's candies show as none** (amended after M8): what the screen
+    changes on it is kept for the screen only (the player's save may not have starter data for a species their dex
+    lacks), so a passive or cost reduction bought with their candies would spend them for nothing. The candies it earned
+    them in a run (below) wait on their account until they catch it.
   - The merge comes off when the lobby closes (`closeStarterLobby`): the run starts, or the players leave.
 - **In the run:** the account snapshot of `ready` comes from the merge (D4), so the simulation reads the egg moves and
   dex of what was picked; the host's dex count (critical captures) is the count of both. Account writes during the run

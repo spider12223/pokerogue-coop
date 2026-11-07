@@ -11,6 +11,7 @@ import { retryKey } from "#coop/decisions/decision-keys";
 import { beginRunEnd } from "#coop/link/play-again";
 import type { Seat } from "#coop/protocol";
 import { isRetryPayload, type RetryPayload } from "#coop/rules/retry";
+import { isStorageFull, makeStorageRoom, saveCoopAccount } from "#coop/save/account-save";
 import { issueResync, trySafeApply } from "#coop/save/resync-run";
 import { getCoopSession, requireCoopSession } from "#coop/session";
 import { writesForPokemon } from "#coop/sync/sim-account";
@@ -472,16 +473,21 @@ export class GameOverPhase extends BattlePhase {
    * @returns A promise containing the {@linkcode SessionSaveData}
    */
   /**
-   * A co-op run is over: it is written to this account's run history with both display names, and the system data keeps
-   * the clear counter. A failure is told and the run still ends.
+   * A co-op run is over: the system data keeps the clear counter, and the run is written to this account's run history with
+   * both display names. The account goes first: in a full storage it is what gets the room (D19). A failure is told and the
+   * run still ends.
    */
   private async recordCoopRun(): Promise<void> {
+    await saveCoopAccount();
     try {
       const session = requireCoopSession();
       // (the solo slots are never read for a co-op run: they hold some other run)
       const entry = await this.getRunHistoryEntry(false);
-      await globalScene.gameData.saveRunHistory(entry, this.isVictory, { names: session.names, seat: session.seat });
-      await globalScene.gameData.saveSystem();
+      const write = () =>
+        globalScene.gameData.saveRunHistory(entry, this.isVictory, { names: session.names, seat: session.seat });
+      await write().catch((error: unknown) =>
+        isStorageFull(error) && makeStorageRoom() ? write() : Promise.reject(error),
+      );
     } catch (error) {
       console.warn("co-op: the run could not be written to the run history:", error);
     }

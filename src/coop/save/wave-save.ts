@@ -5,8 +5,8 @@
  */
 
 import { globalScene } from "#app/global-scene";
-import { coopLog } from "#coop/diagnostics/coop-log";
 import { challengesOn } from "#coop/link/challenge-pick";
+import { makeStorageRoom, notSavedText, reportNotSaved, saveCoopAccount } from "#coop/save/account-save";
 import { COOP_SLOT_VERSION, type CoopSlot, clearCoopSlot, readCoopSlot, writeCoopSlot } from "#coop/save/coop-slot";
 import type { RewardResume } from "#coop/save/save-block";
 import type { KeyValueStore } from "#coop/save/seat-store";
@@ -55,11 +55,10 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
   // This player's account is saved at every wave start, as a solo run's `saveAll` saves it: what the run gave it (the dex,
   // caught Pokémon as starters, candies, eggs, vouchers) is not lost when the tab closes before the run ends. It also gives
   // a fresh account its ids at the first wave: they are drawn again at every start of the game until saved, and a saved
-  // run is found again by them (D4, D21). The run itself is saved below (D19).
+  // run is found again by them (D4, D21). The run itself is saved below (D19). A browser that refuses it is told about
+  // (`account-save.ts`).
   session.accountSaved = true;
-  void globalScene.gameData
-    .saveSystem()
-    .catch((error: unknown) => console.warn("co-op: saving the account failed:", error));
+  void saveCoopAccount();
   const data = globalScene.gameData.getSessionSaveData();
   if (resumeAt !== undefined && data.coop !== undefined) {
     // A reward-screen save (D19): a reload goes back to the screen
@@ -100,14 +99,18 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
       ? { runMode: "challenge", challenges: challengesOn() }
       : { runMode: globalScene.gameMode.isEndless ? "endless" : "classic" }),
   };
-  if (!writeCoopSlot(store, slot, session.file)) {
+  // A full storage first makes room (the co-op log gives its copy up), and the file is written again
+  if (!writeCoopSlot(store, slot, session.file) && !(makeStorageRoom() && writeCoopSlot(store, slot, session.file))) {
     // The slot of an earlier wave must not stay: "Continue" would silently take the run back to it (D19). Without a slot
-    // there is nothing to continue, which is what is true
+    // there is nothing to continue, which is what is true, and the host is told so
     clearCoopSlot(store, session.file);
     console.warn("co-op: the wave-start save did not fit in local storage; the saved run is removed");
-    coopLog().error("save", "the wave-start save did not fit in local storage: the saved run is removed", {
-      wave: data.waveIndex,
-    });
+    reportNotSaved(
+      "run",
+      notSavedText("run"),
+      "the wave-start save did not fit in local storage: the saved run is removed",
+      { wave: data.waveIndex },
+    );
   }
   // A full storage does not stop the run: the save in memory still serves a resync
   return true;

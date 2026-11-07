@@ -270,6 +270,10 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
 - **The wave-start save.** `saveCoopWaveStart` (`wave-save.ts`) runs in `EncounterPhase`, where a solo run calls
   `saveAll`. It saves this player's account, then the session save with its `coop` block (`save-block.ts`: the owner
   map, the account snapshots, `rewardPickCount`, …). The host writes it to its co-op slot; the guest keeps it in memory.
+- **A save the browser refuses.** `saveCoopAccount` (`account-save.ts`) saves the account at the wave start, at the run's
+  end, on Save and Quit and in the egg machine. A full storage first gives the co-op log's copy up
+  (`CoopLog.releaseStorage`) and the write is tried again; the host's slot does the same. What still fails is told to the
+  player (a chat note, once per session for each kind; Save and Quit in the message box) and logged (D19).
 - **The co-op slot.** `coop-slot.ts` reads and writes the `localStorage` key `coopSlot` (never a solo slot): the save,
   both names and accounts, the last epoch and `seq` (D19). `updateSlotEpoch` keeps the epoch and `seq` current after a
   reload. The slot is removed when the run ends.
@@ -485,6 +489,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 |---|---|---|---|
 | `save/save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
 | `save/wave-save.ts` | `saveCoopWaveStart` (in `EncounterPhase`), the slot, `updateSlotEpoch` | D19 | no |
+| `save/account-save.ts` | `saveCoopAccount`; a save the browser refuses: room made from the co-op log's copy, the player told | D19 | no |
 | `save/coop-slot.ts` | The host's co-op save files (`coopSlot`): the wave-start save, the epoch, the last `seq`, the names and accounts | D19 | yes |
 | `save/save-files.ts` | The host's co-op save files on the save screen | D19, D21 | no |
 | `save/reward-resume.ts` | The reward-screen save: a reload during the rewards comes back to them | D19 | no |

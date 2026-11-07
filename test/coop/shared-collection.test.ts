@@ -234,6 +234,21 @@ describe("the save of a player who changed a Pokémon only the partner caught", 
     expect(ownAccountData(own).starterData[151].moveset).toBeNull();
   });
 
+  it("spends none of the player's candies on the partner's Pokémon: what they would buy for it could not be saved", () => {
+    const { own, partner } = accounts();
+    // candies the player earned with the partner's Mew in an earlier run (D4a: they go to the player who used it)
+    own.starterData[151].candyCount = 30;
+    poolCollection(own, captureCollection(partner));
+    // the screen sees none to spend on it, so its candy upgrades are not offered (the menus read this count)
+    expect(own.starterData[151].candyCount).toBe(0);
+    // a purchase that got through anyway takes nothing from the account
+    own.starterData[151].candyCount -= 20;
+    own.starterData[151].valueReduction = 2;
+    expect(ownAccountData(own).starterData[151].candyCount).toBe(30);
+    unpoolCollection();
+    expect(own.starterData[151]).toMatchObject({ candyCount: 30, valueReduction: 0 });
+  });
+
   it("keeps a cost reduction bought for the partner's Pokémon out of the player's own save too", () => {
     const { own, partner } = accounts();
     poolCollection(own, captureCollection(partner));

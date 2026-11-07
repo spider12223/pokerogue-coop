@@ -4,6 +4,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { bypassLogin, isApp, isBeta, isDev } from "#constants/app-constants";
+import { saveCoopAccount } from "#coop/save/account-save";
 import { systemImportAvailable } from "#coop/save/import-account";
 import { endSession } from "#coop/save/resync-run";
 import { getCoopSession } from "#coop/session";
@@ -691,8 +692,28 @@ export class MenuUiHandler extends OptionSelectUiHandler {
           const session = getCoopSession();
           if (session !== null) {
             // Co-op: the run is saved at the start of the wave, in the host's co-op slot (D19); here only this player's
-            // account is saved, and the session ends as "End session" does: the partner is told (D20)
-            void globalScene.gameData.saveSystem().finally(() => endSession(session));
+            // account is saved, and the session ends as "End session" does: the partner is told (D20). An account the
+            // browser refuses to save is told first, in the message box: the chat box goes with the session
+            void saveCoopAccount().then(notSaved => {
+              if (notSaved === null || getCoopSession() !== session) {
+                endSession(session);
+                return;
+              }
+              // A line of this player's own: the partner's screen does not move it on (D27)
+              const leavePrivate = session.pace.enterPrivate();
+              void ui.setMode(UiMode.MESSAGE).then(() =>
+                ui.showText(
+                  notSaved,
+                  null,
+                  () => {
+                    leavePrivate();
+                    endSession(session);
+                  },
+                  null,
+                  true,
+                ),
+              );
+            });
             return;
           }
           ui.setMode(UiMode.LOADING, {

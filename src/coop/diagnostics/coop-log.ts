@@ -265,6 +265,8 @@ export class CoopLog {
   /** When the persist timer goes off, and when the log was last written (the log's clock) */
   private persistAt = Number.POSITIVE_INFINITY;
   private lastPersist = Number.NEGATIVE_INFINITY;
+  /** The copy in the browser's storage was given up for the rest of this page (D19): the log goes on in memory only */
+  private storageReleased = false;
   /** The newest entries, for a repeat to be counted on */
   private recent: RecentEntry[] = [];
 
@@ -297,6 +299,30 @@ export class CoopLog {
   /** The log's clock, in milliseconds (what the stall watch measures with) */
   now(): number {
     return this.env.now().getTime();
+  }
+
+  /**
+   * Give up the copy of the log kept in the browser's storage, for the rest of this page: a save the player keeps (their
+   * account, the run) did not fit, and needs the room more (D19). The log goes on in memory, and is still sent.
+   * @returns Whether there was a copy to give up
+   */
+  releaseStorage(): boolean {
+    this.storageReleased = true;
+    if (this.persistTimer !== null) {
+      this.env.clearTimer(this.persistTimer);
+      this.persistTimer = null;
+      this.persistAt = Number.POSITIVE_INFINITY;
+    }
+    try {
+      const storage = this.env.storage;
+      if (storage?.getItem(STORAGE_KEY) == null) {
+        return false;
+      }
+      storage.removeItem(STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** Whether the server takes the log (`null`: not asked yet, or no server set) */
@@ -592,7 +618,7 @@ export class CoopLog {
       this.persistAt = Number.POSITIVE_INFINITY;
     }
     const storage = this.env.storage;
-    if (storage === null) {
+    if (storage === null || this.storageReleased) {
       return;
     }
     this.lastPersist = this.now();

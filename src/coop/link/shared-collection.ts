@@ -24,7 +24,8 @@ import type { StarterData, StarterDataEntry } from "#types/save-data";
  * - the save writes the account's own data while the merge is in place ({@linkcode ownAccountData})
  * - in a merged entry, what the screen changes (candies spent, a passive or cost reduction bought, the custom moveset)
  *   is written through to the account's own entry; a passive only the partner unlocked can be turned on and off, which
- *   is kept in the merge only
+ *   is kept in the merge only; on a Pokémon only the partner caught, none of the player's candies show, so nothing is
+ *   bought for it
  * - the merge comes off when the lobby closes: the run starts, or the players leave
  *
  * The run itself plays with the merge: the account snapshot of `ready` is taken from it (D4), so the egg moves and dex
@@ -116,6 +117,7 @@ function ownCaught(dex: DexEntry | undefined): boolean {
  * count. Candies, friendship, the egg pity and the custom moveset are the player's own, and so is what the screen buys.
  * On a Pokémon only the partner caught, the custom moveset, a cost reduction and a passive the screen changes are kept for
  * the screen and never reach the player's own entry: their save may not have starter data for a species their dex lacks.
+ * So its candies show as none there: the player's would be spent on what is not kept.
  * @param caught - Whether the player's own dex has the species
  * @returns The player's own entry when the partner adds nothing to it
  */
@@ -155,10 +157,15 @@ export function mergeStarterEntry(
   let screenPassive = own.passiveAttr;
   const merged = { abilityAttr, eggMoves, classicWinCount } as StarterDataEntry;
   Object.defineProperties(merged, {
+    // On a Pokémon only the partner caught, none of the player's candies show: what they would buy for it stays on this
+    // screen only (above), so the candies would be spent for nothing. Those it earned them in a run (D4a) wait on their
+    // account until they catch it
     candyCount: accessor(
-      () => own.candyCount,
+      () => (caught ? own.candyCount : 0),
       value => {
-        own.candyCount = value;
+        if (caught) {
+          own.candyCount = value;
+        }
       },
     ),
     friendship: accessor(
