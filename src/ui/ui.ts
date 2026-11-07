@@ -631,12 +631,21 @@ export class UI extends Phaser.GameObjects.Container {
    * Co-op: clear every screen still open under the one on top (and the message box's own). A decision of the partner, a
    * take-over or a reload can end what the player had opened screens over (the rewards, then the party, then a summary);
    * changing the mode clears only the top one, so the rest would stay drawn, and would not draw again when next shown.
+   * A change of screen already fading lands after this call and keeps the screen it left open under the new one (the party
+   * opened from the rewards): once it has landed, the screens under the new top one come off too.
    */
   public clearScreensUnder(): void {
     for (const [mode, handler] of this.handlers.entries()) {
       if (mode !== this._mode && mode !== UiMode.MESSAGE && handler?.active) {
         handler.clear();
       }
+    }
+    const fading = this.coopTransition;
+    if (fading !== null) {
+      // This goes first: the changes asked for after this call (the closing screen's message mode, the next screen) wait
+      // for the same fade, in the order they were asked for
+      const again = (): void => this.clearScreensUnder();
+      void fading.then(again, again);
     }
   }
 

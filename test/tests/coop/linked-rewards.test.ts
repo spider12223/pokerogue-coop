@@ -332,6 +332,98 @@ describe("Co-op: the reward screen (D9)", () => {
     expect(r.session.desyncMessage).toBeNull();
   });
 
+  /** What of the reward screen (and the party opened from it) is still open or drawn */
+  function screensLeft(r: LinkedRun): string[] {
+    const { ui } = r.ctx.game.scene;
+    const rewards = ui.handlers[UiMode.MODIFIER_SELECT] as unknown as {
+      active: boolean;
+      options: unknown[];
+      shopOptionsRows: unknown[][];
+    } & Record<string, { visible: boolean }>;
+    const left: string[] = [];
+    if (rewards.active) {
+      left.push("rewards");
+    }
+    if (rewards.options.length > 0 || rewards.shopOptionsRows.flat().length > 0) {
+      left.push("items");
+    }
+    for (const button of ["rerollButtonContainer", "checkButtonContainer", "transferButtonContainer"]) {
+      if (rewards[button].visible) {
+        left.push(button);
+      }
+    }
+    for (const mode of [UiMode.PARTY, UiMode.SUMMARY]) {
+      if (ui.handlers[mode].active) {
+        left.push(UiMode[mode]);
+      }
+    }
+    return left;
+  }
+
+  /** The partner's screen to pick, open and answering on this client (the host), with fades that take their time */
+  async function watchPartnerPick(r: LinkedRun): Promise<void> {
+    r.session.rewardPickCount = 1;
+    await openRewardScreen(r, [option(getModifierType(modifierTypes.LEFTOVERS))]);
+    expect(openScreen()).toMatchObject({ screen: 1, picker: "guest" });
+    const handler = r.ctx.game.scene.ui.handlers[UiMode.MODIFIER_SELECT] as unknown as { awaitingActionInput: boolean };
+    await vi.waitUntil(() => handler.awaitingActionInput, { interval: 5, timeout: 5000 });
+    // (the test scene's tweens finish at once; the browser's fades take their time)
+    vi.spyOn(r.ctx.game.scene.tweens, "add").mockImplementation(config => {
+      const { duration, onComplete } = config as { duration?: number; onComplete?: () => void };
+      setTimeout(() => onComplete?.(), duration ?? 0);
+      return undefined as never;
+    });
+  }
+
+  /** On to the next battle, once the fades that were under way have landed */
+  async function toNextBattle(r: LinkedRun): Promise<void> {
+    const { scene } = r.ctx.game;
+    await vi.waitUntil(() => !scene.phaseManager.getCurrentPhase().is("SelectModifierPhase"), {
+      interval: 5,
+      timeout: 5000,
+    });
+    await vi.waitUntil(() => scene.ui.pendingCoopTransition === null, { interval: 5, timeout: 5000 });
+    vi.mocked(scene.tweens.add).mockRestore();
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await new Promise(resolve => setTimeout(resolve, 700)); // a late switch or tween would land here
+  }
+
+  it("clears the screen of a player still fading into Check Team when the pick comes (it stayed drawn into the next battle)", async () => {
+    const r = await start();
+    await watchPartnerPick(r);
+    const { ui } = r.ctx.game.scene;
+
+    // Check Team: the party screen fades in, and the partner's pick comes before it is up
+    expect(rewardScreen(r).onSequencedInput(0, 2)).toBe(true);
+    expect(ui.mode).toBe(UiMode.MODIFIER_SELECT);
+    expect(ui.pendingCoopTransition).not.toBeNull();
+    partnerActs(r, { t: "skip" });
+    await toNextBattle(r);
+
+    expect(screensLeft(r)).toEqual([]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
+  it("clears the party screen of a player still fading into a summary when the pick comes", async () => {
+    const r = await start();
+    await watchPartnerPick(r);
+    const { ui } = r.ctx.game.scene;
+    expect(rewardScreen(r).onSequencedInput(0, 2)).toBe(true);
+    await vi.waitUntil(() => ui.mode === UiMode.PARTY && ui.pendingCoopTransition === null, {
+      interval: 5,
+      timeout: 5000,
+    });
+
+    // the party screen's Summary: it fades in over the party, and the partner's pick comes before it is up
+    void ui.setModeWithoutClear(UiMode.SUMMARY, hostMon(r));
+    expect(ui.pendingCoopTransition).not.toBeNull();
+    partnerActs(r, { t: "skip" });
+    await toNextBattle(r);
+
+    expect(screensLeft(r)).toEqual([]);
+    expect(r.session.desyncMessage).toBeNull();
+  });
+
   it("sends the learn-move prompt of a TM used on the partner's Pokémon to the partner", async () => {
     const r = await start({
       policy: { auto: ["TURN_COMMANDS", "LEARN_MOVE", "EVOLUTION_CANCEL"], learnMove: () => 1 },

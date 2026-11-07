@@ -1181,11 +1181,12 @@ export class SelectModifierPhase extends BattlePhase {
   /** The screen is over (a pick, a skip or a reroll): nothing is proposed or applied from now on. */
   private closeScreen(): void {
     this.closed = true;
-    if (globalScene.ui.mode !== UiMode.MODIFIER_SELECT) {
+    const { ui } = globalScene;
+    if (ui.mode !== UiMode.MODIFIER_SELECT || ui.pendingCoopTransition !== null) {
       // The decision came while this player was in the party screen opened from this one (Check Team, a shop target, Manage
-      // Items), maybe with a summary or a prompt over it: leaving the top screen will not close this one or those between,
-      // so their items and buttons would stay drawn into the next battle
-      globalScene.ui.clearScreensUnder();
+      // Items), maybe with a summary or a prompt over it, or still fading into it: leaving the top screen will not close this
+      // one or those between, so their items and buttons would stay drawn into the next battle
+      ui.clearScreensUnder();
     }
     if (isLinked()) {
       requireCoopSession().rewardLegality = null;
