@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { loggedInUser } from "#app/account";
+import { ownerOf } from "#coop/decisions/control";
 import { getCoopSession } from "#coop/session";
 import { MoveId } from "#enums/move-id";
 import { PlayerGender } from "#enums/player-gender";
+import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
 import {
@@ -16,9 +19,18 @@ import {
   type CoopRun,
   Decider,
   openCoopRun,
+  openUi,
   playWave,
   type SharedRun,
 } from "#test/helpers/coop-harness";
+import {
+  ballThrowingPartner,
+  type LinkedRun,
+  openLinkedRun,
+  pickerSkips,
+  toTurnWithOneEnemy,
+} from "#test/helpers/coop-linked";
+import { decrypt } from "#utils/data";
 import i18next from "i18next";
 import Phaser from "phaser";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -119,6 +131,72 @@ describe("Co-op: each player's account is saved during the run", () => {
       await vi.waitUntil(() => getCoopSession() === null, { interval: 10, timeout: 4000 });
       expect(saveSystem).toHaveBeenCalled();
       expect(saveAll).not.toHaveBeenCalled();
+    },
+    5 * MINUTES,
+  );
+});
+
+describe("Co-op: what a player catches is in the account their browser saves (D4a, D19)", () => {
+  let phaserGame: Phaser.Game;
+  let run: LinkedRun | null = null;
+
+  beforeAll(() => {
+    phaserGame = new Phaser.Game({ type: Phaser.HEADLESS });
+  });
+
+  afterEach(() => {
+    run?.close();
+    run = null;
+    vi.restoreAllMocks();
+  });
+
+  /** @returns The account this browser saved last, as the next start of the game loads it */
+  function savedAccount(): {
+    dexData: Record<number, { caughtCount: number; caughtAttr: number | string }>;
+    starterData: Record<number, { candyCount: number }>;
+  } {
+    const stored = localStorage.getItem(`data_${loggedInUser?.username}`);
+    expect(stored).toBeTruthy();
+    return JSON.parse(decrypt(stored!, true));
+  }
+
+  // A player's report: the second player got no candies and none of their catches on their account. The guest's own
+  // catch must reach the guest's saved account as the host's reaches the host's.
+  it.each(["host", "guest"] as const)(
+    "the %s throws the ball: the catch and its candy are in their saved account from the next wave start",
+    async seat => {
+      let r: LinkedRun | null = null;
+      const partner = ballThrowingPartner(() => r!);
+      r = await openLinkedRun(phaserGame, {
+        seat,
+        species: [SpeciesId.BULBASAUR, SpeciesId.SQUIRTLE, SpeciesId.CHARMANDER, SpeciesId.PIKACHU],
+        starterOwners: ["host", "guest", "host", "guest"],
+        configure: game => game.override.startingLevel(40),
+        policy: partner.policy,
+      });
+      run = r;
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const [enemy] = game.scene.getEnemyField().filter(e => e.isActive(true));
+      const species = enemy.species.speciesId;
+      const root = enemy.species.getRootSpeciesId(true);
+      const { gameData } = game.scene;
+      const caughtBefore = gameData.dexData[species].caughtCount;
+      const candyBefore = gameData.starterData[root].candyCount;
+
+      game.doThrowPokeball(PokeballType.MASTER_BALL);
+      await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+      expect(ownerOf(game.scene.getPlayerParty().at(-1)!)).toBe(seat);
+      await openUi(r.ctx, "SelectModifierPhase");
+      pickerSkips(r);
+      await advanceTo(r.ctx, ["CommandPhase"]);
+
+      expect(game.scene.currentBattle.waveIndex).toBe(2);
+      const saved = savedAccount();
+      expect(saved.dexData[species].caughtCount).toBe(caughtBefore + 1);
+      expect(Number(saved.dexData[species].caughtAttr)).toBeGreaterThan(0);
+      expect(saved.starterData[root].candyCount).toBeGreaterThan(candyBefore);
+      expect(r.session.desyncMessage).toBeNull();
     },
     5 * MINUTES,
   );
