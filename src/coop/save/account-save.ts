@@ -48,24 +48,23 @@ export function makeStorageRoom(): boolean {
 
 /**
  * @param full - Whether the storage was full (else the browser refused for another reason)
+ * @param pageBreak - Between its two sentences: a space in the chat box, `$` (a new page) in the message box, which holds
+ * two lines
  * @returns What the player is told when it could not be saved
  */
-export function notSavedText(kind: CoopSaveKind, full = true): string {
+export function notSavedText(kind: CoopSaveKind, full = true, pageBreak = " "): string {
   if (kind === "run") {
-    return coopText(
-      "runNotSaved",
-      "This run could not be saved: this browser's storage is full. It can't be continued later.",
-    );
+    return [
+      coopText("runNotSaved", "This run could not be saved: this browser's storage is full."),
+      coopText("runNotSavedLater", "It can't be continued later."),
+    ].join(pageBreak);
   }
-  return full
-    ? coopText(
-        "accountNotSavedFull",
-        "Your account could not be saved: this browser's storage is full. What this run gives you is lost when the game closes.",
-      )
-    : coopText(
-        "accountNotSaved",
-        "Your account could not be saved in this browser. What this run gives you is lost when the game closes.",
-      );
+  return [
+    full
+      ? coopText("accountNotSavedFull", "Your account could not be saved: this browser's storage is full.")
+      : coopText("accountNotSaved", "Your account could not be saved in this browser."),
+    coopText("accountNotSavedLost", "Your progress from this run is lost when the game closes."),
+  ].join(pageBreak);
 }
 
 /**
@@ -94,11 +93,11 @@ export function reportNotSaved(kind: CoopSaveKind, text: string, msg: string, da
 /**
  * Save this player's account (D19), never failing the caller: a full storage first makes room, and the save is tried
  * again. What the browser still refuses is reported ({@linkcode reportNotSaved}).
- * @returns What the player is told when the browser refused it (the chat box says it once per session; Save and Quit says
- * it in the message box, as the chat box goes with the session); `null` when it was saved, or when the save's own check
- * failed (upstream says so itself)
+ * @returns Why the browser refused it, `"full"` (the storage is full) or `"refused"`: the chat box says so once per session,
+ * and Save and Quit says it in the message box ({@linkcode notSavedText}), as the chat box goes with the session. `null`
+ * when it was saved, or when the save's own check failed (upstream says so itself)
  */
-export async function saveCoopAccount(): Promise<string | null> {
+export async function saveCoopAccount(): Promise<"full" | "refused" | null> {
   const { gameData } = globalScene;
   let error: unknown;
   try {
@@ -116,8 +115,8 @@ export async function saveCoopAccount(): Promise<string | null> {
       error = refused;
     }
   }
-  const text = notSavedText("account", isStorageFull(error));
+  const full = isStorageFull(error);
   console.warn("co-op: saving the account failed:", error);
-  reportNotSaved("account", text, "the account could not be saved", { error: String(error) });
-  return text;
+  reportNotSaved("account", notSavedText("account", full), "the account could not be saved", { error: String(error) });
+  return full ? "full" : "refused";
 }

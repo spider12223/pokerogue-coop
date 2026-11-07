@@ -334,14 +334,16 @@ describe("Co-op: a save the browser refuses is not lost without a word (D19)", (
     "the end screen of the run comes even when the account cannot be saved",
     async () => {
       let r: LinkedRun | null = null;
+      // One Pokémon each, both down in turn 1: the run ends without a switch (whose party screen the harness can miss
+      // under load, a known stall that says nothing about saving)
       r = await openLinkedRun(phaserGame, {
         seat: "host",
-        species: [SpeciesId.BULBASAUR, SpeciesId.SQUIRTLE, SpeciesId.CHARMANDER, SpeciesId.PIKACHU],
-        starterOwners: ["host", "guest", "host", "guest"],
+        species: [SpeciesId.BULBASAUR, SpeciesId.SQUIRTLE],
+        starterOwners: ["host", "guest"],
         configure: game => game.override.startingLevel(40),
-        faints: [1, 2].map(turn => ({ wave: 1, turn, slots: [0, 1] as (0 | 1)[] })),
+        faints: [{ wave: 1, turn: 1, slots: [0, 1] }],
         policy: {
-          auto: ["TURN_COMMANDS", "FAINT_SWITCH", "LEARN_MOVE", "EVOLUTION_CANCEL"],
+          auto: ["TURN_COMMANDS", "LEARN_MOVE", "EVOLUTION_CANCEL"],
           commands: (_pokemon, slot) => attackCommand(r!.ctx.game, slot, MoveId.MEMENTO),
         },
       });
@@ -401,6 +403,12 @@ describe("Co-op: a save the browser refuses is not lost without a word (D19)", (
         inSession: true,
       });
       expect(r.session.pace.isPrivate).toBe(false);
+      // in two pages (`$`): the message box holds two lines
+      const notice = lines.find(line => line.text.includes("Your account could not be saved"))!;
+      expect(notice.text.split("$")).toEqual([
+        "Your account could not be saved: this browser's storage is full.",
+        "Your progress from this run is lost when the game closes.",
+      ]);
     },
     5 * MINUTES,
   );

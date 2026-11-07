@@ -4,7 +4,7 @@ import { audioManager } from "#app/global-audio-manager";
 import { globalScene } from "#app/global-scene";
 import { handleTutorial, Tutorial } from "#app/tutorial";
 import { bypassLogin, isApp, isBeta, isDev } from "#constants/app-constants";
-import { saveCoopAccount } from "#coop/save/account-save";
+import { notSavedText, saveCoopAccount } from "#coop/save/account-save";
 import { systemImportAvailable } from "#coop/save/import-account";
 import { endSession } from "#coop/save/resync-run";
 import { getCoopSession } from "#coop/session";
@@ -703,7 +703,8 @@ export class MenuUiHandler extends OptionSelectUiHandler {
               const leavePrivate = session.pace.enterPrivate();
               void ui.setMode(UiMode.MESSAGE).then(() =>
                 ui.showText(
-                  notSaved,
+                  // (in two pages: the message box holds two lines)
+                  notSavedText("account", notSaved === "full", "$"),
                   null,
                   () => {
                     leavePrivate();
