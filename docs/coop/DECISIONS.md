@@ -28,7 +28,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 
 ## How to read this document
 
-- Every section has a fixed number, D1 to D45, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
+- Every section has a fixed number, D1 to D46, plus D4a. The source code cites them (`DECISIONS D9`, `(D13)`) in
   hundreds of comments, so the numbers never change: a new rule gets a new number, and a changed rule is edited in place.
 - The sections are in number order (D4a follows D4). The table below groups them by topic.
 - "Host" and "guest" are the two seats; "the partner" is the other player. Text in braces, such as `{partner}`, is
@@ -47,7 +47,7 @@ and when. [ARCHITECTURE.md](ARCHITECTURE.md) explains how the code implements it
 | Between waves | D9 rewards, D10 prompts, D11 trade, D28 party edits, D29 Mystery Encounters, D30 eggs and vouchers |
 | Feel | D16 cosmetic channel, D17 AFK and take over, D27 pacing |
 | Saving and reconnecting | D19 saving, D20 disconnect and rejoin, D21 resume later |
-| Deploy and operations | D22 deploy shape, D23 relay hardening, D25 source link, D26 diagnostics log |
+| Deploy and operations | D22 deploy shape, D23 relay hardening, D25 source link, D26 diagnostics log, D43 room counter, D46 players online |
 | Scope and process | D12 what is off, D14 tests, D15 reference fork (prior art) |
 
 ## Glossary
@@ -626,7 +626,8 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
     code. The room keeps the seats of `RoomRegistry` in its storage (written on a seat change only) and sleeps between
     frames (WebSocket hibernation), so a game costs almost nothing of the free plan. It cannot ping (a sleeping room
     does not run): a connection that dies without closing is noticed when the player takes the seat back. The limits
-    of D23 are per room and per Worker instance, not per IP over the whole relay; `/coop/log` answers 404 (D26).
+    of D23 are per room and per Worker instance, not per IP over the whole relay; `/coop/log` answers 404 (D26);
+    `/coop/online` gives the players-online count of the title screen (D46).
   - **A pack for Windows** (`pack/windows/`, `scripts/pack-windows.ps1`): Node, `coop-server`, the build and
     `cloudflared` in one folder; `Start.bat` serves the game on `127.0.0.1` and opens a Cloudflare quick tunnel for the
     partner. The host plays on `http://127.0.0.1:8080`, so their saves stay; the partner's link changes at every start.
@@ -1302,6 +1303,28 @@ the rest of the session.
 - **Logged:** each try, and a file given up, goes into the co-op log (D26, kind `load`), so a stop report (D13) or "Report
   a problem" says which file did not come.
 - `src/coop/diagnostics/load-retry.ts`.
+
+## D46. Players online on the title screen
+
+The title screen's "? Players Online" asks PokeRogue's own server, which the co-op website does not use, so it always
+said "?". It now shows how many players are connected to the website's relay: in a game, waiting in a lobby, or searching
+for a partner. Co-op players only, not everyone with the game open (that would need every open game to call in).
+
+- **How the relay counts:** one Durable Object (`Online`, binding `ONLINE`, `idFromName("count")`) keeps, for each room and
+  for the matchmaking queue, how many of its players are connected. A room says it when a player takes a seat, comes back
+  or leaves, when it ends, and again every 10 minutes while its game goes on (with the once-a-minute stamp of its game
+  frames); the queue says it on every arrival, match and departure. What was not said again for 30 minutes is dropped, so a
+  room that vanished without a word (a deploy) leaves the count, as an idle room is closed after that long anyway. Only
+  numbers: a room is known by its object's id, never by its code; no address, token or name.
+  `coop-worker/src/online-book.ts`, `online.ts`.
+- **`GET /coop/online`:** `{"players": N}`, read from the object at most once per 20 s by each Worker instance and kept as
+  long by the browser (`cache-control: public, max-age=20`). CORS for the pages of `ALLOWED_ORIGINS` only; 405 for other
+  methods, 503 when the object cannot be reached.
+- **The title screen** asks for it when it shows and every minute after (the game's own timer), when the game was built
+  with a relay (`VITE_COOP_RELAY_URL`: the website). Without one (the Windows pack, Docker, solo builds) nothing is asked and
+  the label keeps the game's "?": a self-hosted relay would only ever count its own few players. No answer, or no count,
+  and the "?" stays. `src/coop/link/players-online.ts`.
+- **`coop-server` has no count:** `/coop/online` is a 404 there.
 
 ## See also
 

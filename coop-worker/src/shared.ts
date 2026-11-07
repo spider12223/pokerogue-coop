@@ -14,6 +14,7 @@ import {
   type Seat,
 } from "../../coop-server/src/relay-protocol.ts";
 import type { Matchmaker } from "./matchmaker.ts";
+import type { Online } from "./online.ts";
 import type { Room } from "./room.ts";
 
 /** What the Worker and its rooms are given (`wrangler.toml`) */
@@ -21,6 +22,8 @@ export interface Env {
   ROOM: DurableObjectNamespace<Room>;
   /** The matchmaking queue (D37): one object, `idFromName("queue")` */
   MATCH: DurableObjectNamespace<Matchmaker>;
+  /** The players-online count (D46): one object, `idFromName("count")` */
+  ONLINE: DurableObjectNamespace<Online>;
   /** The room counter (D43); none: nothing is counted */
   STATS?: AnalyticsEngineDataset;
   /** Comma list of the origins whose pages may open the relay (`*`: all). Empty: only pages of the relay's own address */

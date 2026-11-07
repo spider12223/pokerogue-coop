@@ -75,7 +75,8 @@ deploy: one HTTP server on one port serves the built game from `STATIC_DIR` and 
 code (`src/room.ts`) with the seats of `RoomRegistry` in its storage, sleeping between frames. It imports
 `relay-protocol.ts`, so the two cannot drift apart on the wire; `coop-worker/scripts/smoke.ts` runs the same protocol
 walk against either. It is its own package outside the workspace (`pnpm install --ignore-workspace`), so the game's
-install does not pull in Wrangler.
+install does not pull in Wrangler. One more Durable Object, `Online` (`src/online.ts`, `src/online-book.ts`), keeps the
+title screen's players-online count that the rooms and the queue report, answered at `GET /coop/online` (D46).
 
 ## The transport stack
 
@@ -407,7 +408,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `transport/fanout.ts` | `FanoutTransport`: the host's messages to every guest of a room of three, one reliable channel each | D40 | yes |
 | `transport/loopback.ts` | An in-process transport pair (and room of three) with seeded drop, duplicate and reorder, for the tests | D14 | yes |
 | `transport/match-ws.ts` | Find a partner: the queue's connection to the relay, its keepalive and its outcome | D37 | yes |
-| `transport/relay-url.ts` | `relayUrlFor` (`VITE_COOP_RELAY_URL`, else `/coop` of the page's origin, `wss` on `https`), `logUrlFor` | D22, D26 | yes |
+| `transport/relay-url.ts` | `relayUrlFor` (`VITE_COOP_RELAY_URL`, else `/coop` of the page's origin, `wss` on `https`), `logUrlFor`, `onlineUrlFor` | D22, D26, D46 | yes |
 
 ### `link/`
 
@@ -418,6 +419,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `link/build-info.ts` | The local `BuildIdentity`: `gitSha` and `dirtyHash` from the build, the mode, the overrides hash | D1 | no |
 | `link/pinned-settings.ts` | The pinned values, their validation, the overlay port for the settings manager | D5 | yes |
 | `link/lobby.ts` | The title screen's Co-op entry: host or join, players, Classic or Endless, the code, the handshake, `beginSession`, leaving | D1, D20, D39, D40 | no |
+| `link/players-online.ts` | The title screen's players online: the website relay's count (`/coop/online`), none for a self-hosted relay | D46 | no |
 | `link/challenge-pick.ts` | The challenge screen of a co-op challenge run, opened by the host | D41 | no |
 | `link/starter-lobby.ts` | The co-op starter select as a state machine: live picks, shared points, ready, `START` | D3, D4, D7 | yes |
 | `link/starter-select-coop.ts` | The partners' picks, the shared limit and ready on the starter select screen | D3, D7 | no |

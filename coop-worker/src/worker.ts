@@ -6,6 +6,7 @@
 
 import { MATCH_BUILD, RELAY_PATH } from "../../coop-server/src/relay-protocol.ts";
 import { normalizeIp } from "../../coop-server/src/untrusted.ts";
+import { ONLINE_MEMO_MS, ONLINE_NAME, OnlineMemo } from "./online-book.ts";
 import {
   ACTION_HEADER,
   ADDRESS_HEADER,
@@ -21,6 +22,7 @@ import {
 
 // biome-ignore lint/performance/noBarrelFile: Wrangler finds a Durable Object class among the main module's exports
 export { Matchmaker } from "./matchmaker.ts";
+export { Online } from "./online.ts";
 export { Room } from "./room.ts";
 
 /**
@@ -84,6 +86,36 @@ function originAllowed(origin: string | null, host: string, env: Env): boolean {
   }
 }
 
+const onlineMemo = new OnlineMemo();
+
+/**
+ * The players-online count (D46) for the game's title screen: a number and nothing else, the same for everyone. Read from its
+ * object at most once per {@linkcode ONLINE_MEMO_MS} by each Worker instance.
+ */
+async function playersOnline(request: Request, env: Env, origin: string | null, host: string): Promise<Response> {
+  const headers = new Headers({ vary: "Origin" });
+  if (origin && originAllowed(origin, host, env)) {
+    headers.set("access-control-allow-origin", origin);
+  }
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    headers.set("allow", "GET, HEAD");
+    return new Response(null, { status: 405, headers });
+  }
+  const now = Date.now();
+  let players = onlineMemo.get(now);
+  if (players === undefined) {
+    try {
+      players = await env.ONLINE.get(env.ONLINE.idFromName(ONLINE_NAME)).count();
+    } catch {
+      headers.set("cache-control", "no-store");
+      return new Response(null, { status: 503, headers });
+    }
+    onlineMemo.set(players, now);
+  }
+  headers.set("cache-control", `public, max-age=${ONLINE_MEMO_MS / 1000}`);
+  return Response.json({ players }, { headers });
+}
+
 /** Pass the request on to the room of `code` */
 function toRoom(env: Env, request: Request, code: string, action: "create" | "connect"): Promise<Response> {
   const headers = new Headers(request.headers);
@@ -107,6 +139,9 @@ export default {
         status: 404,
         headers: originAllowed(origin, url.host, env) && origin ? { "access-control-allow-origin": origin } : {},
       });
+    }
+    if (path === `${RELAY_PATH}/online`) {
+      return await playersOnline(request, env, origin, url.host);
     }
     if (path !== RELAY_PATH) {
       return new Response("pokerogue co-op relay", { status: 404 });

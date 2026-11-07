@@ -12,8 +12,9 @@ keeps the seats, tokens and holds, and sleeps between messages (WebSocket hibern
 
 | File | |
 |---|---|
-| `src/worker.ts` | the entry: `/healthz`, origin check, rough per-address limits, routes `/coop` to the room of the code |
+| `src/worker.ts` | the entry: `/healthz`, `/coop/online`, origin check, rough per-address limits, routes `/coop` to the room of the code |
 | `src/room.ts` | the room (`Room`, a Durable Object): create, join, rejoin, forward, holds and the idle close (alarms) |
+| `src/online.ts`, `src/online-book.ts` | the title screen's players-online count (`Online`, one Durable Object, D46): what each room and the queue say, the total |
 | `src/shared.ts` | codes, tokens, the control-frame filter, the token bucket, the settings |
 | `scripts/smoke.ts` | walks through the protocol against any relay: `node scripts/smoke.ts wss://<relay>/coop` |
 | `wrangler.toml` | the Worker, its Durable Object, and the settings (`ALLOWED_ORIGINS` first of all) |

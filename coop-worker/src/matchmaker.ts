@@ -13,6 +13,7 @@ import {
   MATCH_QUEUE_MAX,
   MATCH_STALE_MS,
 } from "../../coop-server/src/relay-protocol.ts";
+import { ONLINE_QUEUE_KEY, reportOnline } from "./online-book.ts";
 import { ADDRESS_HEADER, type Env, isRoomCode, rejectSocket, sendControl, upgradeResponse } from "./shared.ts";
 
 /**
@@ -89,6 +90,7 @@ export class Matchmaker extends DurableObject<Env> {
     update(server, attachment);
     sendControl(server, { t: "relay:queued" });
     this.pair(server, attachment);
+    this.tellOnline();
     return upgradeResponse(client);
   }
 
@@ -116,8 +118,10 @@ export class Matchmaker extends DurableObject<Env> {
     }
     if (frame?.t === "match:code") {
       this.code(socket, sender, frame.code);
+      this.tellOnline();
     } else if (frame?.t === "match:stale") {
       this.stale(socket, sender);
+      this.tellOnline();
     }
   }
 
@@ -128,10 +132,18 @@ export class Matchmaker extends DurableObject<Env> {
       // already closed
     }
     this.left(socket);
+    this.tellOnline();
   }
 
   override async webSocketError(socket: WebSocket): Promise<void> {
     this.left(socket);
+    this.tellOnline();
+  }
+
+  /** Tell the players-online count (D46) how many are searching now */
+  private tellOnline(): void {
+    const searching = this.ctx.getWebSockets().filter(socket => attachmentOf(socket)?.state !== "done").length;
+    this.ctx.waitUntil(reportOnline(this.env, ONLINE_QUEUE_KEY, searching));
   }
 
   /** A matched host's room code: it goes to the guest, and both leave the queue */

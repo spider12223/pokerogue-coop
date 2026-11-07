@@ -276,6 +276,21 @@ const bad = await unreadable.next(is("relay:error"), "relay:error badRequest");
 check(bad["reason"] === "badRequest", `bad build: ${JSON.stringify(bad)}`);
 ok("a build it cannot read is refused");
 
+// The players-online count of the title screen (D46): the Worker has one, `coop-server` none (a 404)
+const online = await fetch(`${relay.replace(/^ws(s?):/i, "http$1:").replace(/\/+$/, "")}/online`, {
+  headers: process.env["ORIGIN"] ? { origin: process.env["ORIGIN"] } : {},
+});
+if (online.status === 404) {
+  ok("no players-online count on this relay (coop-server)");
+} else {
+  const body = (await online.json()) as { players?: unknown };
+  check(
+    online.ok && typeof body.players === "number" && Number.isSafeInteger(body.players) && body.players >= 0,
+    `players online: ${online.status} ${JSON.stringify(body)}`,
+  );
+  ok(`players online: ${body.players}`);
+}
+
 console.log(`all ${step} checks passed`);
 for (const socket of sockets) {
   socket.close();

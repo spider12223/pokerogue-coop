@@ -24,5 +24,18 @@ export function relayUrlFor(configured: string | undefined, location: { protocol
  * @param relayUrl - The relay's URL, as {@linkcode relayUrlFor} gives it
  */
 export function logUrlFor(relayUrl: string): string {
-  return `${relayUrl.replace(/^ws(s?):/i, "http$1:").replace(/\/+$/, "")}/log`;
+  return `${httpBaseOf(relayUrl)}/log`;
+}
+
+/**
+ * Where the relay's players-online count is (DECISIONS D46): `/online` under the relay's path, as {@linkcode logUrlFor}.
+ * @param relayUrl - The relay's URL, as {@linkcode relayUrlFor} gives it
+ */
+export function onlineUrlFor(relayUrl: string): string {
+  return `${httpBaseOf(relayUrl)}/online`;
+}
+
+/** The relay's URL over `https` for `wss` (and `http` for `ws`), without a slash at the end */
+function httpBaseOf(relayUrl: string): string {
+  return relayUrl.replace(/^ws(s?):/i, "http$1:").replace(/\/+$/, "");
 }

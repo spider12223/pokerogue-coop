@@ -12,7 +12,7 @@ everything else is in a folder per area:
 | Folder | What is in it |
 |---|---|
 | `transport/` | The relay's WebSocket, numbering and resends, epochs, rooms of three, matchmaking |
-| `link/` | The link to the partner, the handshake, the title screen's Co-op entry, the starter select, Play again |
+| `link/` | The link to the partner, the handshake, the title screen's Co-op entry and players online, the starter select, Play again |
 | `decisions/` | The sequencer, decision keys and payloads, the bridge the phases call, who decides, legality, take over |
 | `rules/` | Ownership, the arrange step, rewards, trades, party edits, encounters, catches, games of three |
 | `sync/` | Seeded draws, the account snapshot, state hashes, checkpoints, the phase trace |

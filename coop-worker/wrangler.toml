@@ -16,6 +16,11 @@ class_name = "Room"
 name = "MATCH"
 class_name = "Matchmaker"
 
+# The players-online count of the title screen (D46): how many players are connected, nothing else
+[[durable_objects.bindings]]
+name = "ONLINE"
+class_name = "Online"
+
 # The room counter (D43): rooms opened and filled, by size, nothing else. Remove it and the relay counts nothing
 [[analytics_engine_datasets]]
 binding = "STATS"
@@ -29,6 +34,10 @@ new_sqlite_classes = ["Room"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["Matchmaker"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["Online"]
 
 [vars]
 # The address of the game's pages, as the browser sends it in `Origin` (no path, no trailing slash).

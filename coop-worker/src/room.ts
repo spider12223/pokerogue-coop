@@ -17,6 +17,7 @@ import {
   routedFrame,
   type Seat,
 } from "../../coop-server/src/relay-protocol.ts";
+import { onlineDue, reportOnline } from "./online-book.ts";
 import {
   ACTION_HEADER,
   CODE_HEADER,
@@ -89,6 +90,8 @@ export class Room extends DurableObject<Env> {
   private state: RoomState | null | undefined;
   /** Per socket id, what it may still send (memory only: a room that slept starts again full) */
   private readonly buckets = new Map<string, { bucket: TokenBucket; dropped: number }>();
+  /** When the room last told the players-online count (D46) how many are connected; 0: not since it woke */
+  private onlineAt = 0;
 
   private get holdMs(): number {
     return envNumber(this.env.HOLD_MS, DEFAULTS.holdMs);
@@ -135,6 +138,7 @@ export class Room extends DurableObject<Env> {
     countRoom(this.env.STATS, "created", size);
     const socket = this.accept("host", size);
     sendControl(socket.server, { t: "relay:created", code, seat: "host", token });
+    this.tellOnline(this.state);
     return upgradeResponse(socket.client);
   }
 
@@ -166,6 +170,7 @@ export class Room extends DurableObject<Env> {
     if (!this.socketOf("host") && room.seats.host?.token != null) {
       sendControl(socket.server, this.notice(room, "host", { t: "relay:peerLeft", holdMs: null }));
     }
+    this.tellOnline(room);
     return upgradeResponse(socket.client);
   }
 
@@ -199,6 +204,7 @@ export class Room extends DurableObject<Env> {
         sendControl(socket.server, this.notice(room, other, { t: "relay:peerLeft", holdMs: null }));
       }
     }
+    this.tellOnline(room);
     return upgradeResponse(socket.client);
   }
 
@@ -231,6 +237,10 @@ export class Room extends DurableObject<Env> {
     if (now - attachment.lastFrame >= FRAME_STAMP_MS) {
       attachment.lastFrame = now;
       socket.serializeAttachment(attachment);
+      if (onlineDue(this.onlineAt, now)) {
+        // A game that goes on says so again, or the count would drop it (D46)
+        this.tellOnline(await this.load());
+      }
     }
   }
 
@@ -273,6 +283,7 @@ export class Room extends DurableObject<Env> {
         }
         await this.save();
         this.tellPeers(room, seat, { t: "relay:peerGone" });
+        this.tellOnline(room);
         return;
       }
       // "End session" (D20): the room is over for everyone
@@ -296,6 +307,7 @@ export class Room extends DurableObject<Env> {
       this.holdAll(room, now);
     }
     await this.save();
+    this.tellOnline(room);
   }
 
   /** All are gone: every reserved seat is kept for `holdMs` */
@@ -466,8 +478,16 @@ export class Room extends DurableObject<Env> {
   private async destroy(): Promise<void> {
     this.state = null;
     this.buckets.clear();
+    this.tellOnline(null);
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
+  }
+
+  /** Tell the players-online count (D46) how many of this room's players are connected now: none once it is over */
+  private tellOnline(room: RoomState | null | undefined): void {
+    const players = room ? seatsOf(room).filter(seat => this.socketOf(seat) !== undefined).length : 0;
+    this.onlineAt = Date.now();
+    this.ctx.waitUntil(reportOnline(this.env, this.ctx.id.toString(), players));
   }
 
   // #endregion

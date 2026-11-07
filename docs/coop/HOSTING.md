@@ -82,6 +82,11 @@ per Worker instance and per room, not per address over the whole relay. The prot
 The Worker counts rooms opened and filled, by size (D43: the event and the size only) in the Workers Analytics Engine
 dataset `pokerogue_coop_rooms`. To count nothing, remove the `[[analytics_engine_datasets]]` block from `wrangler.toml`.
 
+The Worker also keeps the title screen's players-online count (D46): how many players are connected to it now, in a game,
+in a lobby or searching for a partner, answered at `GET /coop/online` (`{"players": N}`). It is one more Durable Object
+(`Online`, migration `v3` in `wrangler.toml`). A game built with `VITE_COOP_RELAY_URL` shows it; a game built without one
+(the Windows pack, Docker) does not ask, and its title screen keeps "? Players Online". `coop-server` has no count.
+
 `pnpm exec wrangler dev` runs the Worker on this machine (with `--var ALLOWED_ORIGINS:*` for a local page);
 `wrangler tail` shows the deployed one's requests live.
 

@@ -7,6 +7,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
+import { fetchPlayersOnline, playersOnlineRelay } from "#coop/link/players-online";
 import { sourceUrlOf } from "#coop/ui/source-link";
 import { coopText } from "#coop/ui/text";
 import { getSplashMessages } from "#data/splash-messages";
@@ -140,6 +141,16 @@ export class TitleUiHandler extends OptionSelectUiHandler {
   }
 
   private updateTitleStats(): void {
+    // Co-op (D46): the website's relay counts the players connected to it; without one built in, the game's own stats
+    const coopRelay = playersOnlineRelay(import.meta.env.VITE_COOP_RELAY_URL);
+    if (coopRelay !== null) {
+      fetchPlayersOnline(coopRelay).then(players => {
+        if (players !== null) {
+          this.playerCountLabel.setText(`${players} ${i18next.t("menu:playersOnline")}`);
+        }
+      });
+      return;
+    }
     pokerogueApi
       .getGameTitleStats()
       .then(stats => {
