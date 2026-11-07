@@ -41,6 +41,8 @@ For development, the game (on Vite's port 8000) connects to this relay with `VIT
 
 `GET /healthz` answers `{"ok":true,"rooms":…,"sockets":…,"trackedIps":…,"downloads":…,"uptimeS":…,"rssMb":…,"cpuMs":…}`
 (`downloads`: files being sent right now).
+`GET /coop/online` answers `{"players":…}`, the title screen's players online (DECISIONS D46): the connected seats of the
+rooms and the players searching for a partner, with CORS for `ALLOWED_ORIGINS`.
 Logs name rooms, seats and reasons, never a message, a token or an address (a short salted hash stands for an address).
 
 ## Protocol

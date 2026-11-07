@@ -1337,7 +1337,11 @@ for a partner. Co-op players only, not everyone with the game open (that would n
   with a relay (`VITE_COOP_RELAY_URL`: the website). Without one (the Windows pack, Docker, solo builds) nothing is asked and
   the label keeps the game's "?": a self-hosted relay would only ever count its own few players. No answer, or no count,
   and the "?" stays. `src/coop/link/players-online.ts`.
-- **`coop-server` has no count:** `/coop/online` is a 404 there.
+- **`coop-server` counts its own players** (amended 2026-11-07): `GET /coop/online` answers `{"players": N}` there too,
+  N being the connected seats of its rooms and the players searching for a partner; CORS for its `ALLOWED_ORIGINS` (D23),
+  405 for other methods, never cached. Only the dev build asks it (`VITE_COOP_RELAY_URL` in `.env.development`): the 404
+  it gave before had no CORS header, so the browser logged an error at every ask, which failed every browser test's
+  console check. The Windows pack and Docker still never ask, and keep the "?". `coop-server/src/relay-server.ts`.
 
 ## See also
 

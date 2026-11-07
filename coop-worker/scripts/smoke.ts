@@ -276,12 +276,12 @@ const bad = await unreadable.next(is("relay:error"), "relay:error badRequest");
 check(bad["reason"] === "badRequest", `bad build: ${JSON.stringify(bad)}`);
 ok("a build it cannot read is refused");
 
-// The players-online count of the title screen (D46): the Worker has one, `coop-server` none (a 404)
+// The players-online count of the title screen (D46): both relays have one; a 404 is a `coop-server` from before its count
 const online = await fetch(`${relay.replace(/^ws(s?):/i, "http$1:").replace(/\/+$/, "")}/online`, {
   headers: process.env["ORIGIN"] ? { origin: process.env["ORIGIN"] } : {},
 });
 if (online.status === 404) {
-  ok("no players-online count on this relay (coop-server)");
+  ok("no players-online count on this relay (an older coop-server)");
 } else {
   const body = (await online.json()) as { players?: unknown };
   check(

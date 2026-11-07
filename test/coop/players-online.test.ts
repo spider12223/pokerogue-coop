@@ -16,7 +16,7 @@ describe("Co-op: the title screen's players online (D46)", () => {
     expect(onlineUrlFor("ws://127.0.0.1:8787/coop/")).toBe("http://127.0.0.1:8787/coop/online");
   });
 
-  it("only a relay built into the website is asked: a self-hosted one (the Windows pack, Docker) has no count", () => {
+  it("only a relay built into the website is asked: a self-hosted one (the Windows pack, Docker) is not", () => {
     expect(playersOnlineRelay(RELAY)).toBe(RELAY);
     expect(playersOnlineRelay(` ${RELAY} `)).toBe(RELAY);
     expect(playersOnlineRelay("")).toBeNull();

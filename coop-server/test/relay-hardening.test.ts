@@ -548,6 +548,78 @@ describe("GET /healthz (D22)", () => {
   });
 });
 
+describe("GET /coop/online (D46)", () => {
+  const online = (server: RelayServer, headers: Record<string, string> = {}, method = "GET"): Promise<Response> =>
+    fetch(`http://127.0.0.1:${server.port}/coop/online`, { headers, method });
+
+  it("counts the players connected to it: the seats of its rooms and the partner search", async () => {
+    const server = await start({ limits: { roomsPerMinute: 100 } });
+    const count = async (): Promise<unknown> => await (await online(server)).json();
+    /** A close reaches the server a moment after the client has seen it */
+    const settlesAt = async (players: number): Promise<void> => {
+      for (let i = 0; i < 300 && JSON.stringify(await count()) !== JSON.stringify({ players }); i++) {
+        await sleep(10);
+      }
+      expect(await count()).toEqual({ players });
+    };
+    expect(await count()).toEqual({ players: 0 });
+
+    const host = await open(server, "role=host");
+    await waitFor(() => controls(host.messages).length > 0, "the room");
+    const created = controls(host.messages)[0] as Extract<Control, { t: "relay:created" }>;
+    const guest = await open(server, `code=${created.code}`);
+    await waitFor(() => controls(guest.messages).some(message => message.t === "relay:joined"), "the guest's seat");
+    const searching = await open(server, "match=test-build");
+    expect(await count()).toEqual({ players: 3 });
+
+    // A seat taken back by a new connection is still one player, and a connection the relay refused is none
+    const back = await open(server, `code=${created.code}&seat=host&token=${created.token}`);
+    await attempt(server, "code=ZZZZZZ");
+    expect(await count()).toEqual({ players: 3 });
+
+    guest.socket.close();
+    await settlesAt(2);
+    searching.socket.close();
+    await settlesAt(1);
+    back.socket.close();
+    await settlesAt(0);
+  });
+
+  it("lets the pages of its allowed origins read it (D23), and answers 405 to other methods and HEAD without a body", async () => {
+    const listed = await start({ allowedOrigins: ["http://localhost:8000"] });
+    const allowed = await online(listed, { origin: "http://localhost:8000" });
+    expect(allowed.status).toBe(200);
+    expect(allowed.headers.get("access-control-allow-origin")).toBe("http://localhost:8000");
+    expect(allowed.headers.get("vary")).toBe("Origin");
+    expect(allowed.headers.get("content-type")).toBe("application/json");
+    expect(allowed.headers.get("cache-control")).toBe("no-store");
+    expect(await allowed.json()).toEqual({ players: 0 });
+    // The count is no secret (`/healthz` says as much): only the browser keeps it from a page of another origin
+    const other = await online(listed, { origin: "http://localhost:9000" });
+    expect(other.status).toBe(200);
+    expect(other.headers.get("access-control-allow-origin")).toBeNull();
+
+    const own = await start();
+    const ownOrigin = `http://127.0.0.1:${own.port}`;
+    expect((await online(own, { origin: ownOrigin })).headers.get("access-control-allow-origin")).toBe(ownOrigin);
+    expect(
+      (await online(own, { origin: "http://localhost:8000" })).headers.get("access-control-allow-origin"),
+    ).toBeNull();
+    const all = await start({ allowedOrigins: ["*"] });
+    expect((await online(all, { origin: "http://localhost:8000" })).headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:8000",
+    );
+
+    const posted = await online(listed, { origin: "http://localhost:8000" }, "POST");
+    expect(posted.status).toBe(405);
+    expect(posted.headers.get("allow")).toBe("GET, HEAD");
+    expect(posted.headers.get("access-control-allow-origin")).toBe("http://localhost:8000");
+    const head = await online(listed, {}, "HEAD");
+    expect(head.status).toBe(200);
+    expect(await head.text()).toBe("");
+  });
+});
+
 describe("the files of the production build (D22)", () => {
   const hashed = "export const x = 1;\n".repeat(200);
 

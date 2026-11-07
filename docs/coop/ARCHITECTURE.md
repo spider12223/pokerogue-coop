@@ -54,14 +54,15 @@ deploy: one HTTP server on one port serves the built game from `STATIC_DIR` and 
 - Seats survive dropped connections: each seat has a token, and a held seat can be taken back (D20). If the host's seat
   expires the room is closed, because the host is the sequencer.
 - It is hardened for the open internet (D23): per-IP limits, the Origin check, the client's address behind a proxy.
-- It answers `GET /healthz`, and collects client logs at `POST /coop/log` only when started with `CLIENT_LOGS=1` (D26).
+- It answers `GET /healthz` and `GET /coop/online` (its players, D46), and collects client logs at `POST /coop/log` only
+  when started with `CLIENT_LOGS=1` (D26).
 - `coop-server/README.md` documents the wire protocol, the environment variables and the commands.
   [HOSTING.md](HOSTING.md) covers running it.
 
 | File | What it does |
 |---|---|
 | `coop-server/src/main.ts` | Reads the environment and starts the server |
-| `coop-server/src/relay-server.ts` | The HTTP server: the relay at `/coop`, `/healthz`, the client log endpoint, the static files, heartbeats |
+| `coop-server/src/relay-server.ts` | The HTTP server: the relay at `/coop`, `/healthz`, `/coop/online`, the client log endpoint, the static files, heartbeats |
 | `coop-server/src/room-registry.ts` | Rooms, seats, seat tokens and holds; holds no sockets, so it is tested with an injected clock |
 | `coop-server/src/relay-protocol.ts` | The `relay:*` control frames; the client side is `src/coop/transport/relay-ws.ts` |
 | `coop-server/src/limits.ts` | Per-IP limits, the client's address behind a proxy, the Origin rule |

@@ -17,6 +17,7 @@ address, so nothing has to be configured (see [DECISIONS.md](DECISIONS.md), D22)
 | `GET /` | the game (the files of `dist/`) |
 | `wss://<your host>/coop` | the relay (`ws://` on an `http` page) |
 | `GET /healthz` | `{"ok":true,"rooms":1,"sockets":2,"trackedIps":1,"downloads":0,"uptimeS":…,"rssMb":…,"cpuMs":…}` |
+| `GET /coop/online` | `{"players":2}`: the players connected now, in a room or searching for a partner (D46); only a game built with `VITE_COOP_RELAY_URL` asks it |
 
 The server speaks plain HTTP. TLS is the job of whatever stands in front of it: the platform, a tunnel, Caddy.
 
@@ -85,7 +86,8 @@ dataset `pokerogue_coop_rooms`. To count nothing, remove the `[[analytics_engine
 The Worker also keeps the title screen's players-online count (D46): how many players are connected to it now, in a game,
 in a lobby or searching for a partner, answered at `GET /coop/online` (`{"players": N}`). It is one more Durable Object
 (`Online`, migration `v3` in `wrangler.toml`). A game built with `VITE_COOP_RELAY_URL` shows it; a game built without one
-(the Windows pack, Docker) does not ask, and its title screen keeps "? Players Online". `coop-server` has no count.
+(the Windows pack, Docker) does not ask, and its title screen keeps "? Players Online". `coop-server` answers the same
+request with its own players, for the dev server.
 
 `pnpm exec wrangler dev` runs the Worker on this machine (with `--var ALLOWED_ORIGINS:*` for a local page);
 `wrangler tail` shows the deployed one's requests live.

@@ -213,6 +213,34 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
 
   // #region HTTP: health and files
 
+  /** The players connected right now (D46): every seat of a room that has its connection, and everyone searching (D37) */
+  const playersOnline = (): number => {
+    let players = matches.size;
+    for (const room of sockets.values()) {
+      players += Object.values(room).filter(socket => socket.readyState === OPEN).length;
+    }
+    return players;
+  };
+
+  /**
+   * `GET <path>/online` (D46): `{"players": N}`, for the title screen of a game built with this relay's address (the dev
+   * server). The same number for everyone; the pages of the allowed origins (D23) may read it, as at the Worker.
+   */
+  const answerPlayersOnline = (request: IncomingMessage, response: ServerResponse): void => {
+    const origin = request.headers.origin;
+    const headers: Record<string, string> = { vary: "Origin", "cache-control": "no-store" };
+    if (origin !== undefined && origin !== "" && originAllowed(origin, request.headers.host, allowedOrigins)) {
+      headers["access-control-allow-origin"] = origin;
+    }
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      response.writeHead(405, { ...headers, allow: "GET, HEAD" });
+      response.end();
+      return;
+    }
+    response.writeHead(200, { ...headers, "content-type": "application/json" });
+    response.end(request.method === "HEAD" ? undefined : JSON.stringify({ players: playersOnline() }));
+  };
+
   const handleHttp = (request: IncomingMessage, response: ServerResponse): void => {
     const url = requestUrl(request.url);
     if (url === null) {
@@ -241,6 +269,10 @@ export function startRelayServer(options: RelayServerOptions): Promise<RelayServ
     }
     if (pathname === `${path}/log`) {
       clientLog(request, response, clientIp(request, trustProxy));
+      return;
+    }
+    if (pathname === `${path}/online`) {
+      answerPlayersOnline(request, response);
       return;
     }
     if (files === null) {
