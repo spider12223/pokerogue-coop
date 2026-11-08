@@ -89,9 +89,24 @@ export interface RelinkContext {
   accountId?: string;
   /** Host: the guest account that may take the seat again (D21) */
   expectedGuestAccountId?: string;
-  /** Host: the kind of run (D39), said again in each `HELLO` */
+  /**
+   * Host: what its first `HELLO` said about the run, said again in each `HELLO` to a player who comes back
+   * ({@linkcode resumeHello}): the kind of run (D39), a challenge run's challenges (D41), the debug menu (D42). A guest whose
+   * tab was reloaded starts its session from that `HELLO`
+   */
   runMode?: CoopRunMode;
+  challenges?: CoopChallenge[];
+  debug?: boolean;
   timeoutMs?: number;
+}
+
+/** What a host says about its run again in the `HELLO` to a player who comes back: the same as in its first one */
+function resumeHello(context: RelinkContext): { runMode?: CoopRunMode; challenges?: CoopChallenge[]; debug?: boolean } {
+  return {
+    ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
+    ...(context.challenges === undefined ? {} : { challenges: context.challenges }),
+    ...(context.debug === true ? { debug: true } : {}),
+  };
 }
 
 /** How to reach the relay again when this client's own connection drops (D20) */
@@ -880,7 +895,7 @@ export class CoopLink {
         name: this.name,
         mode: "resume",
         players: 3,
-        ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
+        ...resumeHello(context),
         ...(context.timeoutMs === undefined ? {} : { timeoutMs: context.timeoutMs }),
         ...(context.expectedEffectiveSettingsHash === undefined
           ? {}
@@ -940,7 +955,7 @@ export class CoopLink {
         result = await hostHandshake(reliable, context.build, context.pinned ?? {}, {
           name: this.name,
           mode: "resume",
-          ...(context.runMode === undefined ? {} : { runMode: context.runMode }),
+          ...resumeHello(context),
           ...timeoutMs,
           ...(context.expectedEffectiveSettingsHash === undefined
             ? {}
@@ -1399,6 +1414,8 @@ function establishHostOfThree(
           build,
           pinned,
           ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+          ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
+          ...(options.debug === true ? { debug: true } : {}),
           ...(options.expectedEffectiveSettingsHash === undefined
             ? {}
             : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),
@@ -1544,6 +1561,8 @@ export async function establishHost(
       build,
       pinned,
       ...(options.runMode === undefined ? {} : { runMode: options.runMode }),
+      ...(options.challenges === undefined ? {} : { challenges: options.challenges }),
+      ...(options.debug === true ? { debug: true } : {}),
       ...(options.expectedEffectiveSettingsHash === undefined
         ? {}
         : { expectedEffectiveSettingsHash: options.expectedEffectiveSettingsHash }),

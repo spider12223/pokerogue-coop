@@ -5,7 +5,15 @@
  */
 
 import { guestHandshake } from "#coop/link/handshake";
-import { CoopLink, createRoom, establishGuest, establishHost, HandshakeRefusedError, joinRoom } from "#coop/link/link";
+import {
+  CoopLink,
+  createRoom,
+  establishGuest,
+  establishHost,
+  HandshakeRefusedError,
+  joinRoom,
+  rejoinRoom,
+} from "#coop/link/link";
 import { StarterLobby } from "#coop/link/starter-lobby";
 import {
   type BuildIdentity,
@@ -294,6 +302,36 @@ describe("CoopLink over the relay", () => {
       expect(host.reloadWaitsForWaveStart).toBe(true);
       expect(ends).not.toContain("closed");
       expect(guest.needsResync).toBe(true);
+    });
+
+    it("tells a guest whose tab came back that the host's debug menu is on, and the challenges (D42, D41)", async () => {
+      const challenges = [{ id: 3, value: 1, severity: 1 }];
+      const room = await createRoom(url, { reliable, seats: 3 });
+      const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+      const guest2Room = await joinRoom(url, room.identity.code, { reliable });
+      await room.partner;
+      const [host, guest, guest2] = await Promise.all([
+        establishHost(room, build, pinned, { name: "Sam", runMode: "challenge", challenges, debug: true }),
+        establishGuest(guestRoom, build, guestOverlay, { name: "Alex" }),
+        establishGuest(guest2Room, build, guestOverlay, { name: "Kim" }),
+      ]);
+      links.push(host.link, guest.link, guest2.link);
+      expect(guest.hello.debug).toBe(true);
+
+      // the guest's tab is reloaded: a new connection with its seat's token, and the handshake again
+      guest.link.close();
+      await waitFor(() => !host.link.present("guest"));
+      const again = await rejoinRoom(
+        url,
+        { code: room.identity.code, seat: "guest", token: guestRoom.identity.token },
+        { reliable },
+      );
+      await again.paired;
+      const back = await establishGuest(again, build, guestOverlay, { name: "Alex" });
+      links.push(back.link);
+      expect(back.hello.mode).toBe("resume");
+      expect(back.hello.debug).toBe(true);
+      expect(back.hello.challenges).toEqual(challenges);
     });
 
     async function connectThree() {

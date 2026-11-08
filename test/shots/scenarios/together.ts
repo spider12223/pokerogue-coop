@@ -5,7 +5,7 @@
  */
 
 import type { Locator, Page } from "@playwright/test";
-import { type ClientState, choose } from "../engine.ts";
+import { type ClientState, choose, type ShotRun } from "../engine.ts";
 import type { Scenario } from "../scenario.ts";
 import { partnerOf } from "../variables.ts";
 
@@ -105,6 +105,32 @@ const away: Scenario = {
   },
 };
 
+/** `seat`'s tab goes away in a battle, the others wait; it comes back on the game's page and rejoins by itself (D20) */
+async function goneAndBack(run: ShotRun, seat: Parameters<ShotRun["client"]>[0]): Promise<void> {
+  // a rejoin compares the overrides (D1), and a reloaded page has none: this run has none either
+  await run.toRun({}, { plain: true });
+  await run.drive({ until: atCommand, shoot: () => false });
+  await run.shot("before");
+  // gone (a reload is over before the others' screens can be shot), then back on the game's page
+  const page = run.client(seat).page;
+  await page.goto("about:blank");
+  // the others choose their moves, then wait for the one who is gone: the reconnect screen in a game of two, the turn's
+  // "Waiting for …" in a game of three (the one who is gone comes in at the next wave start, D40)
+  await run.drive({
+    until: states =>
+      states.some(
+        state =>
+          state.seat !== seat
+          && (state.away !== null || (state.phase === "CoopTurnSyncPhase" && state.ui === "MESSAGE")),
+      ),
+  });
+  await page.goto("/");
+  await run.drive({
+    until: states => states.every(state => state.ui === "COMMAND" && state.linked),
+    maxSteps: 60,
+  });
+}
+
 const reconnect: Scenario = {
   id: "coop:reload",
   area: "Co-op",
@@ -112,27 +138,29 @@ const reconnect: Scenario = {
     "--seat's tab goes away in a battle: the others wait with the room code; it comes back, rejoins by itself (D20)",
   vars: { seat: "guest" },
   async play(run, vars) {
-    // a rejoin compares the overrides (D1), and a reloaded page has none: this run has none either
-    await run.toRun({}, { plain: true });
-    await run.drive({ until: atCommand, shoot: () => false });
-    await run.shot("before");
-    // gone (a reload is over before the others' screens can be shot), then back on the game's page
-    const page = run.client(vars.seat).page;
-    await page.goto("about:blank");
-    // the others choose their moves, then wait for the one who is gone: the reconnect screen in a game of two, the turn's
-    // "Waiting for …" in a game of three (the one who is gone comes in at the next wave start, D40)
+    await goneAndBack(run, vars.seat);
+  },
+};
+
+const reconnectWithDebug: Scenario = {
+  id: "coop:reload-debug",
+  area: "Co-op",
+  summary:
+    "coop:reload with the host's debug menu on (D42): every turn has the host's debug batch; a turn is played after --seat is back",
+  vars: { seat: "guest" },
+  async play(run, vars) {
+    await run.open();
+    await run.host.page.evaluate(async path => {
+      const { settings } = await import(path);
+      settings.update("general", "coopDebugMenu", true);
+    }, "/src/globals/global-settings-manager.ts");
+    await goneAndBack(run, vars.seat);
+    // (the one who came back waits for the host's debug batch of the turn like the others, or the turn is a desync)
+    const { wave, turn } = await run.state("host");
     await run.drive({
-      until: states =>
-        states.some(
-          state =>
-            state.seat !== vars.seat
-            && (state.away !== null || (state.phase === "CoopTurnSyncPhase" && state.ui === "MESSAGE")),
-        ),
-    });
-    await page.goto("/");
-    await run.drive({
-      until: states => states.every(state => state.ui === "COMMAND" && state.linked),
-      maxSteps: 60,
+      until: states => states.every(state => state.ui === "COMMAND" && (state.wave > wave || state.turn > turn)),
+      shoot: () => false,
+      maxSteps: 120,
     });
   },
 };
@@ -311,4 +339,13 @@ const view: Scenario = {
   },
 };
 
-export const togetherScenarios: Scenario[] = [chat, pings, away, reconnect, debugWindow, debugWaves, view];
+export const togetherScenarios: Scenario[] = [
+  chat,
+  pings,
+  away,
+  reconnect,
+  reconnectWithDebug,
+  debugWindow,
+  debugWaves,
+  view,
+];

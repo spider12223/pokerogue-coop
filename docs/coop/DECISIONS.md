@@ -585,6 +585,12 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   own connection dropped does the same when it is back. Messages sent before the pairing never reach the new one: the
   remaining client stops sending when the partner leaves.
 - A host that was reloaded reads its co-op slot (D19); a guest that was reloaded receives the save from the host.
+- **The handshake again says what the first one said (amended after M8, from two stop reports):** the host's `HELLO` to a
+  player who comes back carries the kind of run (D39), a challenge run's challenges (D41) and the debug menu (D42), as its
+  first one did; a guest whose tab was reloaded starts its session from it. Before, it said only the kind of run: with the
+  host's debug menu on, every turn of that guest was a desync (the host's debug batch it did not wait for) until the run
+  stopped, and in a challenge run the guest could not come back at all (a challenge `HELLO` without challenges is
+  malformed).
 - **Before the first wave** (the starter select) a drop is not the end: the partner shows as away, and when they are back
   both send their picks and ready again, and the host its `START` (a duplicate changes nothing). There is no world to
   reload yet, so the host waits for the first wave's save; the starter select is a safe point, so a guest whose `START`

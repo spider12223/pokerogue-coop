@@ -7,6 +7,7 @@
 import {
   type CoopLink,
   createRoom,
+  type EstablishedGuest,
   establishGuest,
   establishHost,
   HandshakeRefusedError,
@@ -131,6 +132,50 @@ describe("CoopLink: the partner comes and goes (D20)", () => {
     await until(() => host.partnerPresent && host.needsResync, "the host to be told", 6000);
     expect(guest.takeWhoCameBack()).toEqual(["guest"]);
     expect(host.takeWhoCameBack()).toEqual(["guest"]);
+  });
+
+  /** A host with these options and its guest; then the guest's tab is reloaded: @returns The `HELLO` of each handshake */
+  async function helloBeforeAndAfterReload(
+    options: Parameters<typeof establishHost>[3],
+  ): Promise<{ first: EstablishedGuest["hello"]; again: EstablishedGuest["hello"] }> {
+    const room = await createRoom(url, { reliable });
+    const guestRoom = await joinRoom(url, room.identity.code, { reliable });
+    await room.partner;
+    const [host, guest] = await Promise.all([
+      establishHost(room, build, pinned, { name: "Sam", ...options }),
+      establishGuest(guestRoom, build, overlay, { name: "Alex", accountId: "7:8" }),
+    ]);
+    links.push(host.link, guest.link);
+    // the guest's tab is reloaded: a new connection with the old token, and the handshake again
+    guest.link.close();
+    await until(() => !host.link.partnerPresent, "the host to see the guest leave");
+    const rejoined: RejoinedRoom = await rejoinRoom(
+      url,
+      { code: room.identity.code, seat: "guest", token: guestRoom.identity.token },
+      { reliable },
+    );
+    await rejoined.paired;
+    const back = await establishGuest(rejoined, build, overlay, { name: "Alex", accountId: "7:8" });
+    links.push(back.link);
+    return { first: guest.hello, again: back.hello };
+  }
+
+  it("tells a guest whose tab came back that the host's debug menu is on, as the first handshake did (D42)", async () => {
+    // (a guest that came back without it waited for none of the host's debug batches: every turn was a desync)
+    const { first, again } = await helloBeforeAndAfterReload({ debug: true });
+    expect(first.debug).toBe(true);
+    expect(again.mode).toBe("resume");
+    expect(again.debug).toBe(true);
+  });
+
+  it("tells a guest whose tab came back the challenges of the run, as the first handshake did (D41)", async () => {
+    // (a challenge run's HELLO without them is malformed: the guest could not come back at all)
+    const challenges = [{ id: 3, value: 1, severity: 1 }];
+    const { first, again } = await helloBeforeAndAfterReload({ runMode: "challenge", challenges });
+    expect(first.challenges).toEqual(challenges);
+    expect(again.mode).toBe("resume");
+    expect(again.runMode).toBe("challenge");
+    expect(again.challenges).toEqual(challenges);
   });
 
   it("keeps the seat of the one who left for as long as the other stays", async () => {
