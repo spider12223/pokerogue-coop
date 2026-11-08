@@ -119,4 +119,110 @@ const soak: Scenario = {
   },
 };
 
-export const soakScenarios: Scenario[] = [soak];
+/**
+ * What an alt-tabbed window does, done to a page the browser test cannot really hide: the window loses the focus and is
+ * hidden (the events, `document.hidden`), and its game loop stops (a hidden page gets no animation frames). Its network
+ * goes on, and its timers too, but at most once a second (as Chrome's are on a hidden page).
+ */
+async function setHidden(run: ShotRun, seat: Parameters<ShotRun["client"]>[0], hidden: boolean): Promise<void> {
+  const scenePath = "/src/globals/global-scene.ts";
+  await run.client(seat).page.evaluate(
+    async ({ away, path }) => {
+      const { globalScene } = await import(path);
+      const loop = globalScene.game.loop;
+      const w = window as any;
+      if (w.__altTabTimers === undefined) {
+        // a timer that comes due while hidden runs at the next whole second
+        const realSetTimeout = window.setTimeout.bind(window);
+        const realSetInterval = window.setInterval.bind(window);
+        const aligned =
+          (fn: (...a: unknown[]) => void) =>
+          (...a: unknown[]) => {
+            if (w.__altTabHidden === true) {
+              realSetTimeout(() => fn(...a), 1000 - (performance.now() % 1000));
+            } else {
+              fn(...a);
+            }
+          };
+        w.__altTabTimers = true;
+        (window as any).setTimeout = (fn: any, ms?: number, ...a: unknown[]) =>
+          typeof fn === "function" ? realSetTimeout(aligned(fn), ms, ...a) : realSetTimeout(fn, ms);
+        (window as any).setInterval = (fn: any, ms?: number, ...a: unknown[]) =>
+          typeof fn === "function" ? realSetInterval(aligned(fn), Math.max(ms ?? 0, 0), ...a) : realSetInterval(fn, ms);
+      }
+      w.__altTabHidden = away;
+      Object.defineProperty(document, "hidden", { configurable: true, get: () => away });
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => (away ? "hidden" : "visible"),
+      });
+      document.hasFocus = () => !away;
+      if (away) {
+        window.dispatchEvent(new Event("blur"));
+        document.dispatchEvent(new Event("visibilitychange"));
+        loop.sleep();
+      } else {
+        loop.wake();
+        document.dispatchEvent(new Event("visibilitychange"));
+        window.dispatchEvent(new Event("focus"));
+      }
+    },
+    { away: hidden, path: scenePath },
+  );
+}
+
+const altTab: Scenario = {
+  id: "coop:alt-tab",
+  area: "Co-op",
+  summary:
+    "--seat alt-tabs again and again (its window hidden for a few seconds, its game loop stopped) over three waves; every client's reloads and logged errors go to test-results/alt-tab-<time>.json",
+  vars: { seat: "guest" },
+  async play(run, vars) {
+    const file = `test-results/alt-tab-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    const parts: unknown[] = [];
+    await run.toRun();
+    await run.drive({ until: atCommand, shoot: () => false });
+    const first = (await run.state("host")).wave;
+    let hidden = false;
+    let done = false;
+    const hides: string[] = [];
+    // away for 4 to 9 s, back for 3 to 8 s, at whatever the game shows then (a fixed sequence: the same run each time)
+    const awayMs = [6000, 4000, 9000, 5000, 7000];
+    const backMs = [3000, 8000, 4000, 6000, 5000];
+    const tabber = (async () => {
+      for (let i = 0; !done; i++) {
+        await new Promise(r => setTimeout(r, backMs[i % backMs.length]));
+        if (done) {
+          break;
+        }
+        const at = await run.state(vars.seat);
+        hides.push(`${i}: wave ${at.wave} turn ${at.turn} ${at.phase}/${at.ui}`);
+        console.log(`  alt-tab ${i}: ${vars.seat} away at wave ${at.wave} turn ${at.turn} ${at.phase}/${at.ui}`);
+        hidden = true;
+        await setHidden(run, vars.seat, true);
+        await new Promise(r => setTimeout(r, awayMs[i % awayMs.length]));
+        await setHidden(run, vars.seat, false);
+        hidden = false;
+      }
+    })();
+    try {
+      await run.drive({
+        // (the one who alt-tabs is behind: the others are not on the command menu with it)
+        until: states =>
+          stuck(states)
+          || (states.every(state => state.wave >= first + 3) && states.some(state => state.ui === "COMMAND")),
+        // an alt-tabbed player presses nothing
+        answer: state => (state.seat === vars.seat && hidden ? null : skipRewards(state)),
+        shoot: () => false,
+        maxSteps: 1200,
+      });
+    } finally {
+      done = true;
+      await tabber;
+      parts.push({ hides });
+      await dump(run, "after three waves of alt-tabs", file, parts);
+    }
+  },
+};
+
+export const soakScenarios: Scenario[] = [soak, altTab];
