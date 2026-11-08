@@ -72,6 +72,11 @@ export interface CoopSlot {
   challenges?: CoopChallenge[];
   /** How many played when it was saved (D40); a run of three has the third seat's name and account. Default 2 */
   players?: PlayerCount;
+  /**
+   * Whether the host's debug menu was on in the run's session (D42): a host whose page is reloaded in the middle of the run
+   * keeps it ({@linkcode debugMenuOnRejoin}), as the guests' sessions do. A slot from before has none
+   */
+  debug?: boolean;
 }
 
 export function isCoopSlot(value: unknown): value is CoopSlot {
@@ -104,7 +109,17 @@ export function isCoopSlot(value: unknown): value is CoopSlot {
     // A challenge run has its challenges, and no other run has any (D41)
     && (slot["runMode"] === "challenge" ? isCoopChallenges(slot["challenges"]) : slot["challenges"] === undefined)
     && (slot["players"] === undefined || slot["players"] === 2 || slot["players"] === 3)
+    && (slot["debug"] === undefined || typeof slot["debug"] === "boolean")
   );
+}
+
+/**
+ * The debug menu (D42) of a host whose page was reloaded in the middle of the run: the run's own, whatever the setting says
+ * by then, since the guests' sessions kept theirs; a slot from before it said this follows the setting.
+ * @param setting - The host's setting "Co-op Debug Menu (Host)" now
+ */
+export function debugMenuOnRejoin(slot: CoopSlot, setting: boolean): boolean {
+  return slot.debug ?? setting;
 }
 
 /**

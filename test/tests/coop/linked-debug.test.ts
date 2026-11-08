@@ -20,6 +20,7 @@ import { ownerOf } from "#coop/decisions/control";
 import { debugTurnKey } from "#coop/decisions/decision-keys";
 import type { Decision } from "#coop/decisions/sequencer";
 import type { DecisionKey } from "#coop/protocol";
+import { readCoopSlot } from "#coop/save/coop-slot";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import { TerrainType } from "#data/terrain";
@@ -324,6 +325,16 @@ describe("Co-op: the host's debug menu (D42)", () => {
     await openUi(r.ctx, "SelectModifierPhase");
     pickerSkips(r);
   }
+
+  it("the co-op slot says the menu is on: a host whose page is reloaded in the run keeps it (D42, D20)", async () => {
+    const r = await start({ configure: game => game.override.startingLevel(10) });
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await winFirstWave(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    expect(r.ctx.game.scene.currentBattle.waveIndex).toBe(2);
+    // (the wave-start save of wave 2 wrote the slot a reloaded host takes the run back from)
+    expect(readCoopSlot(localStorage, r.session.file)?.debug).toBe(true);
+  });
 
   it("“win” in a trainer battle: the trainer's Pokémon that wait are out too, and the wave is won", async () => {
     const r = await start({ configure: game => game.override.startingLevel(10) });

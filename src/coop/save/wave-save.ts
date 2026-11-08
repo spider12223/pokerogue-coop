@@ -94,6 +94,8 @@ export function saveCoopWaveStart(resumeAt?: RewardResume): boolean {
           },
     accountIds: { ...session.accountIds },
     players: link.players,
+    // (a host whose page is reloaded in the middle of the run keeps the run's debug menu, D42)
+    debug: session.debug,
     session: json,
     ...(globalScene.gameMode.isChallenge
       ? { runMode: "challenge", challenges: challengesOn() }

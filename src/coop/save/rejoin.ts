@@ -34,7 +34,7 @@ import {
 } from "#coop/link/lobby";
 import { buildPinnedSettings, createSettingsOverlayPort } from "#coop/link/pinned-settings";
 import type { PlayerCount, Seat, SeatRecord } from "#coop/protocol";
-import { type CoopSlot, readCoopSlot } from "#coop/save/coop-slot";
+import { type CoopSlot, debugMenuOnRejoin, readCoopSlot } from "#coop/save/coop-slot";
 import { issueResync } from "#coop/save/resync-run";
 import { type CoopSaveBlock, CoopSaveRefusedError, checkSaveBlock, swapGuestSeats } from "#coop/save/save-block";
 import { forgetSeat, newestSeat } from "#coop/save/seat-store";
@@ -96,13 +96,17 @@ function savedGuests(slot: CoopSlot): { expectedGuestAccountId: string } | { exp
     : { expectedGuestAccountIds: [slot.accountIds.guest, slot.accountIds.guest2] };
 }
 
-/** Start the host's session on a link that shook hands, with the run of its slot loaded under the next epoch (D21) */
+/**
+ * Start the host's session on a link that shook hands, with the run of its slot loaded under the next epoch (D21)
+ * @param debug - The debug menu (D42), as the handshake told it: the session must say the same
+ */
 function resumeFromSlot(
   established: Awaited<ReturnType<typeof establishHost>>,
   slot: CoopSlot,
   overlay: ReturnType<typeof createSettingsOverlayPort>,
   reason: "resume" | "rejoin",
   file: number,
+  debug: boolean,
 ): void {
   const { link } = established;
   // (a run of three whose guests came back the other way round: their seats are exchanged first, D40)
@@ -111,7 +115,7 @@ function resumeFromSlot(
     runSeed: seedOf(slot),
     accountIds: slot.accountIds,
     runMode: slot.runMode ?? "classic",
-    debug: settings.general.coopDebugMenu,
+    debug,
     // its wave saves go on in the file it came from (D19)
     file,
   });
@@ -217,6 +221,8 @@ export async function tryAutoRejoin(): Promise<boolean> {
   const overlay = createSettingsOverlayPort(settings);
   try {
     if (seat === "host") {
+      // The run keeps its debug menu (D42): the guests' sessions kept theirs, whatever the setting says by now
+      const debug = debugMenuOnRejoin(slot!, settings.general.coopDebugMenu);
       const pinned = buildPinnedSettings(settings.general.playerGender);
       const effectiveHash = overlay.apply(pinned);
       // A game of three takes both guests back on channels of their own (D40)
@@ -232,10 +238,10 @@ export async function tryAutoRejoin(): Promise<boolean> {
           runMode: slot!.runMode ?? "classic",
           ...(slot!.challenges === undefined ? {} : { challenges: slot!.challenges }),
           ...savedGuests(slot!),
-          debug: settings.general.coopDebugMenu,
+          debug,
         },
       );
-      resumeFromSlot(established, slot!, overlay, "rejoin", file);
+      resumeFromSlot(established, slot!, overlay, "rejoin", file, debug);
       getCoopSession()!.timing["rejoinStartedAt"] = startedAt;
     } else {
       const established = await establishGuest(room, getLocalBuildIdentity(), overlay, {
@@ -378,6 +384,8 @@ async function continueWith(
     const overlay = createSettingsOverlayPort(settings);
     const pinned = buildPinnedSettings(settings.general.playerGender);
     const effectiveHash = overlay.apply(pinned);
+    // A continued run takes the setting as it is now (both sessions begin again); the handshake and the session say the same
+    const debug = settings.general.coopDebugMenu;
     let established: Awaited<ReturnType<typeof establishHost>>;
     try {
       established = await establishHost(room, getLocalBuildIdentity(), pinned, {
@@ -388,7 +396,7 @@ async function continueWith(
         runMode: slot.runMode ?? "classic",
         ...(slot.challenges === undefined ? {} : { challenges: slot.challenges }),
         ...savedGuests(slot),
-        debug: settings.general.coopDebugMenu,
+        debug,
       });
     } catch (error) {
       overlay.remove();
@@ -399,7 +407,7 @@ async function continueWith(
       established.link.close();
       return;
     }
-    resumeFromSlot(established, slot, overlay, "resume", file);
+    resumeFromSlot(established, slot, overlay, "resume", file, debug);
   } catch (error) {
     if (!cancelled) {
       room?.cancel();

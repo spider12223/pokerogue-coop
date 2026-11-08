@@ -276,8 +276,9 @@ reward cursor, the encounter cursor, pings, emotes, and the pacing messages (D27
   (`CoopLog.releaseStorage`) and the write is tried again; the host's slot does the same. What still fails is told to the
   player (a chat note, once per session for each kind; Save and Quit in the message box) and logged (D19).
 - **The co-op slot.** `coop-slot.ts` reads and writes the `localStorage` key `coopSlot` (never a solo slot): the save,
-  both names and accounts, the last epoch and `seq` (D19). `updateSlotEpoch` keeps the epoch and `seq` current after a
-  reload. The slot is removed when the run ends.
+  both names and accounts, the last epoch and `seq` (D19), and whether the host's debug menu was on (D42: a host whose page
+  is reloaded in the middle of the run keeps the run's, `debugMenuOnRejoin`). `updateSlotEpoch` keeps the epoch and `seq`
+  current after a reload. The slot is removed when the run ends.
 - **Loading.** A resync loads the save with `GameData.loadCoopSession`. `save-block.ts` refuses a co-op save in a solo
   game, a solo save in a co-op game, and a save of two other accounts.
 
@@ -491,7 +492,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `save/save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
 | `save/wave-save.ts` | `saveCoopWaveStart` (in `EncounterPhase`), the slot, `updateSlotEpoch` | D19 | no |
 | `save/account-save.ts` | `saveCoopAccount`; a save the browser refuses: room made from the co-op log's copy, the player told | D19 | no |
-| `save/coop-slot.ts` | The host's co-op save files (`coopSlot`): the wave-start save, the epoch, the last `seq`, the names and accounts | D19 | yes |
+| `save/coop-slot.ts` | The host's co-op save files (`coopSlot`): the wave-start save, the epoch, the last `seq`, the names and accounts, the debug menu | D19, D42 | yes |
 | `save/save-files.ts` | The host's co-op save files on the save screen | D19, D21 | no |
 | `save/reward-resume.ts` | The reward-screen save: a reload during the rewards comes back to them | D19 | no |
 | `save/resync.ts` | `ResyncPayload`, `RESYNC_REQUEST`, `REPORT`, `ResyncBook` (three strikes per wave), the report | D13 | yes |

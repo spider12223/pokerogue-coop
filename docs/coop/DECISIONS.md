@@ -1182,6 +1182,11 @@ like any other run.
 - **On:** the host turns on **Settings → General → Co-op Debug Menu (Host)**, then presses its key (**F8**, rebindable as
   "Co-op Debug" in the keyboard settings). The setting does nothing for a guest. The host's `HELLO` says the menu is on
   (`debug: true`); a resumed or rejoined run keeps it.
+- **A run keeps its menu (amended after M8):** the setting is read when the host starts or continues a run. In the
+  middle of a run the menu stays as the run began, as the guests' sessions keep it: the co-op slot says it, so a host
+  whose page is reloaded keeps it whatever the setting says by then (`debugMenuOnRejoin`). Before, the reloaded host read
+  the setting again: turned off or on in the middle of the run, the two sides disagreed about each turn's `DEBUG` decision
+  and the wave desynced until the run stopped.
 - **Who sees it:** the host only. The guests get no panel and no notice, only what changes.
 - **What it does:** a side panel over the game (like the chat box) with a search over all its tabs:
   - *Party:* level, IVs, nature, any ability, any passive (unlocked), friendship, species and form, fusion, shiny and

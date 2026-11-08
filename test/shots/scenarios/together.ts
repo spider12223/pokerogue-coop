@@ -105,11 +105,19 @@ const away: Scenario = {
   },
 };
 
-/** `seat`'s tab goes away in a battle, the others wait; it comes back on the game's page and rejoins by itself (D20) */
-async function goneAndBack(run: ShotRun, seat: Parameters<ShotRun["client"]>[0]): Promise<void> {
+/**
+ * `seat`'s tab goes away in a battle, the others wait; it comes back on the game's page and rejoins by itself (D20)
+ * @param beforeGone - What happens in the battle just before the tab goes
+ */
+async function goneAndBack(
+  run: ShotRun,
+  seat: Parameters<ShotRun["client"]>[0],
+  beforeGone?: () => Promise<void>,
+): Promise<void> {
   // a rejoin compares the overrides (D1), and a reloaded page has none: this run has none either
   await run.toRun({}, { plain: true });
   await run.drive({ until: atCommand, shoot: () => false });
+  await beforeGone?.();
   await run.shot("before");
   // gone (a reload is over before the others' screens can be shot), then back on the game's page
   const page = run.client(seat).page;
@@ -142,6 +150,27 @@ const reconnect: Scenario = {
   },
 };
 
+/** The host's setting "Co-op Debug Menu (Host)" (D42), as the host would turn it in the settings */
+async function setHostDebugMenu(run: ShotRun, on: boolean): Promise<void> {
+  await run.host.page.evaluate(
+    async ({ path, value }) => {
+      const { settings } = await import(path);
+      settings.update("general", "coopDebugMenu", value);
+    },
+    { path: "/src/globals/global-settings-manager.ts", value: on },
+  );
+}
+
+/** Play on until every player is on the command menu of a later turn than the host's now */
+async function playATurn(run: ShotRun): Promise<void> {
+  const { wave, turn } = await run.state("host");
+  await run.drive({
+    until: states => states.every(state => state.ui === "COMMAND" && (state.wave > wave || state.turn > turn)),
+    shoot: () => false,
+    maxSteps: 120,
+  });
+}
+
 const reconnectWithDebug: Scenario = {
   id: "coop:reload-debug",
   area: "Co-op",
@@ -150,18 +179,24 @@ const reconnectWithDebug: Scenario = {
   vars: { seat: "guest" },
   async play(run, vars) {
     await run.open();
-    await run.host.page.evaluate(async path => {
-      const { settings } = await import(path);
-      settings.update("general", "coopDebugMenu", true);
-    }, "/src/globals/global-settings-manager.ts");
+    await setHostDebugMenu(run, true);
     await goneAndBack(run, vars.seat);
     // (the one who came back waits for the host's debug batch of the turn like the others, or the turn is a desync)
-    const { wave, turn } = await run.state("host");
-    await run.drive({
-      until: states => states.every(state => state.ui === "COMMAND" && (state.wave > wave || state.turn > turn)),
-      shoot: () => false,
-      maxSteps: 120,
-    });
+    await playATurn(run);
+  },
+};
+
+const reconnectAfterDebugOff: Scenario = {
+  id: "coop:reload-debug-off",
+  area: "Co-op",
+  summary:
+    "the host turns its debug menu off in the middle of a run that has it, then --seat's tab goes away and comes back: the run keeps the menu (D42); a turn is played",
+  vars: { seat: "host" },
+  async play(run, vars) {
+    await run.open();
+    await setHostDebugMenu(run, true);
+    await goneAndBack(run, vars.seat, () => setHostDebugMenu(run, false));
+    await playATurn(run);
   },
 };
 
@@ -345,6 +380,7 @@ export const togetherScenarios: Scenario[] = [
   away,
   reconnect,
   reconnectWithDebug,
+  reconnectAfterDebugOff,
   debugWindow,
   debugWaves,
   view,

@@ -862,6 +862,8 @@ async function hostGame(
     const pinned = buildPinnedSettings(settings.general.playerGender);
     // The host plays with the pinned settings too (D1, D5)
     const effectiveHash = overlay.apply(pinned);
+    // The debug menu (D42) as the handshake tells it, and the session says the same (the handshake can take a while)
+    const debug = settings.general.coopDebugMenu;
     let established: Awaited<ReturnType<typeof establishHost>>;
     try {
       established = await establishHost(room, getLocalBuildIdentity(), pinned, {
@@ -870,7 +872,7 @@ async function hostGame(
         name: getCoopName(),
         runMode,
         ...(challenges === undefined ? {} : { challenges }),
-        debug: settings.general.coopDebugMenu,
+        debug,
         ...(three
           ? {
               onProgress: (names: Partial<Record<Seat, string>>) => {
@@ -894,7 +896,7 @@ async function hostGame(
     const session = beginSession(established.link, "host", overlay, {
       runMode,
       ...(challenges === undefined ? {} : { challenges }),
-      debug: settings.general.coopDebugMenu,
+      debug,
       file,
     });
     await enterLobby(session, established.link, callbacks);

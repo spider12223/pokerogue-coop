@@ -10,6 +10,7 @@ import {
   type CoopSlot,
   clearCoopSlot,
   coopSlotKey,
+  debugMenuOnRejoin,
   firstFreeCoopFile,
   readCoopSlot,
   readCoopSlots,
@@ -149,6 +150,20 @@ describe("the co-op slot of the host (D19)", () => {
     expect(readCoopSlot(store, 1)).toEqual(three);
     expect(writeCoopSlot(store, { ...three, players: 4 as never }, 1)).toBe(true);
     expect(readCoopSlot(store, 1)).toBeNull();
+  });
+
+  it("keeps whether the host's debug menu was on: a host whose page is reloaded in the run keeps it (D42, D20)", () => {
+    const store = new MemoryStore();
+    expect(writeCoopSlot(store, { ...slot, debug: true }, 1)).toBe(true);
+    expect(readCoopSlot(store, 1)?.debug).toBe(true);
+    expect(writeCoopSlot(store, { ...slot, debug: "yes" as never }, 1)).toBe(true);
+    expect(readCoopSlot(store, 1)).toBeNull();
+    // the run's own menu, whatever the setting says by then (the guests kept theirs); a slot from before it said follows
+    // the setting
+    expect(debugMenuOnRejoin({ ...slot, debug: true }, false)).toBe(true);
+    expect(debugMenuOnRejoin({ ...slot, debug: false }, true)).toBe(false);
+    expect(debugMenuOnRejoin(slot, true)).toBe(true);
+    expect(debugMenuOnRejoin(slot, false)).toBe(false);
   });
 
   it("lives under a key no solo slot has", () => {
