@@ -9,7 +9,9 @@
 #   pwsh scripts/pack-windows.ps1                                 downloads Node and cloudflared, checks their SHA-256
 #   pwsh scripts/pack-windows.ps1 -NodeExe C:\...\node.exe -CloudflaredExe C:\...\cloudflared.exe
 #
-# The zip lands in pack-out/ (not tracked).
+# The zip lands in pack-out/ (not tracked). With GITHUB_TOKEN set (the release workflow sets it), the GitHub API call that
+# finds cloudflared's latest release sends it: without one the API answers an address 60 times an hour, and the build
+# machines share addresses.
 
 param(
   [string]$Dist = "dist",
@@ -95,7 +97,9 @@ if ($CloudflaredExe) {
   Copy-Item $CloudflaredExe (Join-Path $app "cloudflared.exe")
   $cloudflaredVersion = "local copy"
 } else {
-  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cloudflare/cloudflared/releases/latest"
+  # The token goes to the API only (Invoke-RestMethod drops it on a redirect to another host)
+  $githubApi = if ($env:GITHUB_TOKEN) { @{ Headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" } } } else { @{} }
+  $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cloudflare/cloudflared/releases/latest" @githubApi
   $asset = $release.assets | Where-Object { $_.name -eq "cloudflared-windows-amd64.exe" } | Select-Object -First 1
   if ($null -eq $asset -or -not ("$($asset.digest)" -match "^sha256:([0-9a-f]{64})$")) {
     throw "cloudflared $($release.tag_name): no windows-amd64 asset with a SHA-256 digest"

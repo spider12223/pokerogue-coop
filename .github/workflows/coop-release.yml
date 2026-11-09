@@ -49,6 +49,8 @@ jobs:
         env:
           VITE_SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
           COOP_GIT_SHA: ${{ github.sha }}
+          # (the GitHub API call for cloudflared's release: a build machine's address alone hits the API's hourly limit)
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Release
         env:
