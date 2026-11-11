@@ -116,10 +116,14 @@ describe("Co-op: Play again at the end of a run (D35)", () => {
     // (the run is saved in the third of the host's save files, D19)
     const r = await start("host", false, undefined, 3);
     const shown = spyOnTexts(r);
-    expect(await playToRunEnd(r)).toBe(false);
-    // its wave saves went in that file, and in no other
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    // its wave saves go in that file, and in no other
     expect(readCoopSlot(localStorage, 3)).not.toBeNull();
     expect(readCoopSlot(localStorage, 1)).toBeNull();
+    expect(await playToRunEnd(r)).toBe(false);
+    // the run is over: its save is gone before the end screen asks, so a tab closed on that screen cannot continue it
+    await advanceTo(r.ctx, ["PostGameOverPhase"]);
+    expect(readCoopSlot(localStorage, 3)).toBeNull();
     // the partner answers before this client's end screen asks: the answer is kept
     r.partner.sendLobby({ t: "again", want: true });
     const toTitle = advanceTo(r.ctx, ["TitlePhase"]);

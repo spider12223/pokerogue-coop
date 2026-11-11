@@ -13,6 +13,7 @@ import type { Seat } from "#coop/protocol";
 import { isRetryPayload, type RetryPayload } from "#coop/rules/retry";
 import { isStorageFull, makeStorageRoom, saveCoopAccount } from "#coop/save/account-save";
 import { issueResync, trySafeApply } from "#coop/save/resync-run";
+import { removeCoopSlot } from "#coop/save/wave-save";
 import { getCoopSession, requireCoopSession } from "#coop/session";
 import { writesForPokemon } from "#coop/sync/sim-account";
 import { modifierTypes } from "#data/data-lists";
@@ -259,6 +260,12 @@ export class GameOverPhase extends BattlePhase {
   private handleCoopRunEnd(): void {
     globalScene.disableMenu = true;
     beginRunEnd();
+    // The host's save file of the run goes now, not once the end screen is answered: a tab closed on that screen could
+    // otherwise continue a run that is over, and replay its end (D19)
+    const session = getCoopSession();
+    if (session?.isHost) {
+      removeCoopSlot(session.file);
+    }
     const challengeWin = this.isVictory && globalScene.gameMode.isChallenge;
     let firstClear = false;
     if (this.isVictory) {

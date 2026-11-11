@@ -3,8 +3,6 @@ import { Phase } from "#app/phase";
 import { leaveCoop } from "#coop/link/lobby";
 import { askPlayAgain } from "#coop/link/play-again";
 import { saveCoopAccount } from "#coop/save/account-save";
-import { removeCoopSlot } from "#coop/save/wave-save";
-import { getCoopSession } from "#coop/session";
 import type { EndCardPhase } from "#phases/end-card-phase";
 
 export class PostGameOverPhase extends Phase {
@@ -25,18 +23,13 @@ export class PostGameOverPhase extends Phase {
    */
   private endCoopRun(): void {
     const { ui } = globalScene;
-    // The host's save file of the run goes (D19); a guest keeps its own files, of the runs it hosts
-    const session = getCoopSession();
-    const file = session?.isHost ? session.file : null;
-    // (an account the browser refuses to save is told, and the end screen still comes: D19)
+    // (the host's save file of the run went when the run ended, D19; an account the browser refuses to save is told, and
+    // the end screen still comes)
     saveCoopAccount()
       // The game over faded the screen to black: the end screen is under that until it fades back in
       .then(() => ui.fadeIn(500))
       .then(() => askPlayAgain())
       .then(() => {
-        if (file !== null) {
-          removeCoopSlot(file);
-        }
         leaveCoop();
         globalScene.reset();
         globalScene.phaseManager.unshiftNew("TitlePhase");
