@@ -33,7 +33,10 @@ The game is static files, and GitHub Pages serves them for free (a site of up to
 the build is about 650 MB). Pages cannot run the relay, so the relay runs as a Cloudflare Worker (`coop-worker/`): one
 Durable Object per room, asleep between messages. The free plan allows 100,000 requests a day, and the WebSocket messages
 of a game count one request per 20, which is enough for many games a day. When a day's quota runs out, new rooms fail until
-midnight UTC.
+midnight UTC. Each connection may send up to 120 messages a second (a binary one closes it), so one client cannot flood
+for ever, but a determined one can still use up a day's quota: on `workers.dev` nothing limits the relay as a whole. A
+custom domain with a Rate Limiting rule on `/coop`, or the paid plan (which bills extra use instead of stopping), guards
+against that.
 
 **1. The relay (once).** Needs a free Cloudflare account.
 

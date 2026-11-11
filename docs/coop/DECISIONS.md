@@ -550,7 +550,9 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
   takes no save: a reload goes back to the wave start, as before.
 - **Host:** the save goes to a dedicated co-op slot, the `localStorage` key `coopSlot` (not `sessionData*`). It holds
   the session save (with the `coop` block, D4, D7), both display names, the last epoch and the last `seq`. It is removed
-  when the run ends (victory, game over) and kept when the players only leave.
+  when the run ends (victory, game over), as the end begins, and kept when the players only leave. (Amended after M8: it
+  was removed once the end screen was answered, so a host who closed the tab on that screen could continue the finished
+  run and win its end again.)
 - **Guest:** keeps the latest wave-start save in memory only. It has no slot: the host's save is what both reload (D13).
 - Solo slots are never touched; a test compares them byte for byte.
 - **Each player's account** is saved at every wave start too (`saveSystem`, as a solo run's `saveAll` saves it), so what
@@ -831,8 +833,10 @@ step; the screens would not.
 - **Whole-party effects** hit both players' Pokémon, as in solo. A Pokémon an encounter replaces (Weird Dream's
   transformations, a GTS trade) passes its owner to the one that takes its place.
 - **New Pokémon** (Absolute Avarice, Dancing Lessons, Uncommon Breed, the Salesman, the Safari Zone's catches) go to the
-  chooser, with the cap of 3 (D10). At the cap the chooser releases one of their own or declines, through the
-  `CATCH_RELEASE` decision, which replaces the encounter's own party-full prompt.
+  chooser, with the cap of 3 (D10). At the cap the chooser releases one of their own, or one of a partner's that is not
+  in the battle, or declines, through the `CATCH_RELEASE` decision, which replaces the encounter's own party-full prompt.
+  As in a battle catch (D10, amended), a partner's release makes the catch that partner's, and they are told in their chat
+  box (amended after M8: the encounter allowed the pick but called it a desync, and the run stopped).
 - **One-Pokémon encounters** (The Expert Pokémon Breeder, Fun and Games): the host first decides who goes (itself, the
   guest, or nobody: the encounter is left the way its leave option leaves it). The player who goes picks among their
   own Pokémon and plays it, and the other watches. These two stay singles.
@@ -1141,7 +1145,10 @@ count from the host's `HELLO`.
   once (commands, prompts), and nothing is written to their account. A guest who comes back (their connection, or the page
   reloaded with its seat) shakes hands with the host again on a new channel and waits ("You join the others at the start of
   the next wave"); the reload that lets them in waits for that wave start, so the other two lose nothing of the wave they
-  are in. The host dropping pauses both guests until the host is back.
+  are in. The host dropping pauses both guests until the host is back: its link shakes hands again with each guest who is
+  there, over its new connection, and the run is reloaded at once when they are through (amended after M8: the guests'
+  channels stayed on the connection that dropped, so their handshakes never came through and both left the game). A guest's
+  seat token keeps its seat (`guest2` too), so a reloaded tab of either guest takes its seat back by itself (D20).
 - **Saves:** the save of a game of three holds the third account, and its slot the third name and how many played; only
   those accounts load it. **Continue** of a run of three ("Continue (3 players, wave N)") asks 2 or 3 players; either saved
   guest may join (a game of two takes one of them). If the guests come back the other way round, their seats are exchanged
@@ -1336,13 +1343,15 @@ for a partner. Co-op players only, not everyone with the game open (that would n
 
 - **How the relay counts:** one Durable Object (`Online`, binding `ONLINE`, `idFromName("count")`) keeps, for each room and
   for the matchmaking queue, how many of its players are connected. A room says it when a player takes a seat, comes back
-  or leaves, when it ends, and again every 10 minutes while its game goes on (with the once-a-minute stamp of its game
-  frames); the queue says it on every arrival, match and departure. What was not said again for 30 minutes is dropped, so a
-  room that vanished without a word (a deploy) leaves the count, as an idle room is closed after that long anyway. Only
+  or leaves, when it ends, and again from its alarm while its game goes on (at most the idle time, 30 minutes, apart); the
+  queue says it on every arrival, match and departure. What was not said again for 40 minutes is dropped, so a room that
+  vanished without a word (a deploy) leaves the count. (Amended after M8: a room said it again every 10 minutes and after
+  each time it woke, which cost about a tenth of the free plan's daily requests; each report is a whole request.) Only
   numbers: a room is known by its object's id, never by its code; no address, token or name.
   `coop-worker/src/online-book.ts`, `online.ts`.
-- **`GET /coop/online`:** `{"players": N}`, read from the object at most once per 20 s by each Worker instance and kept as
-  long by the browser (`cache-control: public, max-age=20`). CORS for the pages of `ALLOWED_ORIGINS` only; 405 for other
+- **`GET /coop/online`:** `{"players": N}`, read from the object at most once per 5 minutes by each Worker instance and
+  kept as long by the browser (`cache-control: public, max-age=300`; it was 20 s, shorter than the title screen's minute,
+  so the browser never answered it). CORS for the pages of `ALLOWED_ORIGINS` only; 405 for other
   methods, 503 when the object cannot be reached.
 - **The title screen** asks for it when it shows and every minute after (the game's own timer), when the game was built
   with a relay (`VITE_COOP_RELAY_URL`: the website). Without one (the Windows pack, Docker, solo builds) nothing is asked and
