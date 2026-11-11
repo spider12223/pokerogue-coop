@@ -17,7 +17,7 @@ import {
   routedFrame,
   type Seat,
 } from "../../coop-server/src/relay-protocol.ts";
-import { onlineDue, reportOnline } from "./online-book.ts";
+import { reportOnline } from "./online-book.ts";
 import {
   ACTION_HEADER,
   CODE_HEADER,
@@ -90,8 +90,6 @@ export class Room extends DurableObject<Env> {
   private state: RoomState | null | undefined;
   /** Per socket id, what it may still send (memory only: a room that slept starts again full) */
   private readonly buckets = new Map<string, { bucket: TokenBucket; dropped: number }>();
-  /** When the room last told the players-online count (D46) how many are connected; 0: not since it woke */
-  private onlineAt = 0;
 
   private get holdMs(): number {
     return envNumber(this.env.HOLD_MS, DEFAULTS.holdMs);
@@ -217,7 +215,9 @@ export class Room extends DurableObject<Env> {
       return;
     }
     if (typeof message !== "string") {
-      return; // binary frames are not forwarded
+      // The game sends text only; a binary frame is billed like any other, and the rate limit below never sees it
+      socket.close(CLOSE_CODE_POLICY, "binary");
+      return;
     }
     if (message.length > MAX_FRAME_CHARS) {
       socket.close(1009, "too big");
@@ -237,10 +237,6 @@ export class Room extends DurableObject<Env> {
     if (now - attachment.lastFrame >= FRAME_STAMP_MS) {
       attachment.lastFrame = now;
       socket.serializeAttachment(attachment);
-      if (onlineDue(this.onlineAt, now)) {
-        // A game that goes on says so again, or the count would drop it (D46)
-        this.tellOnline(await this.load());
-      }
     }
   }
 
@@ -340,6 +336,9 @@ export class Room extends DurableObject<Env> {
     } else if (now - this.lastActivity(room) >= this.idleMs) {
       await this.close("idle");
     } else {
+      // A game that goes on says so again, or the count would drop it (D46): here, not after every wake, as each report
+      // is a whole request of the daily quota
+      this.tellOnline(room);
       await this.save();
     }
   }
@@ -486,7 +485,6 @@ export class Room extends DurableObject<Env> {
   /** Tell the players-online count (D46) how many of this room's players are connected now: none once it is over */
   private tellOnline(room: RoomState | null | undefined): void {
     const players = room ? seatsOf(room).filter(seat => this.socketOf(seat) !== undefined).length : 0;
-    this.onlineAt = Date.now();
     this.ctx.waitUntil(reportOnline(this.env, this.ctx.id.toString(), players));
   }
 

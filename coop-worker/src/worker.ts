@@ -37,7 +37,8 @@ const CREATE_ATTEMPTS = 5;
 /**
  * Connection attempts and new rooms per address (an IPv6 client is its /64, as in `coop-server`). One copy per Worker
  * instance, so the limits are rough: they stop a script that guesses codes from one place, which is what they are for. A
- * limit over the whole relay is the platform's (a Rate Limiting rule of the zone on `/coop`).
+ * limit over the whole relay would be the platform's: a Rate Limiting rule needs the relay on a custom domain (a zone),
+ * and on workers.dev there is none.
  */
 class AddressLimiter {
   private readonly addresses = new Map<string, { connect: TokenBucket; rooms: TokenBucket }>();

@@ -10,14 +10,12 @@ import {
   noteOnline,
   ONLINE_MEMO_MS,
   ONLINE_NAME,
-  ONLINE_REFRESH_MS,
   ONLINE_STALE_MS,
   type OnlineBook,
   OnlineMemo,
-  onlineDue,
   reportOnline,
 } from "../src/online-book.ts";
-import type { Env } from "../src/shared.ts";
+import { DEFAULTS, type Env } from "../src/shared.ts";
 
 describe("The relay's players-online count (D46)", () => {
   it("keeps the latest word of each room, and forgets a room with nobody connected", () => {
@@ -48,32 +46,28 @@ describe("The relay's players-online count (D46)", () => {
     expect(countOnline({}, 1000)).toBe(0);
   });
 
-  it("drops a room not heard from in 30 minutes, so one that vanished without a word cannot stay counted", () => {
+  it("drops a room not heard from in 40 minutes, so one that vanished without a word cannot stay counted", () => {
     const book: OnlineBook = {};
     noteOnline(book, "old", 2, 0);
     noteOnline(book, "new", 2, ONLINE_STALE_MS - 1);
     expect(countOnline(book, ONLINE_STALE_MS - 1)).toBe(4);
     expect(countOnline(book, ONLINE_STALE_MS)).toBe(2);
     expect(Object.keys(book)).toEqual(["new"]);
-    expect(ONLINE_STALE_MS).toBe(30 * 60_000);
+    expect(ONLINE_STALE_MS).toBe(40 * 60_000);
   });
 
-  it("a room reports again every 10 minutes while its game goes on, and at once after it slept", () => {
-    expect(ONLINE_REFRESH_MS).toBe(10 * 60_000);
-    // a room that misses a report is still counted
-    expect(ONLINE_STALE_MS).toBeGreaterThanOrEqual(2 * ONLINE_REFRESH_MS);
-    expect(onlineDue(0, 5_000)).toBe(true);
-    expect(onlineDue(1000, 1000 + ONLINE_REFRESH_MS - 1)).toBe(false);
-    expect(onlineDue(1000, 1000 + ONLINE_REFRESH_MS)).toBe(true);
+  it("a room whose game goes on is counted between two of its alarms (they come at most the idle time apart)", () => {
+    // (a room says it again from its alarm, not after each wake: every report is a whole request of the daily quota)
+    expect(ONLINE_STALE_MS).toBeGreaterThan(DEFAULTS.idleRoomMs);
   });
 
-  it("a Worker reuses the count it read for 20 seconds", () => {
+  it("a Worker reuses the count it read for 5 minutes, and so does the browser (the title screen asks every minute)", () => {
     const memo = new OnlineMemo();
     expect(memo.get(0)).toBeUndefined();
     memo.set(7, 1000);
     expect(memo.get(1000 + ONLINE_MEMO_MS - 1)).toBe(7);
     expect(memo.get(1000 + ONLINE_MEMO_MS)).toBeUndefined();
-    expect(ONLINE_MEMO_MS).toBe(20_000);
+    expect(ONLINE_MEMO_MS).toBe(5 * 60_000);
   });
 
   it("a report goes to the one object that keeps the count", async () => {

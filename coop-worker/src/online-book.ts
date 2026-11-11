@@ -17,12 +17,13 @@ import type { Env } from "./shared.ts";
 export const ONLINE_NAME = "count";
 /** The matchmaking queue's place in the count (a room's is its object's id) */
 export const ONLINE_QUEUE_KEY = "queue";
-/** What was not said again for this long is dropped: as long as a room may go without a game frame before it closes */
-export const ONLINE_STALE_MS = 30 * 60_000;
-/** A room with players says it again at least this often while its game goes on */
-export const ONLINE_REFRESH_MS = 10 * 60_000;
-/** How long a Worker answers with the count it read (and a browser may keep it) */
-export const ONLINE_MEMO_MS = 20_000;
+/**
+ * What was not said again for this long is dropped. A room whose game goes on says it again from its alarm, which comes at
+ * most the idle time (30 minutes) apart, so this is longer
+ */
+export const ONLINE_STALE_MS = 40 * 60_000;
+/** How long a Worker answers with the count it read, and a browser may keep it (the title screen asks every minute) */
+export const ONLINE_MEMO_MS = 5 * 60_000;
 
 /** What one room (or the queue) said: how many of its players are connected, and when */
 export interface OnlineEntry {
@@ -54,11 +55,6 @@ export function countOnline(book: OnlineBook, now: number, staleMs: number = ONL
     }
   }
   return players;
-}
-
-/** Whether a room should say its count again: it last did at `last` (0: not since it woke) */
-export function onlineDue(last: number, now: number): boolean {
-  return last === 0 || now - last >= ONLINE_REFRESH_MS;
 }
 
 /** The count a Worker read, answered again for {@linkcode ONLINE_MEMO_MS} so that title screens do not each wake the object */
