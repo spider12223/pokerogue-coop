@@ -445,6 +445,41 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       );
       expect(partyIds(r)).toHaveLength(5);
     });
+
+    it("lets an encounter's chooser at the cap release one of the partner's not in the battle: the catch goes to the partner (D29, D10)", async () => {
+      let r: LinkedRun | null = null;
+      const hostBenched = () =>
+        r!.ctx.game.scene
+          .getPlayerParty()
+          .filter(p => ownerOf(p) === "host" && !p.isOnField())
+          .at(-1)!;
+      const partner = ballThrowingPartner(() => r!, { catchRelease: () => hostBenched().id });
+      r = await start({ policy: partner.policy });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const released = hostBenched().id;
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const caughtSpecies = enemy.species.speciesId;
+      // An encounter's catch is the chooser's (D29): here the guest, who has its three
+      r.session.meChooser = "guest";
+
+      // (a release the clients refuse to carry out is a desync, and the catch never ends)
+      void catchPokemon(enemy, null, PokeballType.POKEBALL, false);
+      await vi.waitUntil(
+        () =>
+          r!.session.desyncMessage !== null
+          || game.scene.getPlayerParty().some(p => p.species.speciesId === caughtSpecies),
+        { interval: 10, timeout: 8000 },
+      );
+
+      expect(r.session.desyncMessage).toBeNull();
+      const party = game.scene.getPlayerParty();
+      expect(partyIds(r)).not.toContain(released);
+      const caught = party.find(p => p.species.speciesId === caughtSpecies)!;
+      expect(ownerOf(caught)).toBe("host");
+      expect(party.filter(p => ownerOf(p) === "guest")).toHaveLength(3);
+      expect(party.filter(p => ownerOf(p) === "host")).toHaveLength(3);
+    });
   });
 
   describe("Tera is a side resource (D8)", () => {

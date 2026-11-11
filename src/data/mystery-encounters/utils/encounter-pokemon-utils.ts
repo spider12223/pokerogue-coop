@@ -4,7 +4,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { getPokemonNameWithAffix } from "#app/messages";
-import { coopDecide, isLinked, reportBridgeError } from "#coop/decisions/bridge";
+import { coopDecide, coopText, isLinked, reportBridgeError } from "#coop/decisions/bridge";
 import { catchReleaseKey } from "#coop/decisions/decision-keys";
 import { type CatchReleasePayload, isCatchReleasePayload } from "#coop/decisions/prompt-payloads";
 import { DesyncError } from "#coop/decisions/sequencer";
@@ -12,6 +12,7 @@ import { noRoomQuestion } from "#coop/rules/catch-room";
 import { coopSeatFull, meAutoAnswers, meChooser, showChooserWaiting } from "#coop/rules/me-run";
 import { getCoopSession, isCoop } from "#coop/session";
 import { writesForSeat } from "#coop/sync/sim-account";
+import { chatNote } from "#coop/ui/chat";
 import { modifierTypes } from "#data/data-lists";
 import { Gender } from "#data/gender";
 import {
@@ -698,13 +699,14 @@ export async function catchPokemon(
           pokemon.leaveField(false, true, true);
         }
       };
-      const addToParty = (slotIndex?: number) => {
+      /** @param owner - Whose the catch is: the chooser's (D29), or the partner's whose Pokémon made room for it (D10) */
+      const addToParty = (slotIndex?: number, owner = coopOwner) => {
         const newPokemon = pokemon.addToParty(pokeballType, slotIndex);
         const session = getCoopSession();
-        if (session !== null && coopOwner !== null) {
-          // The chooser's (D29); a Pokémon that was released is no one's any more
+        if (session !== null && owner !== null) {
+          // A Pokémon that was released is no one's any more
           if (newPokemon) {
-            session.ownership.set(newPokemon.id, coopOwner);
+            session.ownership.set(newPokemon.id, owner);
           }
           session.ownership.retain(globalScene.getPlayerParty().map(member => member.id));
         }
@@ -860,16 +862,37 @@ export async function catchPokemon(
                   }
                   const party = globalScene.getPlayerParty();
                   const index = party.findIndex(member => member.id === payload.release);
-                  // Co-op (D10, D29): only one of the chooser's own Pokémon in the party, as in the capture phase
-                  if (index < 0 || getCoopSession()?.ownership.get(payload.release) !== coopOwner) {
-                    throw new DesyncError("the sequenced release is not a Pokémon of the chooser", {
+                  const owner = getCoopSession()?.ownership.get(payload.release);
+                  // Co-op (D10, amended; D29): as in the capture phase, one of the chooser's own, or one of a partner's
+                  // that is not in the battle, and the catch goes to the player whose Pokémon made room for it
+                  if (
+                    index < 0
+                    || owner === undefined
+                    || (owner !== coopOwner && globalScene.getPlayerField().includes(party[index]))
+                  ) {
+                    throw new DesyncError("the sequenced release is not a Pokémon the chooser may release", {
                       actual: key,
                       seq,
                     });
                   }
+                  const released = party[index].getNameToRender();
                   globalScene.removePartyMemberModifiers(index);
                   party.splice(index, 1)[0].destroy();
-                  addToParty(index);
+                  addToParty(index, owner);
+                  if (owner !== coopOwner && owner === getCoopSession()?.seat) {
+                    // The player whose Pokémon it was is told, without stopping the game (in the chat box)
+                    chatNote(
+                      coopText(
+                        "partnerReleasedForCatch",
+                        "{{name}} released your {{released}}: {{caught}} is yours now.",
+                        {
+                          name: getCoopSession()?.nameOf(coopOwner) ?? "",
+                          released,
+                          caught: pokemon.getNameToRender(),
+                        },
+                      ),
+                    );
+                  }
                 })
                 .catch(reportBridgeError);
             } else {
