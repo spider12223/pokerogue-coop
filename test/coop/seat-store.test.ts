@@ -76,6 +76,13 @@ describe("seat tokens in local storage (D20)", () => {
     expect(listSeats(store)).toHaveLength(3);
   });
 
+  it("keeps the third player's seat, so a reloaded guest2 takes it back by itself (D40, D20)", () => {
+    const store = new MemoryStore();
+    expect(saveSeat(store, seat("DDDDDD", 100, "guest2"))).toBe(true);
+    expect(newestSeat(store)).toEqual(seat("DDDDDD", 100, "guest2"));
+    expect(listSeats(store)).toHaveLength(1);
+  });
+
   it("forgets a room, or every room", () => {
     const store = new MemoryStore();
     saveSeat(store, seat("AAAAAA", 1));

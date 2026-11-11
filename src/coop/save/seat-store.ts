@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import type { Seat } from "#coop/protocol";
+import { isSeat, type Seat } from "#coop/protocol";
 import { isCoopFile } from "#coop/save/coop-slot";
 
 /**
@@ -56,7 +56,7 @@ export function isSeatRecord(value: unknown): value is SeatRecord {
   return (
     typeof record["code"] === "string"
     && record["code"].length > 0
-    && (record["seat"] === "host" || record["seat"] === "guest")
+    && isSeat(record["seat"])
     && typeof record["token"] === "string"
     && record["token"].length > 0
     && typeof record["relayUrl"] === "string"
