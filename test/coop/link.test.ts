@@ -304,6 +304,28 @@ describe("CoopLink over the relay", () => {
       expect(guest.needsResync).toBe(true);
     });
 
+    it("the host's own connection drops: it takes its seat back and shakes hands again with both guests, who hear it", async () => {
+      const { host, guest, guest2 } = await connectThree();
+      const ends: string[] = [];
+      guest.onEnd(end => ends.push(`guest ${end}`));
+      guest2.onEnd(end => ends.push(`guest2 ${end}`));
+      (host as unknown as { relay: { close(): void } }).relay.close();
+      await waitFor(() => !host.partnerPresent);
+      // the host's link takes its seat back and shakes hands again with each guest, over its new connection
+      await waitFor(() => host.partnerPresent && host.needsResync, 15_000);
+      expect(host.reloadWaitsForWaveStart).toBe(false);
+      const atGuest: string[] = [];
+      const atGuest2: string[] = [];
+      guest.onChat(chat => atGuest.push(chat.text));
+      guest2.onChat(chat => atGuest2.push(chat.text));
+      host.sendChat("back");
+      await waitFor(() => atGuest.includes("back") && atGuest2.includes("back"), 5000);
+      // (each guest saw the host away for a moment; neither link ended)
+      expect(ends).not.toContain("guest closed");
+      expect(ends).not.toContain("guest2 closed");
+      expect(guest.present("host") && guest2.present("host")).toBe(true);
+    });
+
     it("tells a guest whose tab came back that the host's debug menu is on, and the challenges (D42, D41)", async () => {
       const challenges = [{ id: 3, value: 1, severity: 1 }];
       const room = await createRoom(url, { reliable, seats: 3 });

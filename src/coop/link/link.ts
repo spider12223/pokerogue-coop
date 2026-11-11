@@ -148,8 +148,8 @@ export class CoopLink {
   private readonly reliable: ReliableTransport | null;
   /** The host's channels to its two guests in a game of three (D40) */
   private readonly fanout: FanoutTransport | null;
-  /** Host of three (D40): the hub of the guests' channels, to open a returning guest's again */
-  private readonly hub: RoutedHub | null;
+  /** Host of three (D40): the hub of the guests' channels, to open a returning guest's again; made again over a new connection */
+  private hub: RoutedHub | null;
   /** Host of three: the timings of a guest's new channel */
   private readonly reliableOptions: ReliableOptions | undefined;
   /** Host of three: guests who came back and shook hands again; they come in with the next reload (D40) */
@@ -1070,12 +1070,16 @@ export class CoopLink {
           // A guest of three: the host never left, so no notice brings it back; shake hands again now (D40)
           void this.relink();
         } else if (this.players === 3) {
-          // The host of three: what was on its way is lost both ways; each guest shakes hands again, and the run is
-          // reloaded at once (D20)
+          // The host of three: what was on its way is lost both ways; each guest who is there shakes hands again, over this
+          // connection (the old hub listens to the one that dropped), and the run is reloaded at once (D20). The guests count
+          // as there once that is through: the reload goes out on their new channels, not on the dead ones
           this.resyncNeeded = true;
-          for (const seat of ["guest", "guest2"] as const) {
-            void this.relinkGuest(seat);
-          }
+          this.hub = new RoutedHub(relay, ["guest", "guest2"]);
+          const there = (["guest", "guest2"] as const).filter(seat => this.presence.get(seat) === true);
+          void Promise.all(there.map(seat => this.relinkGuest(seat))).then(() => {
+            this.anyonePresent = [...this.presence.values()].some(Boolean);
+            this.notifyChange();
+          });
         }
         return;
       }
