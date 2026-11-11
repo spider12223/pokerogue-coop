@@ -125,12 +125,8 @@ export class CoopTurnSyncPhase extends Phase {
     // The host's debug batch of the turn (D42): sequenced with the commands, carried out after them. Not on a second round
     // of the turn (a declined Ball or Run): the first had it
     const debugKey = session.debug && this.onlyPokemonId === null ? debugTurnKey(wave, turn) : null;
-    const debugWait = debugKey === null ? null : sequencer.awaitDecision(debugKey, { authors: ["host"] });
-    if (debugKey !== null && session.isHost) {
-      proposeUnlessLate(link, debugKey, takeDebugBatch());
-    }
 
-    // The window: every Pokémon's commands, in whatever order they are sequenced
+    // The window: every Pokémon's commands and the debug batch, in whatever order they are sequenced
     session.openWindow = [
       ...session.openWindow,
       ...participants.map(part => part.key),
@@ -138,10 +134,19 @@ export class CoopTurnSyncPhase extends Phase {
     ];
     let arrived = 0;
     const arrivedKeys = new Set<string>();
-    // (all at once: in a game of three the others' commands may already be here, in the order the host sequenced them, D40)
-    const awaited = sequencer.awaitEach<TurnCommandsPayload>(
-      participants.map(part => ({ key: part.key, authors: [part.controller] })),
-    );
+    // (all at once: in a game of three the others' commands may already be here, in the order the host sequenced them,
+    // D40; and a guest's take over of the host's command, sequenced while the host's menu was up, may come before the
+    // debug batch, D17)
+    const awaited = sequencer.awaitEach<TurnCommandsPayload>([
+      ...participants.map(part => ({ key: part.key, authors: [part.controller] })),
+      ...(debugKey === null ? [] : [{ key: debugKey, authors: ["host"] as const }]),
+    ]);
+    const debugWait = debugKey === null ? null : awaited[participants.length];
+    // (a reload rejects it before it is awaited: that is not an unhandled rejection)
+    debugWait?.catch(() => undefined);
+    if (debugKey !== null && session.isHost) {
+      proposeUnlessLate(link, debugKey, takeDebugBatch());
+    }
     const waits = participants.map((part, index) =>
       awaited[index].then(decision => {
         arrived++;

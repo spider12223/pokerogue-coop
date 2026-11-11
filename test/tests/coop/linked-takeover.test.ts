@@ -398,6 +398,30 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
     expect(r.session.desyncMessage).toBeNull();
   });
 
+  it("with the host's debug menu on, a guest's take over of the away host's turn is played too, not a desync (D17, D42)", async () => {
+    const r = await start();
+    // (the host turned the menu on: every turn also has a DEBUG decision of the host's)
+    (r.session as { debug: boolean }).debug = true;
+    const { game } = r.ctx;
+    const decisions = decisionsOf(r);
+    await advanceTo(r.ctx, ["CommandPhase"]);
+    await openUi(r.ctx, "CommandPhase");
+    const slot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "host");
+    const guestSlot = game.scene.getPlayerField().findIndex(each => ownerOf(each) === "guest");
+    const field = game.scene.getPlayerField();
+    const { waveIndex, turn } = game.scene.currentBattle;
+    const key = turnCommandsKey(waveIndex, turn, field[slot].id);
+
+    // the take-over is sequenced while the host's menu is up, before the host's turn awaits its debug batch
+    r.partner.propose(turnCommandsKey(waveIndex, turn, field[guestSlot].id), attackCommand(game, guestSlot));
+    r.partner.takeOver(key, attackCommand(game, slot));
+
+    await advanceTo(r.ctx, ["TurnEndPhase"]);
+    expect(r.session.desyncMessage).toBeNull();
+    expect(decisions.find(d => keyId(d.key) === keyId(key))).toMatchObject({ author: "guest", takeover: true });
+    expect(decisions.some(d => d.key.kind === "DEBUG")).toBe(true);
+  });
+
   it("lets the host's own choice win over a guest's take over that waits for the hint's time (D17)", async () => {
     const r = await start({ afkTimers: { ...AFK, hintMs: 2000 } });
     const { game } = r.ctx;
