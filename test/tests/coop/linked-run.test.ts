@@ -39,6 +39,7 @@ import {
   toTurnWithOneEnemy,
   winWave,
 } from "#test/helpers/coop-linked";
+import type { PartyUiHandler } from "#ui/handlers/party-ui-handler";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import { getModifierType } from "#utils/modifier-utils";
 import Phaser from "phaser";
@@ -255,6 +256,7 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const released = guestPokemon.at(-1)!.id;
       const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
       const { waveIndex } = game.scene.currentBattle;
+      const caught = vi.spyOn(game.scene.gameData, "setPokemonCaught");
 
       partner.throwBall();
       queueTurnCommands(r.ctx);
@@ -268,6 +270,8 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(party.filter(p => ownerOf(p) === "host")).toHaveLength(3);
       expect(r.session.ownership.has(released)).toBe(false);
       expect(r.partner.answeredKeys).toContain(keyId(catchReleaseKey(waveIndex, enemy.id)));
+      // the catch is the guest's: the host's account does not get it (D4a)
+      expect(caught).not.toHaveBeenCalled();
       expect(r.session.desyncMessage).toBeNull();
     });
 
@@ -285,6 +289,7 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const released = hostBenched().id;
       const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
       const caughtSpecies = enemy.species.speciesId;
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
 
       partner.throwBall();
       queueTurnCommands(r.ctx);
@@ -298,6 +303,35 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(ownerOf(caught)).toBe("host");
       expect(party.filter(p => ownerOf(p) === "guest")).toHaveLength(3);
       expect(party.filter(p => ownerOf(p) === "host")).toHaveLength(3);
+      // the catch is the host's, so the host's account gets it, though the guest threw (D4a)
+      expect(written).toHaveBeenCalledWith(enemy);
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
+    it("leaves a catch the host made room for with one of the guest's out of the host's account (D10, D4a)", async () => {
+      let r: LinkedRun | null = null;
+      const partner = ballThrowingPartner(() => r!);
+      r = await start({ policy: partner.policy });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const guestBenched = game.scene.getPlayerParty().find(p => ownerOf(p) === "guest" && !p.isOnField())!;
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const caughtSpecies = enemy.species.speciesId;
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
+
+      // The host throws with its three and, asked to release one, picks the guest's benched Pokémon on its party screen
+      const decide = r.ctx.decider.decide.bind(r.ctx.decider);
+      vi.spyOn(r.ctx.decider, "decide").mockImplementation((key, by, policy) =>
+        key.kind === "CATCH_RELEASE" ? ({ release: guestBenched.id } as never) : decide(key, by, policy),
+      );
+      game.doThrowPokeball(PokeballType.MASTER_BALL);
+      await advanceTo(r.ctx, ["TurnInitPhase", "SelectModifierPhase"]);
+
+      const party = game.scene.getPlayerParty();
+      expect(partyIds(r)).not.toContain(guestBenched.id);
+      expect(ownerOf(party.find(p => p.species.speciesId === caughtSpecies && !p.isOnField())!)).toBe("guest");
+      // the guest's client writes it to the guest's account; the host's only saw the Pokémon
+      expect(written).not.toHaveBeenCalled();
       expect(r.session.desyncMessage).toBeNull();
     });
 
@@ -335,6 +369,7 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const { game } = r.ctx;
       const before = partyIds(r);
       const owners = r.session.ownership.toJSON();
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
 
       partner.throwBall();
       queueTurnCommands(r.ctx);
@@ -344,6 +379,8 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(partyIds(r)).toEqual(before);
       expect(r.session.ownership.toJSON()).toEqual(owners);
       expect(game.scene.getEnemyField().filter(e => e.isActive(true))).toHaveLength(0);
+      // a catch let go is the thrower's, as in a solo run: the guest's account, not the host's
+      expect(written).not.toHaveBeenCalled();
     });
 
     it("asks the host the same when the host threw and has three, and the host can decline through its own screen", async () => {
@@ -357,6 +394,7 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const { waveIndex } = game.scene.currentBattle;
       const seen: Decision[] = [];
       r.link.sequencer.onDecision(decision => seen.push(decision));
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
 
       // The throw first (the prompts are first in, first out), then "The party is full": the host answers No
       game.doThrowPokeball(PokeballType.MASTER_BALL);
@@ -373,6 +411,8 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const answer = seen.find(decision => keyId(decision.key) === key);
       expect(answer).toMatchObject({ author: "host", payload: { release: null } });
       expect(partyIds(r)).toEqual(before);
+      // the host let its own catch go: it is still the host's catch, as in a solo run
+      expect(written).toHaveBeenCalledWith(enemy);
     });
 
     it("tells a thrower at the cap, with room in the party, that they have their three: not that the party is full", async () => {
@@ -462,6 +502,7 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       const caughtSpecies = enemy.species.speciesId;
       // An encounter's catch is the chooser's (D29): here the guest, who has its three
       r.session.meChooser = "guest";
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
 
       // (a release the clients refuse to carry out is a desync, and the catch never ends)
       void catchPokemon(enemy, null, PokeballType.POKEBALL, false);
@@ -479,6 +520,47 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(ownerOf(caught)).toBe("host");
       expect(party.filter(p => ownerOf(p) === "guest")).toHaveLength(3);
       expect(party.filter(p => ownerOf(p) === "host")).toHaveLength(3);
+      // the catch is the host's, so the host's account gets it, though the guest chose (D4a)
+      expect(written).toHaveBeenCalledWith(enemy);
+    });
+
+    it("leaves an encounter's catch the host made room for with one of the guest's out of the host's account (D29, D4a)", async () => {
+      let r: LinkedRun | null = null;
+      const partner = ballThrowingPartner(() => r!);
+      r = await start({ policy: partner.policy });
+      await toTurnWithOneEnemy(r);
+      const { game } = r.ctx;
+      const guestBenched = game.scene.getPlayerParty().find(p => ownerOf(p) === "guest" && !p.isOnField())!;
+      const enemy = game.scene.getEnemyField().find(e => e.isActive(true))!;
+      const caughtSpecies = enemy.species.speciesId;
+      // The host chooses, with its three
+      r.session.meChooser = "host";
+      const written = vi.spyOn(game.scene.gameData, "setPokemonCaught");
+
+      const done = catchPokemon(enemy, null, PokeballType.POKEBALL, false);
+      await vi.waitUntil(() => game.scene.ui.mode === UiMode.OPTION_SELECT, { interval: 10, timeout: 8000 });
+      const options = game.scene.ui.getHandler() as OptionSelectUiHandler;
+      (options as unknown as { unblockInput(): void }).unblockInput();
+      options.setCursor(2);
+      options.processInput(Button.ACTION);
+      await vi.waitUntil(() => game.scene.ui.mode === UiMode.PARTY, { interval: 10, timeout: 8000 });
+      const partyScreen = game.scene.ui.getHandler() as PartyUiHandler;
+      partyScreen.setCursor(game.scene.getPlayerParty().indexOf(guestBenched));
+      partyScreen.processInput(Button.ACTION); // the Pokémon's options
+      partyScreen.processInput(Button.ACTION); // Release
+      // the goodbye message waits for a button
+      await vi.waitUntil(() => (partyScreen as unknown as { awaitingActionInput: boolean }).awaitingActionInput, {
+        interval: 10,
+        timeout: 8000,
+      });
+      partyScreen.processInput(Button.ACTION);
+      await done;
+
+      const party = game.scene.getPlayerParty();
+      expect(partyIds(r)).not.toContain(guestBenched.id);
+      expect(ownerOf(party.find(p => p.species.speciesId === caughtSpecies)!)).toBe("guest");
+      expect(written).not.toHaveBeenCalled();
+      expect(r.session.desyncMessage).toBeNull();
     });
   });
 

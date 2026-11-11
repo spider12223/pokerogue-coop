@@ -289,30 +289,38 @@ export class AttemptCapturePhase extends PokemonPhase {
 
     const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-    // Co-op (D4a): only the thrower's client writes to its account for what the thrower catches; the partner's client
-    // saw the Pokémon already
+    // Co-op (D4a): only the client of the player who gets the catch writes it to its account; the others saw the Pokémon
+    // already. That is the thrower, unless a thrower at the cap makes room with a partner's Pokémon (D10): with a network
+    // the catch is written once that answer is sequenced
     const thrower = this.getThrowerSeat();
-    const writes = thrower === null || writesForSeat(thrower);
+    const addStatus = new BooleanHolder(true);
+    applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
+    const full = addStatus.value && this.isSeatFull(thrower);
+    let writes = !(full && isLinked() && thrower !== null) && (thrower === null || writesForSeat(thrower));
 
-    if (
-      writes
-      && speciesForm.abilityHidden
-      && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
-        === speciesForm.getAbilityCount() - 1
-    ) {
-      globalScene.validateAchv(achvs.HIDDEN_ABILITY);
-    }
+    const validateCatchAchvs = (): void => {
+      if (
+        speciesForm.abilityHidden
+        && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
+          === speciesForm.getAbilityCount() - 1
+      ) {
+        globalScene.validateAchv(achvs.HIDDEN_ABILITY);
+      }
 
-    if (writes && pokemon.species.subLegendary) {
-      globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-    }
+      if (pokemon.species.subLegendary) {
+        globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
+      }
 
-    if (writes && pokemon.species.legendary) {
-      globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-    }
+      if (pokemon.species.legendary) {
+        globalScene.validateAchv(achvs.CATCH_LEGENDARY);
+      }
 
-    if (writes && pokemon.species.mythical) {
-      globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+      if (pokemon.species.mythical) {
+        globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+      }
+    };
+    if (writes) {
+      validateCatchAchvs();
     }
 
     pokemonInfoContainer.show(pokemon, true);
@@ -320,9 +328,6 @@ export class AttemptCapturePhase extends PokemonPhase {
     if (writes) {
       gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
     }
-
-    const addStatus = new BooleanHolder(true);
-    applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
 
     ui.showText(
       i18next.t(addStatus.value ? "battle:pokemonCaught" : "battle:pokemonCaughtButChallenge", {
@@ -377,7 +382,7 @@ export class AttemptCapturePhase extends PokemonPhase {
               end();
               return;
             }
-            if (this.isSeatFull(thrower)) {
+            if (full) {
               /** Co-op with a network: the thrower's answer, which the prompts below give instead of acting on it */
               let answer: ((payload: CatchReleasePayload) => void) | null = null;
               const addToPartyMenuConfig: OptionSelectModeConfig = {
@@ -493,26 +498,37 @@ export class AttemptCapturePhase extends PokemonPhase {
                     ),
                   isPayload: isCatchReleasePayload,
                 })
-                  .then(({ payload, key, seq }) => {
-                    if (payload.release === null) {
-                      removePokemon();
-                      end();
-                      return;
-                    }
+                  .then(async ({ payload, key, seq }) => {
                     const party = globalScene.getPlayerParty();
                     const index = party.findIndex(member => member.id === payload.release);
-                    const owner = getCoopSession()?.ownership.get(payload.release);
+                    // A catch let go stays the thrower's, as in a solo run
+                    const owner = payload.release === null ? thrower : getCoopSession()?.ownership.get(payload.release);
                     // The thrower releases one of their own, or one of a partner's that is not in the battle (D10,
                     // amended): the catch goes to the player whose Pokémon made room for it, so each keeps their share
                     if (
-                      index < 0
-                      || owner === undefined
-                      || (owner !== thrower && globalScene.getPlayerField().includes(party[index]))
+                      owner === undefined
+                      || (payload.release !== null
+                        && (index < 0 || (owner !== thrower && globalScene.getPlayerField().includes(party[index]))))
                     ) {
                       throw new DesyncError("the sequenced release is not a Pokémon the thrower may release", {
                         actual: key,
                         seq,
                       });
+                    }
+                    writes = writesForSeat(owner);
+                    if (writes) {
+                      validateCatchAchvs();
+                      gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+                      await gameData.setPokemonCaught(pokemon);
+                      if (phaseManager.getCurrentPhase() !== this) {
+                        // A reload took the catch away while its message was up (D18): the phase that took over goes on
+                        return;
+                      }
+                    }
+                    if (payload.release === null) {
+                      removePokemon();
+                      end();
+                      return;
                     }
                     const released = party[index].getNameToRender();
                     globalScene.removePartyMemberModifiers(index);

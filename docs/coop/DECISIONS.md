@@ -365,6 +365,10 @@ In a game of three each player owns 2 of the 6 (D40).
   (`CATCH_RELEASE`). The catch goes to the player whose Pokémon was released, so each keeps their share; that player is
   told in their chat box ("Sam released your Pidgey: Zubat is yours now."). The host refuses a release of a partner's
   Pokémon on the field (`invalid`), and both clients refuse to carry one out (a desync).
+  - The catch goes into the account of the player who gets it (D4a): the dex, candy and the catch's achievements.
+    A thrower with 3 answers first, so with a network it is written once the answer is sequenced, on that player's
+    client. A catch let go is the thrower's, as in a solo run. The same holds for a catch an encounter gives (D29).
+    (Amended 2026-11-11: it was written to the thrower's account before the question.)
 - **Nincada's Shedinja** is the Nincada owner's, within the same cap: an owner who has three gets none.
 
 ## D11. Trade

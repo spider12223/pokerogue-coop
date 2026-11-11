@@ -644,31 +644,42 @@ export async function catchPokemon(
 ): Promise<void> {
   const { gameData, phaseManager, pokemonInfoContainer, ui } = globalScene;
 
-  // Co-op (D29, D10): a Pokémon an encounter gives belongs to the chooser, with the cap of 3; only the owner's client writes
-  // it to its account (D4a)
+  // Co-op (D29, D10): a Pokémon an encounter gives belongs to the chooser, with the cap of 3; only the client of the player
+  // who gets it writes it to its account (D4a). A chooser at the cap may make room with a partner's Pokémon, whose player
+  // then gets it: with a network it is written once that answer is sequenced
   const coopOwner = isCoop() ? meChooser() : null;
-  const writes = coopOwner === null || writesForSeat(coopOwner);
+  const addStatus = new BooleanHolder(true);
+  applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
+  const full = coopOwner === null ? globalScene.getPlayerParty().length === 6 : coopSeatFull(coopOwner);
+  let writes =
+    !((isObtain || addStatus.value) && full && isLinked() && coopOwner !== null)
+    && (coopOwner === null || writesForSeat(coopOwner));
 
   const speciesForm = pokemon.fusionSpecies ? pokemon.getFusionSpeciesForm() : pokemon.getSpeciesForm();
 
-  if (
-    writes
-    && speciesForm.abilityHidden
-    && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex) === speciesForm.getAbilityCount() - 1
-  ) {
-    globalScene.validateAchv(achvs.HIDDEN_ABILITY);
-  }
+  const validateCatchAchvs = (): void => {
+    if (
+      speciesForm.abilityHidden
+      && (pokemon.fusionSpecies ? pokemon.fusionAbilityIndex : pokemon.abilityIndex)
+        === speciesForm.getAbilityCount() - 1
+    ) {
+      globalScene.validateAchv(achvs.HIDDEN_ABILITY);
+    }
 
-  if (writes && pokemon.species.subLegendary) {
-    globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
-  }
+    if (pokemon.species.subLegendary) {
+      globalScene.validateAchv(achvs.CATCH_SUB_LEGENDARY);
+    }
 
-  if (writes && pokemon.species.legendary) {
-    globalScene.validateAchv(achvs.CATCH_LEGENDARY);
-  }
+    if (pokemon.species.legendary) {
+      globalScene.validateAchv(achvs.CATCH_LEGENDARY);
+    }
 
-  if (writes && pokemon.species.mythical) {
-    globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+    if (pokemon.species.mythical) {
+      globalScene.validateAchv(achvs.CATCH_MYTHICAL);
+    }
+  };
+  if (writes) {
+    validateCatchAchvs();
   }
 
   pokemonInfoContainer.show(pokemon, true);
@@ -679,8 +690,6 @@ export async function catchPokemon(
 
   // TODO: remove all this duplicated code from `AttemptCapturePhase`
   return new Promise(resolve => {
-    const addStatus = new BooleanHolder(true);
-    applyChallenges(ChallengeType.POKEMON_ADD_TO_PARTY, pokemon, addStatus);
     const doPokemonCatchMenu = () => {
       const end = () => {
         // Ensure the pokemon is in the enemy party in all situations
@@ -731,7 +740,7 @@ export async function catchPokemon(
             end();
             return;
           }
-          if (coopOwner === null ? globalScene.getPlayerParty().length === 6 : coopSeatFull(coopOwner)) {
+          if (full) {
             /** Co-op with a network: the chooser's answer, which the prompts below give instead of acting on it */
             let answer: ((payload: CatchReleasePayload) => void) | null = null;
             const addToPartyMenuConfig: OptionSelectModeConfig = {
@@ -854,26 +863,38 @@ export async function catchPokemon(
                 wait: () => showChooserWaiting("pokemon"),
                 isPayload: isCatchReleasePayload,
               })
-                .then(({ payload, key, seq }) => {
-                  if (payload.release === null) {
-                    removePokemon();
-                    end();
-                    return;
-                  }
+                .then(async ({ payload, key, seq }) => {
+                  const phase = phaseManager.getCurrentPhase();
                   const party = globalScene.getPlayerParty();
                   const index = party.findIndex(member => member.id === payload.release);
-                  const owner = getCoopSession()?.ownership.get(payload.release);
+                  // A catch let go stays the chooser's, as in a solo run
+                  const owner = payload.release === null ? coopOwner : getCoopSession()?.ownership.get(payload.release);
                   // Co-op (D10, amended; D29): as in the capture phase, one of the chooser's own, or one of a partner's
                   // that is not in the battle, and the catch goes to the player whose Pokémon made room for it
                   if (
-                    index < 0
-                    || owner === undefined
-                    || (owner !== coopOwner && globalScene.getPlayerField().includes(party[index]))
+                    owner === undefined
+                    || (payload.release !== null
+                      && (index < 0 || (owner !== coopOwner && globalScene.getPlayerField().includes(party[index]))))
                   ) {
                     throw new DesyncError("the sequenced release is not a Pokémon the chooser may release", {
                       actual: key,
                       seq,
                     });
+                  }
+                  writes = writesForSeat(owner);
+                  if (writes) {
+                    validateCatchAchvs();
+                    gameData.updateSpeciesDexIvs(pokemon.species.getRootSpeciesId(true), pokemon.ivs);
+                    await gameData.setPokemonCaught(pokemon);
+                    if (phaseManager.getCurrentPhase() !== phase) {
+                      // A reload took the catch away while its message was up (D18): the phase that took over goes on
+                      return;
+                    }
+                  }
+                  if (payload.release === null) {
+                    removePokemon();
+                    end();
+                    return;
                   }
                   const released = party[index].getNameToRender();
                   globalScene.removePartyMemberModifiers(index);

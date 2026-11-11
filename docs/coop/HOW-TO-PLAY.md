@@ -43,8 +43,8 @@ The host's Pokémon fight on the left, the guest's on the right.
 - **Balls and running away** use the whole side's turn, so the partner is asked first ("let them throw?"). If you both choose
   a Ball (or a Ball and Run) in the same turn, the host picks which one happens.
 - **Catching:** the catch goes to whoever threw the Ball. Each player holds up to three Pokémon: with three already, you
-  release one of yours, or one of your friend's that is not in the battle (then the catch is theirs, and they are told),
-  or let the catch go.
+  release one of yours, or one of your friend's that is not in the battle (then the catch is theirs, Pokédex and candy
+  too, and they are told), or let the catch go.
 - **Aiming at your friend's Pokémon:** if you point an attack at your friend's Pokémon, the game asks first, so a stray
   button press doesn't hit them.
 - **A wipe:** when both sides are out of Pokémon, the host chooses **Retry the wave** (both of you start that wave again from
