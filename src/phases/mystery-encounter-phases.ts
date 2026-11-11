@@ -300,7 +300,10 @@ export class MysteryEncounterOptionSelectedPhase extends Phase {
 
   private runOption(): void {
     const done = this.onOptionSelect().finally(() => {
-      this.end();
+      // Co-op (D18): a reload abandons this phase; when its question then rejects, the phase that took over goes on
+      if (!isLinked() || globalScene.phaseManager.getCurrentPhase() === this) {
+        this.end();
+      }
     });
     // Co-op: a decision of a world that was reloaded rejects (D18); anything else is reported
     if (isLinked()) {

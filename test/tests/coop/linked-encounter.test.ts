@@ -9,13 +9,14 @@ import { ownerOf } from "#coop/decisions/control";
 import type { Seat } from "#coop/protocol";
 import { type MeChoice, meChoiceKey } from "#coop/rules/me-choice";
 import { requireCoopSession } from "#coop/session";
+import { EpochChangedError } from "#coop/transport/epoch";
 import { Button } from "#enums/buttons";
 import { MysteryEncounterType } from "#enums/mystery-encounter-type";
 import { SpeciesId } from "#enums/species-id";
 import { Stat } from "#enums/stat";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
-import type { MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
+import { MysteryEncounterOptionSelectedPhase, type MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
 import { advanceTo, openUi } from "#test/helpers/coop-harness";
 import { type LinkedRun, openLinkedRun } from "#test/helpers/coop-linked";
 import type { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
@@ -292,5 +293,24 @@ describe("Co-op: Mystery Encounters in a linked run (D29)", () => {
       return message.awaitingActionInput;
     });
     expect(requireCoopSession().meQuestion?.k).toBe("pokemon");
+  });
+
+  it("an option whose question a reload took away does not end the phase that took over (D18)", async () => {
+    const r = await encounter(MysteryEncounterType.CLOWNING_AROUND);
+    const { phaseManager } = r.ctx.game.scene;
+    const current = phaseManager.getCurrentPhase();
+    // the option's phase, abandoned by a reload (another phase is the current one): its question rejects, as a decision of
+    // the world that was reloaded does
+    const abandoned = Object.create(
+      MysteryEncounterOptionSelectedPhase.prototype,
+    ) as MysteryEncounterOptionSelectedPhase;
+    abandoned.onOptionSelect = () => Promise.reject(new EpochChangedError());
+    const shift = vi.spyOn(phaseManager, "shiftPhase");
+
+    (abandoned as unknown as { runOption(): void }).runOption();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(shift).not.toHaveBeenCalled();
+    expect(phaseManager.getCurrentPhase()).toBe(current);
   });
 });
