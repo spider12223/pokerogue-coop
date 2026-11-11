@@ -152,31 +152,48 @@ describe("ReliableTransport", () => {
       const raw = new StubRaw();
       const transport = new ReliableTransport(raw, { maxHeld: 8 });
       const received = collect(transport);
-      for (let n = 2; n <= 30; n++) {
+      raw.push(data(1));
+      for (let n = 3; n <= 31; n++) {
         raw.push(data(n));
       }
-      // 2..8 are within 8 of the next one (1); the others are dropped, unacknowledged
+      // 3..9 are within 8 of the next one (2); the others are dropped, unacknowledged
       expect(transport.stats.heldBack).toBe(7);
       expect(transport.stats.tooFarAhead).toBe(22);
-      raw.push(data(1));
-      expect(received).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+      raw.push(data(2));
+      expect(received).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
       // the sender sends again what was not acknowledged
-      for (let n = 9; n <= 30; n++) {
+      for (let n = 10; n <= 31; n++) {
         raw.push(data(n));
       }
-      expect(received).toEqual(Array.from({ length: 30 }, (_, i) => i + 1));
+      expect(received).toEqual(Array.from({ length: 31 }, (_, i) => i + 1));
     });
 
     it("holds back at most 256 frames by default, whatever numbers they carry", () => {
       const raw = new StubRaw();
       const transport = new ReliableTransport(raw);
       collect(transport);
-      for (let n = 2; n <= 2000; n++) {
+      raw.push(data(1));
+      for (let n = 3; n <= 2001; n++) {
         raw.push(data(n));
       }
       raw.push(data(10_000_000));
       expect(transport.stats.heldBack).toBe(255);
-      expect(transport.stats.tooFarAhead).toBe(2000 - 1 - 255 + 1);
+      expect(transport.stats.tooFarAhead).toBe(2001 - 2 - 255 + 1);
+    });
+
+    it("holds back nothing before the first frame of a numbering: an old one still on its way cannot take a new one's place (D20)", () => {
+      const raw = new StubRaw();
+      const transport = new ReliableTransport(raw);
+      const received = collect(transport);
+      raw.push(data(1));
+      raw.push(data(2));
+      // a new pairing: the partner numbers again from 1, but its frame 5 of before is still on its way
+      transport.reset();
+      raw.push(JSON.stringify({ n: 5, b: message(105) }));
+      for (let n = 1; n <= 6; n++) {
+        raw.push(data(n));
+      }
+      expect(received).toEqual([1, 2, 1, 2, 3, 4, 5, 6]);
     });
 
     it("drops a frame longer than the relay forwards", () => {

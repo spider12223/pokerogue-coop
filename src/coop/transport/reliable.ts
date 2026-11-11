@@ -338,8 +338,11 @@ export class ReliableTransport implements MessageTransport {
       }
     } else if (this.held.has(n)) {
       this.stats.duplicatesDropped++;
-    } else if (n > this.deliveredN + this.maxHeld || this.held.size >= this.maxHeld) {
-      // Not acknowledged, so an honest sender sends it again once the gap is closed: only a flood is lost
+    } else if (this.deliveredN === 0 || n > this.deliveredN + this.maxHeld || this.held.size >= this.maxHeld) {
+      // Not acknowledged, so an honest sender sends it again once the gap is closed: only a flood is lost. Before the first
+      // frame of a numbering (a new pairing, D20) nothing is held: one ahead of it may be of the partner's old numbering,
+      // still on its way, and would take the place of the new frame of that number.
+      // shortcut: an old frame numbered 1 is still taken as the new first one; it needs two pairings within a round trip
       this.stats.tooFarAhead++;
     } else {
       this.held.set(n, body);
