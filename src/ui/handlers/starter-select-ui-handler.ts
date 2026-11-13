@@ -2395,6 +2395,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   protected updateInstructions(): void {
     const { dexEntry } = getStarterData(this.lastStarterId);
     this.instructionsContainer.updateInstructions(this.canCycle, !!dexEntry.caughtAttr, this.filterMode);
+    // Co-op: the status plate is where the filter hint goes
+    this.coopUi?.coverFilterHint(this.instructionsContainer);
   }
 
   protected updateStarters(): void {

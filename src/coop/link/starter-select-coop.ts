@@ -388,6 +388,17 @@ export class CoopStarterSelectController {
   }
 
   /**
+   * The status plate sits where upstream's "Go to filters" hint goes (it shows once a key or a pad was used): the hint
+   * is hidden, else it is drawn over the plate. Its key still works.
+   * @param instructions - The starter select's hints, after each update
+   */
+  coverFilterHint(instructions: Phaser.GameObjects.Container): void {
+    for (const name of ["sprite-goFilter-icon-element", "text-goFilter-label"]) {
+      (instructions.getByName(name) as Phaser.GameObjects.Sprite | Phaser.GameObjects.Text | null)?.setVisible(false);
+    }
+  }
+
+  /**
    * Handle input before the starter select screen does.
    * @returns Whether the input was consumed: while ready (cancel takes the ready back), once the run started, or once the
    * partner is gone (cancel goes back to the title)

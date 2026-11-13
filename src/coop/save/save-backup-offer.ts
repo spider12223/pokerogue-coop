@@ -68,37 +68,41 @@ export function offerSaveBackup(localSaves = bypassLogin): Promise<void> {
       ui.clearText();
       resolve();
     };
-    ui.showText(
-      coopText(
-        "backupOffer",
-        "Your save is only in this browser: clearing cookies or site data deletes it. Download a backup?",
+    // The screen before the title goes first (the co-op starter select, when the partner left): kept under the question, it
+    // stayed under the title menu too
+    void ui.setMode(UiMode.MESSAGE).then(() =>
+      ui.showText(
+        coopText(
+          "backupOffer",
+          "Your save is only in this browser: clearing cookies or site data deletes it. Download a backup?",
+        ),
+        null,
+        () =>
+          ui.setModeWithoutClear(UiMode.CONFIRM, {
+            yesHandler: () => {
+              keepStorage();
+              void ui.setMode(UiMode.MESSAGE).then(async () => {
+                const saved = await gameData.tryExportData(GameDataType.SYSTEM);
+                if (saved) {
+                  noteBackup(storage, clock(), gameData.gameStats.playTime);
+                }
+                ui.showText(
+                  saved
+                    ? coopText("backupSaved", "Saved to your downloads. To restore it: Manage Data > Import Data.")
+                    : coopText("backupFailed", "The backup could not be made. Try Manage Data > Export Data."),
+                  null,
+                  close,
+                  null,
+                  true,
+                );
+              });
+            },
+            noHandler: () => {
+              snoozeBackup(storage, clock());
+              void ui.setMode(UiMode.MESSAGE).then(close);
+            },
+          }),
       ),
-      null,
-      () =>
-        ui.setModeWithoutClear(UiMode.CONFIRM, {
-          yesHandler: () => {
-            keepStorage();
-            void ui.setMode(UiMode.MESSAGE).then(async () => {
-              const saved = await gameData.tryExportData(GameDataType.SYSTEM);
-              if (saved) {
-                noteBackup(storage, clock(), gameData.gameStats.playTime);
-              }
-              ui.showText(
-                saved
-                  ? coopText("backupSaved", "Saved to your downloads. To restore it: Manage Data > Import Data.")
-                  : coopText("backupFailed", "The backup could not be made. Try Manage Data > Export Data."),
-                null,
-                close,
-                null,
-                true,
-              );
-            });
-          },
-          noHandler: () => {
-            snoozeBackup(storage, clock());
-            void ui.setMode(UiMode.MESSAGE).then(close);
-          },
-        }),
     );
   });
 }
