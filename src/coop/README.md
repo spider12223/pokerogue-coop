@@ -16,7 +16,7 @@ everything else is in a folder per area:
 | `decisions/` | The sequencer, decision keys and payloads, the bridge the phases call, who decides, legality, take over |
 | `rules/` | Ownership, the arrange step, rewards, trades, party edits, encounters, catches, games of three |
 | `sync/` | Seeded draws, the account snapshot, state hashes, checkpoints, the phase trace |
-| `save/` | The save block, the co-op save files, resync, seat tokens, account import and backup |
+| `save/` | The save block, the co-op save files, resync, seat tokens, account import and backup, two tabs sharing a save |
 | `cosmetic/` | Intents, cursors, pings, emotes, their hotkeys and touch buttons |
 | `ui/` | The UI strings, waiting lines, take over menus, pacing, the chat, the HP bars of a battle of three, each player's zoom and hidden HP boxes |
 | `diagnostics/` | The co-op log, "Report a problem", `window.__coop`, the stall detector, retries of failed downloads |

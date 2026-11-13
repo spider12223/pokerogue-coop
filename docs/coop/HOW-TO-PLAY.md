@@ -9,7 +9,9 @@ SPDX-License-Identifier: AGPL-3.0-only
 Two players, each on their own computer, play one Classic or Endless run together. Every battle is a double battle: each of you brings
 three Pokémon and controls one side of the field. Both of you need the same game address (a website, or a link from a friend
 who hosts it, see [HOSTING.md](HOSTING.md)) and a recent Chrome, Edge or Firefox. Keep the game in its own window: a tab in
-the background runs slowly.
+the background runs slowly. Trying it alone in two tabs or windows of one browser? Both share one save, so each one's
+progress (candies, catches) overwrites the other's, and the game says so in the chat: open the second player in a
+private window or another browser instead.
 
 ## Starting a game
 

@@ -574,6 +574,12 @@ Mystery Encounters are on (D29), and `EggLapsePhase` runs (D30).
     (D35) and the egg machine (D30) go on: a reset would end the run of both players.
 - **Host a game** over a saved run asks first: the new run's first wave replaces the slot. A wave-start save that does
   not fit in local storage removes the slot of the earlier wave (Continue would silently take the run back to it).
+- **Two players in one browser** (two tabs or windows) share one save: the site has no login, so every tab keeps the
+  account under the same key, and each tab's wave-start save writes over the other's progress (candies, the candy
+  meter, catches). While a session lasts, its tab says it is here on a channel of the browser; when two hear each
+  other, each player gets a chat note (D38) once per session: play one of you in a private window or another browser
+  (each has a save and a channel of its own). Nothing is refused. (Amended 2026-11-13, from a player's report: a candy
+  meter that went back to the imported value.)
 
 ## D20. Disconnect and rejoin
 

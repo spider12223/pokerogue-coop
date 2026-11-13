@@ -52,6 +52,7 @@ import {
 import type { CoopSlot } from "#coop/save/coop-slot";
 import { systemImportAvailable } from "#coop/save/import-account";
 import { installResync, registerBeforeReload, registerLeaveHandler } from "#coop/save/resync-run";
+import { watchSameBrowser } from "#coop/save/same-browser";
 import { pickCoopFile, savedCoopRuns } from "#coop/save/save-files";
 import { forgetSeat, saveSeat } from "#coop/save/seat-store";
 import { coopStore } from "#coop/save/wave-save";
@@ -61,7 +62,7 @@ import { findMatch, type MatchRole } from "#coop/transport/match-ws";
 import { relayUrlFor } from "#coop/transport/relay-url";
 import { RelayError } from "#coop/transport/relay-ws";
 import { stopAllAfkWatchers } from "#coop/ui/afk";
-import { startChat, stopChat } from "#coop/ui/chat";
+import { chatNote, startChat, stopChat } from "#coop/ui/chat";
 import { copyText } from "#coop/ui/clipboard";
 import { listenForFieldWheel } from "#coop/ui/field-zoom";
 import { startPacer, stopPacer } from "#coop/ui/pace-run";
@@ -109,6 +110,8 @@ let continueHandler: ((callbacks: CoopTitleCallbacks, file: number) => void) | n
 let lastFailedCode: string | null = null;
 /** Stops the co-op log's recording of the session (D26) */
 let stopCoopLog: (() => void) | null = null;
+/** Stops listening for another co-op tab of this browser (D19) */
+let stopSameBrowser: (() => void) | null = null;
 
 export function registerContinueHandler(handler: (callbacks: CoopTitleCallbacks, file: number) => void): void {
   continueHandler = handler;
@@ -153,6 +156,8 @@ export function leaveCoop(): void {
   stopCoopLog = null;
   setReportButtonVisible(false);
   stopChat();
+  stopSameBrowser?.();
+  stopSameBrowser = null;
   stopDebugPanel();
   clearDebugQueue();
   writeDebugOverrides(null, 0);
@@ -722,6 +727,18 @@ export function beginSession(
   setReportButtonVisible(true);
   // The chat box (D38), for the whole session
   startChat(link, getCoopName());
+  // Two players in one browser share one save (D19): each is told when the other's tab is in co-op too
+  stopSameBrowser?.();
+  stopSameBrowser = watchSameBrowser(() => {
+    coopLog().warn("save", "another co-op tab of this browser: the two share one save");
+    chatNote(
+      coopText(
+        "sameBrowserSave",
+        "Another tab of this browser is in co-op too. Both share one save, so each overwrites the other's progress "
+          + "(candies, catches). Play one of you in a private window or another browser.",
+      ),
+    );
+  });
   // The wheel zooms this player's battlefield (D44)
   listenForFieldWheel();
   // The host's debug menu (D42): only the host's, and only with the menu on; nothing of an earlier run's is in effect
