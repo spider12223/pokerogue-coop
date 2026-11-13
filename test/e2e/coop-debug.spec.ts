@@ -54,12 +54,12 @@ test("the host's debug window: F8 opens it beside the game for the host only; on
   await Promise.all([host, guest].map(waitForTitle));
   await host.page.evaluate(async path => {
     const { settings } = await import(path);
-    settings.update("general", "coopDebugMenu", true);
+    settings.update("coop", "debugMenu", true);
   }, SETTINGS_MODULE);
   // The guest's own setting does nothing: only the host's counts
   await guest.page.evaluate(async path => {
     const { settings } = await import(path);
-    settings.update("general", "coopDebugMenu", true);
+    settings.update("coop", "debugMenu", true);
   }, SETTINGS_MODULE);
 
   await startLinkedRun(host, guest);

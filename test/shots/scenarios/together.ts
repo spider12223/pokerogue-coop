@@ -155,7 +155,7 @@ async function setHostDebugMenu(run: ShotRun, on: boolean): Promise<void> {
   await run.host.page.evaluate(
     async ({ path, value }) => {
       const { settings } = await import(path);
-      settings.update("general", "coopDebugMenu", value);
+      settings.update("coop", "debugMenu", value);
     },
     { path: "/src/globals/global-settings-manager.ts", value: on },
   );
@@ -208,7 +208,7 @@ const debugWindow: Scenario = {
     await run.open();
     await run.host.page.evaluate(async path => {
       const { settings } = await import(path);
-      settings.update("general", "coopDebugMenu", true);
+      settings.update("coop", "debugMenu", true);
     }, "/src/globals/global-settings-manager.ts");
     await run.toRun();
     await run.drive({ until: atCommand, shoot: () => false });
@@ -239,7 +239,7 @@ const debugWaves: Scenario = {
     await run.open();
     await run.host.page.evaluate(async path => {
       const { settings } = await import(path);
-      settings.update("general", "coopDebugMenu", true);
+      settings.update("coop", "debugMenu", true);
     }, "/src/globals/global-settings-manager.ts");
     await run.toRun();
     await run.drive({ until: atCommand, shoot: () => false });

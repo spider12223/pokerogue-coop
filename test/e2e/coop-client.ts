@@ -245,7 +245,7 @@ const SETTINGS_MODULE = "/src/globals/global-settings-manager.ts";
 export async function enableThreePlayers(client: Client): Promise<void> {
   await client.page.evaluate(async path => {
     const { settings } = await import(path);
-    settings.update("general", "coopThreePlayers", true);
+    settings.update("coop", "threePlayers", true);
   }, SETTINGS_MODULE);
 }
 
@@ -256,7 +256,7 @@ export async function enableThreePlayers(client: Client): Promise<void> {
 export async function choosePlayers(client: Client, players: 2 | 3 = 2): Promise<void> {
   const asked = await client.page.evaluate(async path => {
     const { settings } = await import(path);
-    return settings.general.coopThreePlayers as boolean;
+    return settings.coop.threePlayers as boolean;
   }, SETTINGS_MODULE);
   if (!asked) {
     expect(players, `${client.label}: 3 players needs enableThreePlayers first`).toBe(2);

@@ -104,6 +104,11 @@ export class SettingsManager {
     return this._settings.gamepad;
   }
 
+  /** Co-op: the Co-op tab (D47) */
+  public get coop() {
+    return this._settings.coop;
+  }
+
   /** Getter for checking if experimental sprites are enabled */
   public get expSpritesEnabled(): boolean {
     return this.display.spriteSet === SpriteSet.EXPERIMENTAL;
@@ -188,7 +193,7 @@ export class SettingsManager {
 
         applySettingsVersionMigration(lsSettings);
 
-        const { general, audio, display, gamepad } = lsSettings;
+        const { general, audio, display, gamepad, coop } = lsSettings;
 
         if (general) {
           this._settings.general = { ...this._settings.general, ...general };
@@ -208,10 +213,35 @@ export class SettingsManager {
         if (gamepad) {
           this._settings.gamepad = { ...this._settings.gamepad, ...gamepad };
         }
+
+        if (coop) {
+          this._settings.coop = { ...this._settings.coop, ...coop };
+        }
+        moveCoopSwitches(this._settings, coop);
       } catch (err) {
         console.error("Error loading settings from local storage:", err);
       }
     }
+  }
+}
+
+/**
+ * Co-op (D47): the 3-player and debug-menu switches moved from General to the Co-op tab (2026-11-13). A player's
+ * saved choice comes along once, and the old entries go.
+ * @param stored - The Co-op tab as it was saved, if it was
+ */
+function moveCoopSwitches(target: Settings, stored: Partial<Settings["coop"]> | undefined): void {
+  const general = target.general as unknown as Record<string, unknown>;
+  for (const [old, key] of [
+    ["coopThreePlayers", "threePlayers"],
+    ["coopDebugMenu", "debugMenu"],
+  ] as const) {
+    const saved = general[old];
+    // (a new object: the tab may still be the defaults' own)
+    if (typeof saved === "boolean" && stored?.[key] === undefined) {
+      target.coop = { ...target.coop, [key]: saved };
+    }
+    delete general[old];
   }
 }
 

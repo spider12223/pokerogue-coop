@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { getPokemonNameWithAffix } from "#app/messages";
 import { type CosmeticMessage, type CosmeticTarget, EMOTE_COUNT } from "#coop/cosmetic/cosmetic";
 import { addTag, addTargetPointer, battlerBox, MARK_COLORS, type TagPiece } from "#coop/cosmetic/cosmetic-tag";
@@ -18,6 +20,7 @@ import { getTypeRgb } from "#data/type";
 import type { PokemonType } from "#enums/pokemon-type";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import type { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import type { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
 
@@ -277,14 +280,23 @@ export class CosmeticView {
     }
 
     const actorBox = battlerBox(actor);
-    const objects: Phaser.GameObjects.GameObject[] = [
-      addTag(actorBox.x, actorBox.top - 1, pieces, { accent, dim: !intent.ready, tail: true }),
-    ];
-    if (aimed) {
+    // What this player chose to see (the Co-op settings, D47)
+    const objects: Phaser.GameObjects.GameObject[] = settings.coop.moveTags
+      ? [addTag(actorBox.x, actorBox.top - 1, pieces, { accent, dim: !intent.ready, tail: true })]
+      : [];
+    if (aimed && settings.coop.targetPointers) {
       // a pointer over the target: moving while the partner is still aiming, still once locked in
       objects.push(addTargetPointer(target, accent, !intent.ready));
     }
     this.intentObjects.set(pokemonId, objects);
+  }
+
+  /** The Co-op settings changed (D47): the partner's tags and cursor are drawn again by them */
+  public redraw(): void {
+    for (const pokemonId of this.intents.keys()) {
+      this.drawIntent(pokemonId);
+    }
+    this.drawCursor();
   }
 
   // #endregion
@@ -310,7 +322,12 @@ export class CosmeticView {
       return;
     }
     const session = getCoopSession();
-    if (this.cursor === null || session === null || this.cursor.screen !== session.rewardPickCount - 1) {
+    if (
+      !settings.coop.rewardCursor
+      || this.cursor === null
+      || session === null
+      || this.cursor.screen !== session.rewardPickCount - 1
+    ) {
       handler.setPartnerCursor(null);
     } else {
       handler.setPartnerCursor(this.cursor.row, this.cursor.col);
@@ -346,7 +363,8 @@ export class CosmeticView {
   public drawMeCursor(): void {
     const session = getCoopSession();
     if (
-      this.meCursor === null
+      !settings.coop.encounterCursor
+      || this.meCursor === null
       || session === null
       || session.meQuestion?.k !== "option"
       || this.meCursor.step !== session.meStep - 1
@@ -442,6 +460,9 @@ export class CosmeticView {
    * @param ping - A ping: a "!" before what it is about
    */
   public showBubble(seat: Seat, name: string, message: string, ping = false): void {
+    if (!settings.coop.bubbles) {
+      return;
+    }
     this.bubbles.get(seat)?.destroy();
     const [x, y] = bubbleSpot(seat);
     const partner = seat === this.partner;
@@ -628,3 +649,10 @@ function shortName(pokemon: Pokemon): string {
 }
 
 // #endregion
+
+// What this player sees follows the Co-op settings at once (D47)
+eventBus.on("settings/update/success", ({ category }: SettingsUpdateEventArgs) => {
+  if (category === "coop") {
+    getCosmeticView()?.redraw();
+  }
+});

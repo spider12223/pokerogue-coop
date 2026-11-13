@@ -4,10 +4,13 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { drawPixels, MARK_COLORS } from "#coop/cosmetic/cosmetic-tag";
 import { isCoop } from "#coop/session";
 import type { Pokemon } from "#field/pokemon";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import type { BattleInfo } from "#ui/battle-info";
 
 /**
@@ -89,7 +92,7 @@ function placeOf(pokemon: Pokemon): BoxPlace {
 
 /** @returns Whether the box of this Pokémon's place is hidden on this client */
 export function isBoxHidden(pokemon: Pokemon): boolean {
-  return isCoop() && hidden.has(placeOf(pokemon));
+  return isCoop() && settings.coop.boxHandles && hidden.has(placeOf(pokemon));
 }
 
 /** @returns How far the box is moved off its place now (an enemy's to the left, ours to the right); 0 in its place */
@@ -218,8 +221,10 @@ export function syncHideButton(pokemon: Pokemon, instant = true): void {
   }
   const player = pokemon.isPlayer();
   const handle = handles.get(info) ?? makeHandle(info, pokemon);
-  const away = hidden.has(placeOf(pokemon));
+  // (the Co-op settings can take the buttons off: every box is then shown, D47)
+  const away = settings.coop.boxHandles && hidden.has(placeOf(pokemon));
   handle.away = away;
+  handle.container.setVisible(settings.coop.boxHandles);
   const [x, y] = eyePlace(info, player, away);
   handle.container.setPosition(x, y);
   // open while the box is there, closed while it is away
@@ -288,3 +293,12 @@ export function toggleBoxHidden(pokemon: Pokemon): boolean {
   syncHideButton(pokemon, false);
   return true;
 }
+
+// What this player sees follows the Co-op settings at once (D47)
+eventBus.on("settings/update/success", ({ category, key }: SettingsUpdateEventArgs) => {
+  if (category === "coop" && key === "boxHandles" && isCoop() && globalScene?.currentBattle != null) {
+    for (const pokemon of globalScene.getField(true)) {
+      syncHideButton(pokemon, false);
+    }
+  }
+});

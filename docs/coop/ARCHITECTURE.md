@@ -492,6 +492,7 @@ in tests. Keep it that way: nothing in a pure module may import a game module, d
 | `save/save-block.ts` | The `coop` block of the session save; refuses a co-op save in solo, a solo save in co-op, other accounts | D4, D7, D13 | yes |
 | `save/wave-save.ts` | `saveCoopWaveStart` (in `EncounterPhase`), the slot, `updateSlotEpoch` | D19 | no |
 | `save/account-save.ts` | `saveCoopAccount`; a save the browser refuses: room made from the co-op log's copy, the player told | D19 | no |
+| `../ui/settings/coop-settings-ui-handler.ts` | The Co-op tab of the settings (`UiMode.SETTINGS_COOP`); its items are `coopSettingsUiItems` | D47 | no |
 | `save/same-browser.ts` | `watchSameBrowser`: a session's tab says it is here on the browser's channel; two that hear each other tell their players they share one save | D19 | no |
 | `save/coop-slot.ts` | The host's co-op save files (`coopSlot`): the wave-start save, the epoch, the last `seq`, the names and accounts, the debug menu | D19, D42 | yes |
 | `save/save-files.ts` | The host's co-op save files on the save screen | D19, D21 | no |

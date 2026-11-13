@@ -50,4 +50,5 @@ export enum UiMode {
   COOP_JOIN_FORM,
   COOP_NAME_FORM,
   COOP_TRADE,
+  SETTINGS_COOP,
 }

@@ -16,7 +16,7 @@ import { UiMode } from "#enums/ui-mode";
 import { defaultSettings } from "#system/default-settings";
 import { GameManager } from "#test/framework/game-manager";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
-import { generalSettingsUiItems } from "#ui/settings-ui-items";
+import { coopSettingsUiItems } from "#ui/settings-ui-items";
 import i18next from "i18next";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,9 +30,9 @@ const CALLBACKS = { onConnected: () => undefined, onCancel: () => undefined };
 
 describe("Co-op: the 3-Player Co-op (Beta) setting (D40)", () => {
   it("is a general setting, off by default", () => {
-    expect(defaultSettings.general.coopThreePlayers).toBe(false);
-    expect(settings.general.coopThreePlayers).toBe(false);
-    const item = generalSettingsUiItems.find(entry => entry.key === "coopThreePlayers");
+    expect(defaultSettings.coop.threePlayers).toBe(false);
+    expect(settings.coop.threePlayers).toBe(false);
+    const item = coopSettingsUiItems.find(entry => entry.key === "threePlayers");
     expect(item?.label).toBe("3-Player Co-op (Beta)");
     expect(item?.options.map(option => option.value)).toEqual([false, true]);
   });
@@ -79,18 +79,18 @@ describe("Co-op: 2 or 3 players (D40)", () => {
       texts.push(text);
       callback?.();
     });
-    settings.update("general", "coopThreePlayers", true);
+    settings.update("coop", "threePlayers", true);
   });
 
   afterEach(() => {
-    settings.update("general", "coopThreePlayers", false);
+    settings.update("coop", "threePlayers", false);
     endCoopSession();
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
   it("with the setting off, Host a game asks the mode only; Cancel goes back to the co-op menu", async () => {
-    settings.update("general", "coopThreePlayers", false);
+    settings.update("coop", "threePlayers", false);
     showCoopTitleMenu(CALLBACKS);
     await tick();
     await choose("Host a game");

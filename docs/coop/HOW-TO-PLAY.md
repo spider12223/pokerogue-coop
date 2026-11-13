@@ -65,7 +65,7 @@ The host's Pokémon fight on the left, the guest's on the right.
 
 ## Three players (Beta)
 
-Three friends can play one run together. It is a Beta: turn it on with **Settings → General → 3-Player Co-op (Beta)**
+Three friends can play one run together. It is a Beta: turn it on with **Settings → Co-op → 3-Player Co-op (Beta)**
 (only the host needs it; joining a game of three works with the setting off).
 
 - **Starting:** **Host a game → 3 players (Beta)**, then the kind of run. Send the code to both friends; each joins with
@@ -90,7 +90,7 @@ Three friends can play one run together. It is a Beta: turn it on with **Setting
 
 ## Debug menu (for messing around)
 
-The host can cheat: **Settings → General → Co-op Debug Menu (Host)**, then **F8** opens the **debug window**: a window
+The host can cheat: **Settings → Co-op → Co-op Debug Menu (Host)**, then **F8** opens the **debug window**: a window
 of its own, connected to your game (the key can be changed in **Menu > Settings > Keyboard**). Put it beside the game or
 on a second screen; the game keeps running. Only the host has it; friends only see what happens.
 
@@ -194,6 +194,10 @@ server collects logs. It contains your display names and what you chose in the r
 | Hide or show an HP box (your screen only) | click its small eye (an enemy's by its level, yours by its name) | | tap the eye |
 
 The keys can be changed in **Menu > Settings > Keyboard**.
+
+**Menu > Settings > Co-op** chooses what you see of co-op: your partner's move tags and target pointers, ping and
+emote bubbles, their cursor on the reward screen, the hide buttons on the HP boxes, the chat pop-ups and button, the
+report button, the mouse wheel zoom and more. It only changes your screen, never your partner's.
 
 **Your own view:** zooming out (down to 60%) and hiding HP boxes change only your screen; your partner's stays as it
 is. A hidden box leaves its type and a closed eye at the screen's edge: click the eye to bring the box back. Your

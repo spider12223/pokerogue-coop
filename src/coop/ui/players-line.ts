@@ -4,8 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { TextStyle } from "#enums/text-style";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import { addBBCodeTextObject } from "#ui/text";
 import type BBCodeText from "phaser4-rex-plugins/plugins/bbcodetext";
 
@@ -23,6 +26,11 @@ let line: BBCodeText | null = null;
 
 /** Show (or change) the line; `text` may have colour tags */
 export function showPlayersLine(text: string): void {
+  // (the Co-op settings can take the line off, D47)
+  if (!settings.coop.playersLine) {
+    hidePlayersLine();
+    return;
+  }
   const { message } = globalScene.ui.getMessageHandler();
   if (line === null || !line.active) {
     line = addBBCodeTextObject(message.x, message.y + LINE_HEIGHT, "", TextStyle.MESSAGE);
@@ -36,3 +44,10 @@ export function hidePlayersLine(): void {
   line?.destroy();
   line = null;
 }
+
+// What this player sees follows the Co-op settings at once (D47)
+eventBus.on("settings/update/success", ({ category, key, value }: SettingsUpdateEventArgs) => {
+  if (category === "coop" && key === "playersLine" && value === false) {
+    hidePlayersLine();
+  }
+});

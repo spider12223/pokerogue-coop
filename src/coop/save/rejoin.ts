@@ -222,7 +222,7 @@ export async function tryAutoRejoin(): Promise<boolean> {
   try {
     if (seat === "host") {
       // The run keeps its debug menu (D42): the guests' sessions kept theirs, whatever the setting says by now
-      const debug = debugMenuOnRejoin(slot!, settings.general.coopDebugMenu);
+      const debug = debugMenuOnRejoin(slot!, settings.coop.debugMenu);
       const pinned = buildPinnedSettings(settings.general.playerGender);
       const effectiveHash = overlay.apply(pinned);
       // A game of three takes both guests back on channels of their own (D40)
@@ -385,7 +385,7 @@ async function continueWith(
     const pinned = buildPinnedSettings(settings.general.playerGender);
     const effectiveHash = overlay.apply(pinned);
     // A continued run takes the setting as it is now (both sessions begin again); the handshake and the session say the same
-    const debug = settings.general.coopDebugMenu;
+    const debug = settings.coop.debugMenu;
     let established: Awaited<ReturnType<typeof establishHost>>;
     try {
       established = await establishHost(room, getLocalBuildIdentity(), pinned, {

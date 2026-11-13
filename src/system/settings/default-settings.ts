@@ -18,6 +18,7 @@ import { UiTheme } from "#enums/ui-theme";
 import { UiWindowStyle } from "#enums/ui-window-style";
 import type {
   AudioSettings,
+  CoopSettings,
   DisplaySettings,
   GamepadSettings,
   GeneralSettings,
@@ -27,8 +28,6 @@ import type {
 const defaultGeneralSettings: GeneralSettings = {
   battleCursorMemory: false,
   battleStyle: BattleStyle.SWITCH,
-  coopDebugMenu: false,
-  coopThreePlayers: false,
   dexForDevs: false,
   eggSkipPreference: EggSkipPreference.ASK,
   enableRetries: false,
@@ -86,8 +85,28 @@ const defaultGamepadSettings: GamepadSettings = {
   enabled: true,
 };
 
+/** Co-op (D47): the switches off, everything a player sees on */
+const defaultCoopSettings: CoopSettings = {
+  boxHandles: true,
+  bubbles: true,
+  chatButton: true,
+  chatPopups: true,
+  debugMenu: false,
+  encounterCursor: true,
+  moveTags: true,
+  playersLine: true,
+  playersOnline: true,
+  reportButton: true,
+  rewardCursor: true,
+  targetPointers: true,
+  teammateBars: true,
+  threePlayers: false,
+  wheelZoom: true,
+};
+
 export const defaultSettings: UserFacingSettings = {
   audio: defaultAudioSettings,
+  coop: defaultCoopSettings,
   display: defaultDisplaySettings,
   gamepad: defaultGamepadSettings,
   general: defaultGeneralSettings,

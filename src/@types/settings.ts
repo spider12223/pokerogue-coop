@@ -27,6 +27,7 @@ export interface Settings extends UserFacingSettings {
 
 export interface UserFacingSettings {
   audio: AudioSettings;
+  coop: CoopSettings;
   display: DisplaySettings;
   gamepad: GamepadSettings;
   general: GeneralSettings;
@@ -35,10 +36,6 @@ export interface UserFacingSettings {
 export interface GeneralSettings {
   battleCursorMemory: boolean;
   battleStyle: BattleStyle;
-  /** Co-op (D42): the host of a game may open the debug menu */
-  coopDebugMenu: boolean;
-  /** Co-op (D40): Host a game offers 3 players (Beta) */
-  coopThreePlayers: boolean;
   dexForDevs: boolean;
   eggSkipPreference: EggSkipPreference;
   enableRetries: boolean;
@@ -55,6 +52,43 @@ export interface GeneralSettings {
   playerGender: PlayerGender;
   preferBatonPass: boolean;
   skipSeenDialogues: boolean;
+}
+
+/**
+ * Co-op: the Co-op tab (DECISIONS D47). The two switches decide what a game offers; every other entry only changes
+ * what this player sees, never the run or the partner's screen.
+ */
+export interface CoopSettings {
+  /** The buttons that hide an HP box (D44); off, every box is shown */
+  boxHandles: boolean;
+  /** Ping and emote bubbles (D16) */
+  bubbles: boolean;
+  /** The chat button (the chat key still opens the box, D38) */
+  chatButton: boolean;
+  /** Chat lines and notes in the corner while the box is closed (D38) */
+  chatPopups: boolean;
+  /** The host of a game may open the debug menu (D42) */
+  debugMenu: boolean;
+  /** This screen's cursor follows the chooser's in an encounter (D29) */
+  encounterCursor: boolean;
+  /** The tag over the partner's Pokémon: its move, its target, ready (D16) */
+  moveTags: boolean;
+  /** The line of who is in, under the waiting text of a game of three (D40) */
+  playersLine: boolean;
+  /** The title screen's count of players online (D46) */
+  playersOnline: boolean;
+  /** The "Report a problem" button (D26) */
+  reportButton: boolean;
+  /** The partner's cursor on the reward screen (D16) */
+  rewardCursor: boolean;
+  /** The pointer over the Pokémon the partner aims at (D16) */
+  targetPointers: boolean;
+  /** The bars over a teammate's Pokémon in a game of three (D40) */
+  teammateBars: boolean;
+  /** Host a game offers 3 players (Beta, D40) */
+  threePlayers: boolean;
+  /** The mouse wheel zooms the battlefield (D44) */
+  wheelZoom: boolean;
 }
 
 export interface DisplaySettings {
@@ -127,7 +161,12 @@ export interface SettingsUiItem<K = AnySettingKey> {
 export type SettingsCategory = keyof UserFacingSettings;
 
 /** All keys for all settings categories */
-export type AnySettingKey = GeneralSettingsKey | DisplaySettingsKey | AudioSettingsKey | GamepadSettingsKey;
+export type AnySettingKey =
+  | GeneralSettingsKey
+  | DisplaySettingsKey
+  | AudioSettingsKey
+  | GamepadSettingsKey
+  | CoopSettingsKey;
 
 /** All keys for the general settings + `"moveTouchControls"` */
 export type GeneralSettingsKey = keyof GeneralSettings | "moveTouchControls";
@@ -143,3 +182,6 @@ export type VolumeSettingsKey = Exclude<AudioSettingsKey, "musicPreference" | "e
 
 /** All keys for the gamepad settings */
 export type GamepadSettingsKey = keyof GamepadSettings;
+
+/** All keys for the co-op settings */
+export type CoopSettingsKey = keyof CoopSettings;

@@ -4,13 +4,16 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import type { Seat } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { resetBoxShift } from "#coop/ui/box-hide";
 import { PLAYER_COLORS } from "#coop/ui/player-colors";
 import { TextStyle } from "#enums/text-style";
 import type { Pokemon } from "#field/pokemon";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import { addTextObject } from "#ui/text";
 import Phaser from "phaser";
 
@@ -103,6 +106,11 @@ export function showTeammateBar(pokemon: Pokemon): void {
   if (session === null || owner === undefined) {
     return;
   }
+  // (the Co-op settings can take the bars off, D47)
+  if (!settings.coop.teammateBars) {
+    hideTeammateBar(pokemon);
+    return;
+  }
   let entry = bars.get(pokemon.id);
   if (entry === undefined || !entry.bar.active) {
     const bar = new TeammateBar(owner, session.names[owner] ?? "");
@@ -169,3 +177,12 @@ export function placeEnemyBoxForThree(pokemon: Pokemon): void {
   info.placeAt(x, y);
   resetBoxShift(info);
 }
+
+// What this player sees follows the Co-op settings at once (D47)
+eventBus.on("settings/update/success", ({ category, key, value }: SettingsUpdateEventArgs) => {
+  if (category === "coop" && key === "teammateBars" && value === false) {
+    for (const { pokemon } of [...bars.values()]) {
+      hideTeammateBar(pokemon);
+    }
+  }
+});

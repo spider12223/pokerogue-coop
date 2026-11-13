@@ -5,6 +5,7 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { isCoop } from "#coop/session";
 
 /**
@@ -100,9 +101,10 @@ export function listenForFieldWheel(): void {
     return;
   }
   listening = true;
-  globalScene.input.on(
-    "wheel",
-    (pointer: Phaser.Input.Pointer, _over: unknown, _deltaX: number, deltaY: number) =>
-      void onFieldWheel(deltaY, pointer.event?.timeStamp ?? 0),
-  );
+  globalScene.input.on("wheel", (pointer: Phaser.Input.Pointer, _over: unknown, _deltaX: number, deltaY: number) => {
+    // (the Co-op settings can turn the wheel off; the zoom keys still work, D47)
+    if (settings.coop.wheelZoom) {
+      void onFieldWheel(deltaY, pointer.event?.timeStamp ?? 0);
+    }
+  });
 }

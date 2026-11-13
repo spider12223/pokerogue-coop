@@ -137,10 +137,15 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       if (key === "hideUsername" || key === "playerGender") {
         this.updateUsername();
       }
+      if (key === "playersOnline") {
+        this.playerCountLabel.setVisible(settings.coop.playersOnline);
+      }
     });
   }
 
   private updateTitleStats(): void {
+    // Co-op (D47): the count can be turned off
+    this.playerCountLabel.setVisible(settings.coop.playersOnline);
     // Co-op (D46): the website's relay counts the players connected to it; without one built in, the game's own stats
     const coopRelay = playersOnlineRelay(import.meta.env.VITE_COOP_RELAY_URL);
     if (coopRelay !== null) {

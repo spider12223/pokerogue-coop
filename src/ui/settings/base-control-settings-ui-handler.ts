@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { coopSettingLabel } from "#coop/cosmetic/hotkey-names";
+import { coopText } from "#coop/ui/text";
 import { Button } from "#enums/buttons";
 import type { Device } from "#enums/devices";
 import { TextStyle } from "#enums/text-style";
@@ -31,6 +32,7 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     { mode: UiMode.SETTINGS_AUDIO, labelKey: "settings:audio" },
     { mode: UiMode.SETTINGS_GAMEPAD, labelKey: "settings:gamepad" },
     { mode: UiMode.SETTINGS_KEYBOARD, labelKey: "settings:keyboard" },
+    { mode: UiMode.SETTINGS_COOP, labelKey: "settings:coop" },
   ];
 
   protected scrollBar: ScrollBar;
@@ -86,7 +88,10 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
       Phaser.Geom.Rectangle.Contains,
     );
 
-    const tabLabels = this.settingsTabs.map(tab => i18next.t(tab.labelKey));
+    // Co-op (D47): the Co-op tab's name is a co-op text
+    const tabLabels = this.settingsTabs.map(tab =>
+      tab.mode === UiMode.SETTINGS_COOP ? coopText("settingsTab", "Co-op") : i18next.t(tab.labelKey),
+    );
     const menuWidth = globalScene.scaledCanvas.width;
 
     this.tabMenu = new TabMenu(0, 0, menuWidth, tabLabels, newIndex => {

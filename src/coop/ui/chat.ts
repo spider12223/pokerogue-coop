@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { chatKeyName } from "#coop/cosmetic/hotkey-names";
 import type { CoopLink } from "#coop/link/link";
 import type { Seat } from "#coop/protocol";
@@ -16,6 +18,7 @@ import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { UiMode } from "#enums/ui-mode";
 import { getButtonWithKeycode } from "#inputs/config-handler";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 
 /**
  * The chat box (D38): a small panel over the game, in every linked session (the lobby, the starter select, the run, the end
@@ -341,6 +344,8 @@ function drawToggle(): void {
   parts.toggle.textContent = chat.unread > 0 ? `${label} (${chat.unread})` : label;
   parts.toggle.title = key === null ? label : `${label} (${key})`;
   parts.toggle.classList.toggle("coop-chat-unread", chat.unread > 0);
+  // (the Co-op settings can take the button off: the chat key still opens the box, D47)
+  parts.toggle.hidden = !settings.coop.chatButton;
 }
 
 function drawHead(): void {
@@ -376,7 +381,7 @@ function addLine(who: Who, text: string, from?: Seat): void {
 
 /** While the box is closed, a line of the partner shows in the corner for a few seconds (`null`: a note of the game's) */
 function toast(text: string, from?: Seat | null): void {
-  if (parts === null || chat === null) {
+  if (parts === null || chat === null || !settings.coop.chatPopups) {
     return;
   }
   const item = element("div", "coop-chat-toast");
@@ -584,3 +589,10 @@ export function chatInfo(): { open: boolean; muted: boolean; unread: number; lin
     lines: [...parts.log.children].map(item => item.textContent ?? ""),
   };
 }
+
+// What this player sees follows the Co-op settings at once (D47)
+eventBus.on("settings/update/success", ({ category, key }: SettingsUpdateEventArgs) => {
+  if (category === "coop" && key === "chatButton") {
+    drawToggle();
+  }
+});

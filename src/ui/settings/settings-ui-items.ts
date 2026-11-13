@@ -20,6 +20,7 @@ import { UiTheme } from "#enums/ui-theme";
 import { SUPPORTED_LANGUAGE_ENTRIES } from "#system/supported-languages";
 import type {
   AudioSettingsKey,
+  CoopSettingsKey,
   DisplaySettingsKey,
   GeneralSettingsKey,
   SettingsUiItem,
@@ -219,18 +220,6 @@ export const generalSettingsUiItems: SettingsUiItem<GeneralSettingsKey>[] = [
   {
     key: "preferBatonPass",
     label: t("settings:preferBatonPass"),
-    options: useOnOffOptions(),
-  },
-  {
-    // Co-op (D40): Host a game offers 3 players only with this on
-    key: "coopThreePlayers",
-    label: coopText("threePlayersSetting", "3-Player Co-op (Beta)"),
-    options: useOnOffOptions(),
-  },
-  {
-    // Co-op (D42): the host's debug menu (F8 by default)
-    key: "coopDebugMenu",
-    label: coopText("debugMenuSetting", "Co-op Debug Menu (Host)"),
     options: useOnOffOptions(),
   },
 ];
@@ -470,3 +459,43 @@ export const audioSettingsUiItems: SettingsUiItem<AudioSettingsKey>[] = [
 ];
 
 // #endregion Audio Settings
+
+/**
+ * Co-op (D47): the Co-op tab. The two switches first (what a game offers), then what this player sees: none of it reaches
+ * the partner or the run.
+ */
+export const coopSettingsUiItems: SettingsUiItem<CoopSettingsKey>[] = [
+  {
+    // D40: Host a game offers 3 players only with this on
+    key: "threePlayers",
+    label: coopText("threePlayersSetting", "3-Player Co-op (Beta)"),
+    options: useOnOffOptions(),
+  },
+  {
+    // D42: the host's debug menu (F8 by default)
+    key: "debugMenu",
+    label: coopText("debugMenuSetting", "Co-op Debug Menu (Host)"),
+    options: useOnOffOptions(),
+  },
+  { key: "moveTags", label: coopText("moveTagsSetting", "Partner's Move Tags"), options: useOnOffOptions() },
+  { key: "targetPointers", label: coopText("targetPointersSetting", "Target Pointers"), options: useOnOffOptions() },
+  { key: "bubbles", label: coopText("bubblesSetting", "Ping & Emote Bubbles"), options: useOnOffOptions() },
+  {
+    key: "rewardCursor",
+    label: coopText("rewardCursorSetting", "Partner's Reward Cursor"),
+    options: useOnOffOptions(),
+  },
+  {
+    key: "encounterCursor",
+    label: coopText("encounterCursorSetting", "Follow Chooser's Cursor"),
+    options: useOnOffOptions(),
+  },
+  { key: "boxHandles", label: coopText("boxHandlesSetting", "HP Box Hide Buttons"), options: useOnOffOptions() },
+  { key: "teammateBars", label: coopText("teammateBarsSetting", "Teammate HP Bars (3P)"), options: useOnOffOptions() },
+  { key: "playersLine", label: coopText("playersLineSetting", "Who's In Line (3P)"), options: useOnOffOptions() },
+  { key: "chatPopups", label: coopText("chatPopupsSetting", "Chat Pop-ups"), options: useOnOffOptions() },
+  { key: "chatButton", label: coopText("chatButtonSetting", "Chat Button"), options: useOnOffOptions() },
+  { key: "reportButton", label: coopText("reportButtonSetting", "Report Button"), options: useOnOffOptions() },
+  { key: "wheelZoom", label: coopText("wheelZoomSetting", "Mouse Wheel Zoom"), options: useOnOffOptions() },
+  { key: "playersOnline", label: coopText("playersOnlineSetting", "Players Online Count"), options: useOnOffOptions() },
+];

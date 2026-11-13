@@ -23,6 +23,7 @@ import { CommandUiHandler } from "#ui/command-ui-handler";
 import { ConfirmUiHandler } from "#ui/confirm-ui-handler";
 import { CoopJoinFormUiHandler } from "#ui/coop-join-form-ui-handler";
 import { CoopNameFormUiHandler } from "#ui/coop-name-form-ui-handler";
+import { SettingsCoopUiHandler } from "#ui/coop-settings-ui-handler";
 import { CoopTradeUiHandler } from "#ui/coop-trade-ui-handler";
 import { SettingsDisplayUiHandler } from "#ui/display-settings-ui-handler";
 import { EggGachaUiHandler } from "#ui/egg-gacha-ui-handler";
@@ -97,6 +98,7 @@ const noTransitionModes = [
   UiMode.SETTINGS_DISPLAY,
   UiMode.SETTINGS_GAMEPAD,
   UiMode.SETTINGS_KEYBOARD,
+  UiMode.SETTINGS_COOP,
   UiMode.ACHIEVEMENTS,
   UiMode.GAME_STATS,
   UiMode.POKEDEX_SCAN,
@@ -200,6 +202,7 @@ export class UI extends Phaser.GameObjects.Container {
       new CoopJoinFormUiHandler(),
       new CoopNameFormUiHandler(),
       new CoopTradeUiHandler(),
+      new SettingsCoopUiHandler(),
     ];
   }
 

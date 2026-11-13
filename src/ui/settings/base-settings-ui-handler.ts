@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
+import { coopText } from "#coop/ui/text";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
@@ -28,6 +29,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
     { mode: UiMode.SETTINGS_AUDIO, labelKey: "settings:audio" },
     { mode: UiMode.SETTINGS_GAMEPAD, labelKey: "settings:gamepad" },
     { mode: UiMode.SETTINGS_KEYBOARD, labelKey: "settings:keyboard" },
+    { mode: UiMode.SETTINGS_COOP, labelKey: "settings:coop" },
   ];
 
   private scrollCursor: number;
@@ -76,7 +78,10 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
     this.navigationIcons = {};
 
-    const tabLabels = this.settingsTabs.map(tab => i18next.t(tab.labelKey));
+    // Co-op (D47): the Co-op tab's name is a co-op text
+    const tabLabels = this.settingsTabs.map(tab =>
+      tab.mode === UiMode.SETTINGS_COOP ? coopText("settingsTab", "Co-op") : i18next.t(tab.labelKey),
+    );
 
     const menuWidth = globalScene.scaledCanvas.width;
 

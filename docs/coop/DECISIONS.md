@@ -1104,7 +1104,7 @@ A co-op run is Classic or Endless. Co-op Endless is solo Endless with every co-o
 ## D40. Three players
 
 A co-op game is for 2 or 3 players. 2 stays the default and is unchanged; 3 players is a **Beta**, offered only to a host
-who turns on **3-Player Co-op (Beta)** in the general settings (off by default). With it on, **Host a game** asks how many
+who turns on **3-Player Co-op (Beta)** in the Co-op settings (D47; off by default). With it on, **Host a game** asks how many
 players first (2 players, 3 players (Beta)), then Classic or Endless (D39); Cancel on the second asks the first again. With
 it off, Host a game asks Classic or Endless only. **Join a game** asks nothing, whatever the setting: the guest learns the
 count from the host's `HELLO`.
@@ -1196,7 +1196,7 @@ count from the host's `HELLO`.
 A cheat menu for messing around with friends, in any co-op run (2 or 3 players). Cheated runs count for every account
 like any other run.
 
-- **On:** the host turns on **Settings → General → Co-op Debug Menu (Host)**, then presses its key (**F8**, rebindable as
+- **On:** the host turns on **Settings → Co-op → Co-op Debug Menu (Host)** (D47), then presses its key (**F8**, rebindable as
   "Co-op Debug" in the keyboard settings). The setting does nothing for a guest. The host's `HELLO` says the menu is on
   (`debug: true`); a resumed or rejoined run keeps it.
 - **A run keeps its menu (amended after M8):** the setting is read when the host starts or continues a run. In the
@@ -1372,6 +1372,24 @@ for a partner. Co-op players only, not everyone with the game open (that would n
   405 for other methods, never cached. Only the dev build asks it (`VITE_COOP_RELAY_URL` in `.env.development`): the 404
   it gave before had no CORS header, so the browser logged an error at every ask, which failed every browser test's
   console check. The Windows pack and Docker still never ask, and keep the "?". `coop-server/src/relay-server.ts`.
+
+## D47. The Co-op tab of the settings
+
+A **Co-op** tab after Keyboard (2026-11-13, Sam: "a category named coop in the settings, a lot of visual options").
+
+- **The two switches** moved there from General: **3-Player Co-op (Beta)** (D40) and **Co-op Debug Menu (Host)**
+  (D42). A player's saved choice comes along once (`general.coopThreePlayers` → `coop.threePlayers`,
+  `general.coopDebugMenu` → `coop.debugMenu`); a Co-op tab saved since wins.
+- **What this player sees**, all on by default (as before the tab): the partner's move tags (D16), target pointers,
+  ping and emote bubbles, the partner's cursor on the reward screen, the encounter cursor that follows the chooser's
+  (D29), the HP box hide buttons (D44; off, every box is shown), the teammate bars and the who's-in line of a game of
+  three (D40), chat pop-ups and the chat button (D38; the chat key still opens the box), the report button (D26), the
+  mouse wheel zoom (D44; the zoom keys still work) and the title's players online count (D46).
+- **Nothing of it reaches the partner or the run:** each client draws, or does not draw, what it received; the
+  cosmetic channel and the decisions are the same. A change takes effect at once (the tags, cursors, buttons and
+  bars that are up follow it); teammate bars turned back on come with the next switch or wave.
+- `src/@types/settings.ts` (`CoopSettings`), `default-settings.ts`, `settings-manager.ts` (the category and the
+  move), `settings-ui-items.ts` (`coopSettingsUiItems`), `coop-settings-ui-handler.ts` (`UiMode.SETTINGS_COOP`).
 
 ## See also
 

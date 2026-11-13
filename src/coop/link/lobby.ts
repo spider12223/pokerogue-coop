@@ -7,6 +7,7 @@
  * code and wait) or join (type the code).
  */
 
+import { eventBus } from "#app/event-bus";
 import { GameMode } from "#app/game-mode";
 import { timedEventManager } from "#app/global-event-manager";
 import { globalScene } from "#app/global-scene";
@@ -72,6 +73,7 @@ import { hideReconnectScreen } from "#coop/ui/reconnect-ui";
 import { GameDataType } from "#enums/game-data-type";
 import { GameModes } from "#enums/game-modes";
 import { UiMode } from "#enums/ui-mode";
+import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import type { OptionSelectItem, OptionSelectModeConfig } from "#types/ui-types";
 import { randomString } from "#utils/common";
 import i18next from "i18next";
@@ -359,7 +361,7 @@ export function showCoopTitleMenu(callbacks: CoopTitleCallbacks): void {
         // How many players first, then the kind of run; Cancel on the second asks the first again (D40). The players are
         // asked only with 3-Player Co-op (Beta) on in the settings. A challenge run's challenges are picked last, on the
         // challenge screen, whose Cancel asks the kind again (D41)
-        const threePlayers = settings.general.coopThreePlayers;
+        const threePlayers = settings.coop.threePlayers;
         const host = (): void => (threePlayers ? askPlayers(callbacks, players => kind(players)) : kind(2));
         const kind = (players: PlayerCount): void =>
           askRunMode(
@@ -721,10 +723,11 @@ export function beginSession(
   setTouchEmoteVisible(true);
   // The host's screen is the clock of the run's text: the guest's follows it (D27)
   startPacer(session, link);
-  // What the session does goes into the co-op log, and the report button is there while it lasts (D26)
+  // What the session does goes into the co-op log, and the report button is there while it lasts (D26), unless the
+  // Co-op settings keep it off (D47)
   stopCoopLog?.();
   stopCoopLog = attachCoopLog(session, link, getCoopName());
-  setReportButtonVisible(true);
+  setReportButtonVisible(settings.coop.reportButton);
   // The chat box (D38), for the whole session
   startChat(link, getCoopName());
   // Two players in one browser share one save (D19): each is told when the other's tab is in co-op too
@@ -880,7 +883,7 @@ async function hostGame(
     // The host plays with the pinned settings too (D1, D5)
     const effectiveHash = overlay.apply(pinned);
     // The debug menu (D42) as the handshake tells it, and the session says the same (the handshake can take a while)
-    const debug = settings.general.coopDebugMenu;
+    const debug = settings.coop.debugMenu;
     let established: Awaited<ReturnType<typeof establishHost>>;
     try {
       established = await establishHost(room, getLocalBuildIdentity(), pinned, {
@@ -1286,3 +1289,10 @@ export function hostAgain(
   // (a room of three when both guests of a game of three want to play again, D40)
   return hostGame(callbacks, runMode, { room, waiting, why: "to play again" }, room.seats, challenges, file);
 }
+
+// The report button follows the Co-op settings at once while a session is on (D47)
+eventBus.on("settings/update/success", ({ category, key }: SettingsUpdateEventArgs) => {
+  if (category === "coop" && key === "reportButton" && getCoopSession() !== null) {
+    setReportButtonVisible(settings.coop.reportButton);
+  }
+});
