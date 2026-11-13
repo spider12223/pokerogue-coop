@@ -12,6 +12,7 @@ import { PLAYER_COLORS } from "#coop/ui/player-colors";
 import { TextStyle } from "#enums/text-style";
 import type { Pokemon } from "#field/pokemon";
 import { addTextObject } from "#ui/text";
+import Phaser from "phaser";
 
 /**
  * The HP of a battle of three of ours (DECISIONS D40), as each client draws it for its own player: its own Pokémon has the

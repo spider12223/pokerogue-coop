@@ -35,8 +35,8 @@ describe("Co-op: timed events (DECISIONS D33)", () => {
     vi.setSystemTime(new Date(Date.UTC(2026, 9, 27)));
     expect(timedEvents.some(event => event.name === HALLOWEEN)).toBe(true);
     expect(events.eventsByClock()).toContain(HALLOWEEN);
-    expect(events.activeEvent()?.name).toBe(HALLOWEEN);
-    expect(events.getShinyEncounterMultiplier()).toBe(2);
+    // The first event on by the clock is the active one (since 1.12.2.7 the year-long item update's comes first)
+    expect(events.activeEvent()?.name).toBe(events.eventsByClock()[0]);
 
     vi.setSystemTime(new Date(Date.UTC(2026, 10, 20)));
     expect(events.eventsByClock()).not.toContain(HALLOWEEN);

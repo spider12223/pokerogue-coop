@@ -22,8 +22,7 @@ import { createLoopbackPair } from "#coop/transport/loopback";
 import { ReliableTransport } from "#coop/transport/reliable";
 import { Passive } from "#enums/passive";
 import type { RibbonData } from "#system/ribbon-data";
-import type { DexEntry } from "#types/dex-data";
-import type { StarterDataEntry } from "#types/save-data";
+import type { DexEntry, StarterData, StarterDataEntry } from "#types/save-data";
 import { afterEach, describe, expect, it } from "vitest";
 
 /**
@@ -66,14 +65,14 @@ function accounts(): { own: CollectionHolder; partner: CollectionHolder } {
   return {
     own: {
       dexData: { 1: dexEntry(0b101n, [31, 10, 10, 10, 10, 10], 0b10), 151: dexEntry(0n) },
-      starterData: { 1: starterEntry({ abilityAttr: 1, candyCount: 40 }), 151: starterEntry() },
+      starterData: { 1: starterEntry({ abilityAttr: 1, candyCount: 40 }), 151: starterEntry() } as StarterData,
     },
     partner: {
       dexData: { 1: dexEntry(0b1001n, [5, 20, 10, 10, 10, 31], 0b100), 151: dexEntry(0b1111n) },
       starterData: {
         1: starterEntry({ abilityAttr: 4, eggMoves: 2, candyCount: 99 }),
         151: starterEntry({ abilityAttr: 1, passiveAttr: Passive.UNLOCKED, valueReduction: 1, classicWinCount: 2 }),
-      },
+      } as StarterData,
     },
   };
 }
@@ -269,7 +268,7 @@ describe("the save of a player who changed a Pokémon only the partner caught", 
         4: starterEntry(),
         151: starterEntry(),
         25: starterEntry(),
-      },
+      } as StarterData,
     };
     const partner: CollectionHolder = {
       dexData: { 1: dexEntry(0b1n), 7: dexEntry(0n), 4: dexEntry(0b1n), 151: dexEntry(0b1111n), 25: dexEntry(0n) },
@@ -279,7 +278,7 @@ describe("the save of a player who changed a Pokémon only the partner caught", 
         4: starterEntry({ abilityAttr: 1 }),
         151: starterEntry({ abilityAttr: 1, passiveAttr: Passive.UNLOCKED | Passive.ENABLED, valueReduction: 1 }),
         25: starterEntry(),
-      },
+      } as StarterData,
     };
     const second: CollectionHolder = {
       dexData: { 1: dexEntry(0n), 7: dexEntry(0n), 4: dexEntry(0n), 151: dexEntry(0n), 25: dexEntry(0b1n) },
@@ -289,7 +288,7 @@ describe("the save of a player who changed a Pokémon only the partner caught", 
         4: starterEntry(),
         151: starterEntry(),
         25: starterEntry({ abilityAttr: 2 }),
-      },
+      } as StarterData,
     };
     for (const partners of [[partner], [partner, second]]) {
       const fresh = structuredClone(own);
@@ -463,7 +462,7 @@ describe("the Pokémon of three players (D40)", () => {
     // A third player who caught another form of Bulbasaur, and nothing else
     const third: CollectionHolder = {
       dexData: { 1: dexEntry(0b10001n), 151: dexEntry(0n) },
-      starterData: { 1: starterEntry(), 151: starterEntry() },
+      starterData: { 1: starterEntry(), 151: starterEntry() } as StarterData,
     };
     poolCollection(own, [captureCollection(partner), captureCollection(third)]);
     expect(own.dexData[1].caughtAttr).toBe(0b11101n);
@@ -514,5 +513,8 @@ describe("the Pokémon of three players (D40)", () => {
 
 /** A small collection of its own: one species caught */
 function hostCollectionOf(species: number): CollectionData {
-  return captureCollection({ dexData: { [species]: dexEntry(0b11n) }, starterData: { [species]: starterEntry() } });
+  return captureCollection({
+    dexData: { [species]: dexEntry(0b11n) },
+    starterData: { [species]: starterEntry() } as StarterData,
+  });
 }

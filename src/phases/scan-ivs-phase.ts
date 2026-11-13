@@ -10,6 +10,7 @@ import { PokemonPhase } from "#phases/pokemon-phase";
 import type { ConfirmModeConfig } from "#types/ui-types";
 import { getTextColor } from "#ui/text";
 import i18next from "i18next";
+import Phaser from "phaser";
 
 export class ScanIvsPhase extends PokemonPhase {
   public readonly phaseName = "ScanIvsPhase";

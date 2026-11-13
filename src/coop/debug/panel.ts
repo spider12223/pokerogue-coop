@@ -185,7 +185,7 @@ function whenText(entry: DebugChange): string {
     : t("WhereTurn", "wave {{wave}}, turn {{turn}}", { wave: where.wave, turn: where.turn });
 }
 
-function describe(actions: readonly DebugAction[]): string {
+function describeActions(actions: readonly DebugAction[]): string {
   return actions.map(action => action.t).join(", ");
 }
 
@@ -195,7 +195,7 @@ function logEntry(entry: DebugChange): HTMLElement {
     "div",
     `cdw-entry cdw-${entry.state}${seen.has(entry.id * 10 + (entry.state === "applied" ? 1 : 0)) ? "" : " cdw-new"}`,
     el("span", "cdw-ico", icon),
-    el("span", "", entry.note === "" ? describe(entry.actions) : entry.note, el("small", "", whenText(entry))),
+    el("span", "", entry.note === "" ? describeActions(entry.actions) : entry.note, el("small", "", whenText(entry))),
     entry.state === "pending"
       ? (() => {
           const x = button("×", () => cancelDebugChange(entry.id), "cdw-x");

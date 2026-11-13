@@ -12,8 +12,7 @@ import {
 } from "#coop/link/collection-data";
 import { type LobbyMessage, otherSeat, type PlayerCount, peers, type Seat } from "#coop/protocol";
 import { Passive } from "#enums/passive";
-import type { DexData, DexEntry } from "#types/dex-data";
-import type { StarterData, StarterDataEntry } from "#types/save-data";
+import type { DexData, DexEntry, StarterData, StarterDataEntry } from "#types/save-data";
 
 /**
  * The co-op starter select shows the Pokémon of both players (DECISIONS D32). On entering the lobby each player sends
@@ -241,7 +240,7 @@ export function poolCollection(account: CollectionHolder, partners: CollectionDa
       entry,
     );
   }
-  const starterData: StarterData = {};
+  const starterData = {} as StarterData;
   for (const [species, entry] of Object.entries(own.starterData)) {
     const caught = ownCaught(own.dexData[Number(species)]);
     starterData[Number(species)] = all.reduce(

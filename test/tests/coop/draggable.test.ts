@@ -74,11 +74,14 @@ describe("Co-op: a box the player drags around the screen", () => {
   });
 
   it("stays inside the window, also when the window gets smaller", () => {
+    // A real resize event also reaches Phaser 4's scale manager, which needs a DOM the test game lacks
+    const listen = vi.spyOn(window, "addEventListener");
     drag = makeDraggable(root, [handle], KEY);
+    const onResize = listen.mock.calls.find(([type]) => type === "resize")?.[1] as () => void;
     dragBy(2000, 2000);
     expect([root.style.left, root.style.top]).toEqual(["800px", "480px"]);
     window.innerWidth = 500;
-    window.dispatchEvent(new Event("resize"));
+    onResize();
     expect(root.style.left).toBe("300px");
   });
 

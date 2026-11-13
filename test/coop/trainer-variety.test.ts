@@ -9,7 +9,10 @@ import { endCoopSession, startCoopSession } from "#coop/session";
 import { BiomePoolTier } from "#enums/biome-pool-tier";
 import { TrainerType } from "#enums/trainer-type";
 import type { TrainerPools } from "#types/biomes";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// `#utils/common` (the pick's draw) imports Phaser, a browser module since Phaser 4; the parts tested here never draw
+vi.mock("phaser", () => ({ default: {} }));
 
 /** A co-op run's next trainer is one it has not met while the biome has one (DECISIONS D34) */
 

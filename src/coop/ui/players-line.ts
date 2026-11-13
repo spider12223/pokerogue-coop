@@ -7,7 +7,7 @@
 import { globalScene } from "#app/global-scene";
 import { TextStyle } from "#enums/text-style";
 import { addBBCodeTextObject } from "#ui/text";
-import type BBCodeText from "phaser3-rex-plugins/plugins/bbcodetext";
+import type BBCodeText from "phaser4-rex-plugins/plugins/bbcodetext";
 
 /**
  * The line under the waiting text of a room of three (DECISIONS D40): who is in, each name in its player's colour. The

@@ -264,15 +264,11 @@ function moveBox(info: BattleInfo, target: number, instant: boolean): void {
   if (delta === 0) {
     return;
   }
-  // (a player's box has the mask of its EXP bar beside it, which the game moves with it)
-  const targets = info.expMaskRect ? [info, info.expMaskRect] : [info];
   if (instant) {
-    for (const object of targets) {
-      object.x += delta;
-    }
+    info.x += delta;
     return;
   }
-  globalScene.tweens.add({ targets, x: `+=${delta}`, duration: SLIDE_MS, ease: "Sine.easeInOut" });
+  globalScene.tweens.add({ targets: info, x: `+=${delta}`, duration: SLIDE_MS, ease: "Sine.easeInOut" });
 }
 
 /**
