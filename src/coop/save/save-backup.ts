@@ -17,12 +17,12 @@ import type { KeyValueStore } from "#coop/save/seat-store";
  */
 
 export const BACKUP_KEY = "coopBackup";
-/** Play time (s) since the last backup that is worth one */
-export const BACKUP_AFTER_PLAY_S = 20 * 60;
+/** Play time (s) since the last backup that is worth one (20 min until 2026-11-13: players found it asked too often) */
+export const BACKUP_AFTER_PLAY_S = 2 * 60 * 60;
 /** How long a backup is recent enough (ms), whatever was played since */
-export const BACKUP_EVERY_MS = 3 * 24 * 60 * 60 * 1000;
+export const BACKUP_EVERY_MS = 7 * 24 * 60 * 60 * 1000;
 /** How long "No" puts the offer off (ms) */
-export const BACKUP_SNOOZE_MS = 24 * 60 * 60 * 1000;
+export const BACKUP_SNOOZE_MS = 7 * 24 * 60 * 60 * 1000;
 
 export interface BackupState {
   /** When the last backup was made (ms since the epoch); `null` if never */

@@ -160,8 +160,8 @@ much). Importing is not possible during a co-op run.
 ## Keeping your save safe
 
 Your save lives only in your browser: clearing cookies or site data deletes it, and no server has a copy. Back it up with
-**Menu > Manage Data > Export Data** now and then; **Manage Data > Import Data** brings it back. Once you have played a while
-since your last backup, the title screen offers to make one.
+**Menu > Manage Data > Export Data** now and then; **Manage Data > Import Data** brings it back. After two hours of play
+since your last backup (and at most once a week), the title screen offers to make one; **No** puts it off for a week.
 
 ## Taking a break
 
