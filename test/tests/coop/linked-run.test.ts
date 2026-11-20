@@ -719,6 +719,34 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       expect(game.phaseInterceptor.phaseLog).not.toContain("UnlockPhase");
     });
 
+    // A player's report (GitHub issue #3): after Eternatus the screen stayed black. The Voucher Plus line waits for a
+    // press, and its phase does not fade the screen back in (in solo the end card has); the run's end never came, so
+    // the vouchers, the challenge's achievements and the account's save were lost
+    it("shows a challenge victory's Voucher Plus line on a screen faded back in, not unseen on black", async () => {
+      const r = await start({
+        ...finalBoss,
+        scenario: { challenges: [{ id: Challenges.INVERSE_BATTLE, value: 1, severity: 0 }] },
+      });
+      const { game } = r.ctx;
+      spyOnRibbons();
+      const { ui } = game.scene;
+      const fadedWhenShown: boolean[] = [];
+      const showText = ui.showText.bind(ui);
+      vi.spyOn(ui, "showText").mockImplementation((...args: Parameters<typeof ui.showText>) => {
+        if (game.scene.phaseManager.getCurrentPhase()?.phaseName === "RibbonModifierRewardPhase") {
+          fadedWhenShown.push((ui as unknown as { overlayActive: boolean }).overlayActive);
+        }
+        return showText(...args);
+      });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+
+      expect(await playToRunEnd(r)).toBe(true);
+      await game.phaseInterceptor.to("PostGameOverPhase", false);
+
+      expect(fadedWhenShown.length).toBeGreaterThan(0);
+      expect(fadedWhenShown).not.toContain(true);
+    });
+
     it("a challenge run's victory after a first clear gives a Premium voucher (D41)", async () => {
       const r = await start({
         ...finalBoss,

@@ -308,7 +308,13 @@ export class GameOverPhase extends BattlePhase {
           }
         }
         globalScene.phaseManager.pushNew("PostGameOverPhase", globalScene.sessionSlotId);
-        this.end();
+        // A Voucher Plus line waits for a press, and its phase does not fade the screen back in (in solo the end card has):
+        // without this it waited unseen on black, and the rest of the end never came (GitHub issue #3)
+        if (challengeWin && this.firstRibbons.length > 0) {
+          void globalScene.ui.fadeIn(250).then(() => this.end());
+        } else {
+          this.end();
+        }
       });
     });
   }

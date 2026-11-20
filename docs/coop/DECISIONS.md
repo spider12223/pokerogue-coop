@@ -1190,6 +1190,9 @@ count from the host's `HELLO`.
 - **Winning** a challenge run gives each player, on their own account, what a solo challenge win gives: the classic victory
   achievement and its voucher the first time, a Premium voucher after that, a Voucher Plus for each species of their own
   Pokémon on its first win, and the challenges' achievements. The classic-win unlocks stay off, as in D4a.
+  The Voucher Plus lines come on a screen faded back in: their phase waits for a press and does not fade in itself (solo
+  has its end card for that), so on the game over's black the end never came, and the vouchers, the challenges'
+  achievements and the account's save were lost. (Amended 2026-11-20, from a player's report: GitHub issue #3.)
 
 ## D42. The host's debug menu
 
