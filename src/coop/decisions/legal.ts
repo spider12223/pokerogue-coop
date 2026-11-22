@@ -554,6 +554,9 @@ export function checkDecisionLegal(
     case "RETRY":
       // the game over phase is what asks it: a retry or an end is legal whenever it is asked (D4a)
       return isRetryPayload(payload) ? null : reasonOf("an answer that cannot be read");
+    case "EGG_SUMMARY":
+      // a guest closed their summary (D30): it carries nothing
+      return payload === null ? null : reasonOf("an answer that cannot be read");
     case "DEBUG":
       // the host's cheats (D42): what each does is checked as it is carried out, the same on every client
       if (author !== "host") {

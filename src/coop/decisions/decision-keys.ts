@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
-import { type DecisionKey, NO_REF } from "#coop/protocol";
+import { type DecisionKey, NO_REF, type Seat } from "#coop/protocol";
 
 /**
  * The decision keys of the in-battle decisions (DECISIONS D2). Only `TURN_COMMANDS`, `FAINT_SWITCH` and `PIVOT_SWITCH`
@@ -103,6 +103,14 @@ export function evolutionPauseKey(wave: number, pokemonId: number, speciesId: nu
  */
 export function retryKey(wave: number): DecisionKey {
   return { wave, turn: 0, kind: "RETRY", ref: NO_REF };
+}
+
+/**
+ * A guest closed the summary of the eggs that hatched for them (D30, amended): one for each guest, each time the summary
+ * comes (its `occurrence` in the wave)
+ */
+export function eggSummaryKey(wave: number, seat: Seat, occurrence = 1): DecisionKey {
+  return { wave, turn: 0, kind: "EGG_SUMMARY", ref: `${seat}${occurrencePart(occurrence)}` };
 }
 
 /**

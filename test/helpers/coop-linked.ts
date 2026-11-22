@@ -92,6 +92,8 @@ export interface PartnerPolicy {
   catchRelease?(partnerPokemon: PlayerPokemon[]): number | null;
   /** Which kinds the partner answers by itself. Default: none. */
   auto?: readonly DecisionKey["kind"][];
+  /** Whether a guest partner has closed the summary of the eggs that hatched for them (D30). Default: at once. */
+  eggsSeen?(): boolean;
   /**
    * The partner's answer to a decision of a kind in {@linkcode auto} that has no answer of its own above (the biome, the
    * reward screen), or the host's answer after a wipe (`RETRY`, answered always; default: end the run); `undefined`: not now
@@ -285,8 +287,8 @@ export class ScriptedPartner {
       return;
     }
     // The host's answer after a wipe (D4a) is given whether or not the policy lists it: a scenario that ends in a game over
-    // ends the run unless it says otherwise
-    const auto = [...(this.policy.auto ?? []), "RETRY"];
+    // ends the run unless it says otherwise. So is a guest's close of their egg summary (D30): every won wave has one
+    const auto = [...(this.policy.auto ?? []), "RETRY", "EGG_SUMMARY"];
     for (const key of this.session.openWindow) {
       const id = keyId(key);
       if (this.seat === "host") {
@@ -346,6 +348,9 @@ export class ScriptedPartner {
           return undefined;
         }
         return this.policy.other?.(key) ?? { retry: false };
+      case "EGG_SUMMARY":
+        // only the guest whose summary it is closes it (D30)
+        return String(key.ref).split(":")[0] === this.seat && this.policy.eggsSeen?.() !== false ? null : undefined;
       case "FAINT_SWITCH":
       case "PIVOT_SWITCH": {
         if (pokemon === undefined) {

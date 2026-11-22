@@ -112,6 +112,9 @@ export function takeoverPlan(key: Pick<DecisionKey, "kind" | "ref">): TakeoverPl
     case "DEBUG":
       // the host's cheats (D42): nobody takes them over
       return { mode: "payload", payload: { actions: [] } };
+    case "EGG_SUMMARY":
+      // the taker closes the guest's summary of their eggs (D30)
+      return { mode: "payload", payload: null };
   }
 }
 

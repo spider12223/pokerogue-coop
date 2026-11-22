@@ -138,6 +138,7 @@ one left (a gym leader for a gym leader); only then does one come back.
 ## Eggs, vouchers and your account
 
 - An egg or a voucher won in the run goes to **both** of you. Eggs hatch between waves, each in its own player's game.
+  The host waits while a guest looks at what hatched for them ("… is looking at their eggs…").
 - **Menu > Egg Gacha** works in the middle of a run; your friend waits while you are in the machine.
 - What you catch is added to **your own** account (your starter select), and your account is saved at the start of every
   wave.

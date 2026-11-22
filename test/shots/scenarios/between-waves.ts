@@ -266,4 +266,35 @@ const biome: Scenario = {
   },
 };
 
-export const betweenWavesScenarios: Scenario[] = [rewards, shop, reroll, trade, biome];
+/** A Pikachu egg that hatches after this wave, in the account of `seat`'s client only (D30) */
+async function plantEgg(run: ShotRun, seat: Seat): Promise<void> {
+  await run.client(seat).page.evaluate(async () => {
+    const load = (path: string) => import(/* @vite-ignore */ path);
+    const { globalScene } = await load("/src/globals/global-scene.ts");
+    const { Egg } = await load("/src/data/egg.ts");
+    const { EggSourceType } = await load("/src/enums/egg-source-types.ts");
+    globalScene.gameData.eggs.push(
+      new Egg({ sourceType: EggSourceType.GACHA_MOVE, tier: 0, species: 25, hatchWaves: 1 }),
+    );
+  });
+}
+
+const eggs: Scenario = {
+  id: "wave:eggs",
+  area: "Between waves",
+  summary:
+    "an egg hatches for --seat after the first wave: their summary stays until they close it, a guest's holds the host",
+  vars: { seat: "guest" },
+  async play(run, vars) {
+    await run.toRun();
+    await plantEgg(run, vars.seat);
+    await run.drive({ until: states => states.some(state => state.ui === "EGG_HATCH_SUMMARY") });
+    // past the waiting line's 1 s, and the 3 s after which a guest's summary used to close by itself
+    await new Promise(resolve => setTimeout(resolve, 4500));
+    await run.shot("still-looking", true);
+    await run.press(vars.seat, "CANCEL");
+    await run.drive({ until: states => states.some(state => state.ui === "MODIFIER_SELECT") });
+  },
+};
+
+export const betweenWavesScenarios: Scenario[] = [rewards, shop, reroll, trade, biome, eggs];

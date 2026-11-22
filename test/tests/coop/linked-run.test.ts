@@ -12,11 +12,13 @@ import { commandToWire } from "#coop/decisions/turn-commands";
 import { keyId } from "#coop/protocol";
 import { getCoopSession } from "#coop/session";
 import { modifierTypes } from "#data/data-lists";
+import { Egg } from "#data/egg";
 import { catchPokemon } from "#data/mystery-encounters/utils/encounter-pokemon-utils";
 import { BiomeId } from "#enums/biome-id";
 import { Button } from "#enums/buttons";
 import { Challenges } from "#enums/challenges";
 import { Command } from "#enums/command";
+import { EggSourceType } from "#enums/egg-source-types";
 import { MoveId } from "#enums/move-id";
 import { PokeballType } from "#enums/pokeball";
 import { SpeciesId } from "#enums/species-id";
@@ -39,6 +41,7 @@ import {
   toTurnWithOneEnemy,
   winWave,
 } from "#test/helpers/coop-linked";
+import type { EggSummaryUiHandler } from "#ui/handlers/egg-summary-ui-handler";
 import type { PartyUiHandler } from "#ui/handlers/party-ui-handler";
 import type { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import { getModifierType } from "#utils/modifier-utils";
@@ -188,6 +191,68 @@ describe("Co-op: between the waves and the end of the run (D4a, D8, D10)", () =>
       await advanceTo(r.ctx, ["CommandPhase"]);
 
       expect(game.scene.arena.biomeId).toBe(choices[0][1]);
+      expect(r.session.desyncMessage).toBeNull();
+    });
+  });
+
+  describe("the summary of the eggs that hatched (D30)", () => {
+    /** Win the first wave up to its egg summary, and leave that waiting to start */
+    async function toEggSummary(r: LinkedRun): Promise<void> {
+      for (;;) {
+        await advanceTo(r.ctx, ["CommandPhase"]);
+        queueTurnCommands(r.ctx);
+        if ((await advanceTo(r.ctx, ["TurnInitPhase", "EggSummaryPhase"])) === "EggSummaryPhase") {
+          return;
+        }
+      }
+    }
+
+    // A player's report: the guest's summary closed by itself once the host was past it, before they could read it
+    it("holds the host until the guest has closed theirs, with a line that says why", async () => {
+      let closed = false;
+      const r = await start({
+        names: { mine: "Sam", theirs: "Alex" },
+        policy: { auto: ["TURN_COMMANDS", "LEARN_MOVE", "EVOLUTION_CANCEL"], eggsSeen: () => closed },
+      });
+      const { game } = r.ctx;
+      await toEggSummary(r);
+      const { ui } = game.scene;
+      const shown: string[] = [];
+      const showText = ui.showText.bind(ui);
+      vi.spyOn(ui, "showText").mockImplementation((text, ...rest) => {
+        shown.push(text);
+        return showText(text, ...rest);
+      });
+
+      const reached = advanceTo(r.ctx, ["SelectModifierPhase"]);
+      await vi.waitUntil(() => shown.includes("Alex is looking at their eggs…"), { interval: 5, timeout: 4000 });
+      expect(game.scene.phaseManager.getCurrentPhase().phaseName).toBe("EggSummaryPhase");
+
+      closed = true;
+      expect(await reached).toBe("SelectModifierPhase");
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
+    it("keeps a guest's own summary up until they close it, and their close is what the host goes on with", async () => {
+      const r = await start({ seat: "guest" });
+      const { game } = r.ctx;
+      game.scene.gameData.eggs.push(
+        new Egg({ sourceType: EggSourceType.GACHA_MOVE, tier: 0, species: SpeciesId.PIKACHU, hatchWaves: 1 }),
+      );
+      const seen: Decision[] = [];
+      r.link.sequencer.onDecision(decision => seen.push(decision));
+      const eggSummaries = (): Decision[] => seen.filter(candidate => candidate.key.kind === "EGG_SUMMARY");
+      await toEggSummary(r);
+
+      const reached = advanceTo(r.ctx, ["SelectModifierPhase"]);
+      await vi.waitUntil(() => game.scene.ui.mode === UiMode.EGG_HATCH_SUMMARY, { interval: 5, timeout: 4000 });
+      const handler = game.scene.ui.getHandler() as EggSummaryUiHandler;
+      await vi.waitUntil(() => !handler["blockExit"], { interval: 5, timeout: 4000 });
+      expect(eggSummaries()).toEqual([]);
+
+      game.scene.ui.processInput(Button.CANCEL);
+      expect(await reached).toBe("SelectModifierPhase");
+      expect(eggSummaries()).toMatchObject([{ key: { ref: "guest" }, author: "guest" }]);
       expect(r.session.desyncMessage).toBeNull();
     });
   });

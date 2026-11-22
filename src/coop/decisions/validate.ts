@@ -56,6 +56,7 @@ export function validateProposal(key: DecisionKey, payload: unknown, author: Sea
     case "TRADE_ACCEPT":
     case "TRADE_DECLINE":
     case "TRADE_CANCEL":
+    case "EGG_SUMMARY":
       return payload === null;
     case "TRADE_PROPOSE":
       return (

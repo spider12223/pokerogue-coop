@@ -20,10 +20,8 @@ describe("the retry after a wipe", () => {
   it("is one per wave, and came after the kinds before it (they keep their place)", () => {
     expect(retryKey(14)).toEqual({ wave: 14, turn: 0, kind: "RETRY", ref: -1 });
     expect(isDecisionKey(retryKey(14))).toBe(true);
-    // (the host's debug batch came after it, D42)
-    expect(DECISION_KINDS.at(-1)).toBe("DEBUG");
-    expect(DECISION_KINDS.indexOf("RETRY")).toBe(DECISION_KINDS.length - 2);
-    expect(DECISION_KINDS.indexOf("SIDE_PICK")).toBe(DECISION_KINDS.length - 3);
+    // (the host's debug batch came after it, D42, and a guest's close of their egg summary after that, D30)
+    expect(DECISION_KINDS.slice(-4)).toEqual(["SIDE_PICK", "RETRY", "DEBUG", "EGG_SUMMARY"]);
   });
 
   it.each([{ retry: true }, { retry: false }])("reads %o", payload => {

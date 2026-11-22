@@ -408,6 +408,7 @@ describe("take over (D17)", () => {
       ["CATCH_RELEASE", 12, { release: null }],
       ["SIDE_ACTION", "12:0", { accept: true }],
       ["TRADE_DONE", "3:guest", { done: true }],
+      ["EGG_SUMMARY", "guest", null],
     ] as const)("%s (%s) has the default %j", (kind, ref, payload) => {
       expect(takeoverPlan({ kind, ref })).toEqual({ mode: "payload", payload });
     });

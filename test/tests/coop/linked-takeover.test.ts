@@ -6,7 +6,13 @@
 
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { ownerOf } from "#coop/decisions/control";
-import { catchReleaseKey, evolutionCancelKey, learnMoveKey, turnCommandsKey } from "#coop/decisions/decision-keys";
+import {
+  catchReleaseKey,
+  eggSummaryKey,
+  evolutionCancelKey,
+  learnMoveKey,
+  turnCommandsKey,
+} from "#coop/decisions/decision-keys";
 import type { Decision, RejectReason } from "#coop/decisions/sequencer";
 import { keyId } from "#coop/protocol";
 import { Button } from "#enums/buttons";
@@ -203,6 +209,30 @@ describe("Co-op: AFK and take over in a linked run (D17)", () => {
         payload: { cancel: false },
         key: evolutionCancelKey(game.scene.currentBattle.waveIndex, pokemon.id, evolution.speciesId),
       });
+    });
+
+    it("egg summary: closes it for a guest who does not, and the run goes on (D30)", async () => {
+      const r = await start({ policy: { auto: ["TURN_COMMANDS", "SIDE_ACTION"], eggsSeen: () => false } });
+      const decisions = decisionsOf(r);
+      for (;;) {
+        await advanceTo(r.ctx, ["CommandPhase"]);
+        queueTurnCommands(r.ctx);
+        if ((await advanceTo(r.ctx, ["TurnInitPhase", "EggSummaryPhase"])) === "EggSummaryPhase") {
+          break;
+        }
+      }
+      const reached = advanceTo(r.ctx, ["SelectModifierPhase"]);
+
+      await takeOver(r);
+
+      expect(await reached).toBe("SelectModifierPhase");
+      expect(decisions.at(-1)).toMatchObject({
+        author: "host",
+        takeover: true,
+        payload: null,
+        key: eggSummaryKey(1, "guest"),
+      });
+      expect(r.session.desyncMessage).toBeNull();
     });
 
     it("catch release: declines the catch of a partner who has three Pokémon and does not answer", async () => {
