@@ -194,10 +194,14 @@ export function systemImportNotes(result: SystemImportAccepted): string[] {
   const notes: string[] = [];
   if (result.newer) {
     notes.push(
-      coopText("importNewerSave", "This save is from version {{from}}. This game is version {{to}}.", {
-        from: result.fromVersion,
-        to: version,
-      }),
+      coopText(
+        "importNewerSave",
+        "This save is from version {{from}}, newer than this game ({{to}}). It can still be imported.",
+        {
+          from: result.fromVersion,
+          to: version,
+        },
+      ),
     );
     if (result.droppedSpecies > 0 || result.droppedEggs > 0) {
       notes.push(

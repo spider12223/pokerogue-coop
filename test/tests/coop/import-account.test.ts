@@ -319,6 +319,8 @@ describe("Co-op: importing a pokerogue.net account", () => {
       expect(notes).toHaveLength(2);
       expect(notes[0]).toContain("99.0.0");
       expect(notes[0]).toContain(version);
+      // A player's report: read without this, the line looked like a refusal, and they stopped before the question
+      expect(notes[0]).toContain("It can still be imported");
       expect(notes[1]).toContain("1 of its Pokémon");
       expect(notes[1]).toContain("1 of its eggs");
     });
