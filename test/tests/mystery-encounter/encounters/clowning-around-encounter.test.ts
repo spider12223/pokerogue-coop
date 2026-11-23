@@ -117,20 +117,18 @@ describe("Clowning Around - Mystery Encounter", () => {
     expect(config.pokemonConfigs?.[1].customPokemonData?.types.length).toBe(2);
     expect([
       AbilityId.STURDY,
-      AbilityId.PICKUP,
       AbilityId.INTIMIDATE,
+      AbilityId.SERENE_GRACE,
       AbilityId.GUTS,
-      AbilityId.DROUGHT,
-      AbilityId.DRIZZLE,
-      AbilityId.SNOW_WARNING,
-      AbilityId.SAND_STREAM,
-      AbilityId.ELECTRIC_SURGE,
-      AbilityId.PSYCHIC_SURGE,
-      AbilityId.GRASSY_SURGE,
-      AbilityId.MISTY_SURGE,
-      AbilityId.MAGICIAN,
+      AbilityId.DOWNLOAD,
+      AbilityId.MAGIC_GUARD,
+      AbilityId.MOLD_BREAKER,
+      AbilityId.UNAWARE,
       AbilityId.SHEER_FORCE,
+      AbilityId.FLARE_BOOST,
+      AbilityId.REGENERATOR,
       AbilityId.PRANKSTER,
+      AbilityId.OPPORTUNIST,
     ]).toContain(config.pokemonConfigs?.[1].customPokemonData?.ability);
     expect(ClowningAroundEncounter.misc.ability).toBe(config.pokemonConfigs?.[1].customPokemonData?.ability);
     await vi.waitFor(() => expect(moveInitSpy).toHaveBeenCalled());
