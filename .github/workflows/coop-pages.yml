@@ -54,6 +54,14 @@ jobs:
           COOP_GIT_SHA: ${{ github.sha }}
           COOP_DIRTY_HASH: clean
 
+      # The game's manifest (upstream's assets) opens an installed app at the domain's root ("/"). This site is under
+      # /<repository>/, and that root is another site: a player's installed app opened the owner's user page
+      - name: Open the installed app on this site
+        run: >-
+          node -e "const fs = require('fs'); const f = 'dist/manifest.webmanifest';
+          const m = JSON.parse(fs.readFileSync(f, 'utf8')); m.start_url = m.scope = './';
+          fs.writeFileSync(f, JSON.stringify(m, null, 2));"
+
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
