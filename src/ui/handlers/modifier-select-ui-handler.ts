@@ -13,12 +13,19 @@ import { Button } from "#enums/buttons";
 import type { PokeballType } from "#enums/pokeball";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { TextStyle } from "#enums/text-style";
+import { UiMode } from "#enums/ui-mode";
 import { HealShopCostModifier, LockModifierTiersModifier, PokemonHeldItemModifier } from "#modifiers/modifier";
 import type { ModifierTypeOption } from "#modifiers/modifier-type";
 import { getPlayerShopModifierTypeOptionsForWave, TmModifierType } from "#modifiers/modifier-type";
 import type { ModifierSelectCallback } from "#phases/select-modifier-phase";
 import { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
+import { holdButton } from "#ui/pointer-input";
 import { addTextObject, getModifierTierTextTint, getTextColor, getTextStyleOptions, getTextWithColors } from "#ui/text";
 import { fixedInt, formatMoney, NumberHolder } from "#utils/common";
 import i18next from "i18next";
@@ -92,11 +99,19 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
   private cursorObj: Phaser.GameObjects.Image | null;
 
+  /** Invisible pointer hit areas (reward and shop items, the buttons, and an outside-click zone for cancelling) */
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+  /** Whether {@linkcode updatePointerHitAreas} has run for the current opening of the screen */
+  private pointerAreasBuilt = false;
+  /** Releases the Info (stats) press held on behalf of a pointer that selected a TM, so its move info shows */
+  private releaseInfoHold: (() => void) | null = null;
+
   setup() {
     const ui = this.getUi();
 
     this.modifierContainer = globalScene.add.container(0, 0);
     ui.add(this.modifierContainer);
+    this.pointerHitAreas = this.createPointerHitAreas(this.modifierContainer);
 
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -245,6 +260,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     }
 
     super.show(args);
+    ensureCanvasContextMenuDisabled();
     const opening = ++this.openingCount;
     /** Co-op: this opening was left (the screen closed, or opened again by a reroll) while it was animating */
     const left = (): boolean => getCoopSession() !== null && (!this.active || opening !== this.openingCount);
@@ -496,6 +512,7 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
             }
             this.awaitingActionInput = true;
             this.onActionInput = args[2];
+            this.updatePointerHitAreas();
             // Co-op (D16): where the partner's cursor is
             getCosmeticView()?.drawCursor();
           });
@@ -658,6 +675,8 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
 
   setCursor(cursor: number): boolean {
     const ui = this.getUi();
+    // A TM's move info shown on behalf of a pointer goes away with the selection, as it would on releasing the key
+    this.releaseInfo();
     const ret = super.setCursor(cursor);
 
     if (!this.cursorObj) {
@@ -839,6 +858,10 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.rerollCostText.setText(i18next.t("modifierSelectUiHandler:rerollCost", { formattedMoney }));
     this.rerollCostText.setColor(getTextColor(canReroll ? TextStyle.MONEY : TextStyle.PARTY_RED));
     this.rerollCostText.setShadowColor(getTextColor(canReroll ? TextStyle.MONEY : TextStyle.PARTY_RED, true));
+    // the cost text's width changed, and with it the Reroll button's hit area
+    if (this.pointerAreasBuilt) {
+      this.updatePointerHitAreas();
+    }
   }
 
   updateLockRaritiesText(): void {
@@ -850,6 +873,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
   clear() {
     super.clear();
 
+    this.releaseInfo();
+    this.pointerHitAreas?.clear();
+    this.pointerAreasBuilt = false;
     this.coopLabel.setVisible(false);
     this.moveInfoOverlay.clear();
     this.moveInfoOverlayActive = false;
@@ -924,6 +950,197 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     this.cursorObj = null;
   }
 
+  // #region Pointer support
+
+  /** Whether a pointer may act now: the screen waits for a choice and nothing is shown over it */
+  private canHandlePointer(): boolean {
+    return (
+      this.active && this.awaitingActionInput && !this.tutorialActive && this.getUi().mode === UiMode.MODIFIER_SELECT
+    );
+  }
+
+  /** Let go of the Info press held for a pointer-selected TM, if any */
+  private releaseInfo(): void {
+    const release = this.releaseInfoHold;
+    this.releaseInfoHold = null;
+    release?.();
+  }
+
+  /**
+   * Move the cursor to an element, the way the arrow keys would end up on it.
+   * @param row - The cursor row: 0 for the buttons, 1 for the rewards, 2 and up for the shop rows (the last shop row is 2)
+   * @param cursor - The position in that row
+   * @param showInfo - Hold Info so a TM's move info shows, as holding the key would (touch has no key to hold)
+   */
+  private selectWithPointer(row: number, cursor: number, showInfo = false): void {
+    const changed = row !== this.rowCursor || cursor !== this.cursor;
+    this.setRowCursor(row);
+    if (this.cursor !== cursor) {
+      this.setCursor(cursor);
+    }
+    if (changed) {
+      this.getUi().playSelect();
+    }
+    if (showInfo && this.moveInfoOverlay.active && this.releaseInfoHold === null) {
+      this.releaseInfoHold = holdButton(Button.STATS);
+    }
+  }
+
+  /** Select the element and activate it with a single click (the buttons and the Continue button) */
+  private pressWithPointer(row: number, cursor: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.selectWithPointer(row, cursor);
+    this.processInput(Button.ACTION);
+  }
+
+  /**
+   * Items are a grid: the first click selects (and shows a TM's move info), a click on the selected one activates it.
+   * A right click selects and activates at once.
+   */
+  private clickItemWithPointer(row: number, cursor: number, rightClick: boolean): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (rightClick || (this.rowCursor === row && this.cursor === cursor)) {
+      this.selectWithPointer(row, cursor);
+      this.releaseInfo();
+      this.processInput(Button.ACTION);
+      return;
+    }
+    this.selectWithPointer(row, cursor, true);
+  }
+
+  /** The area an item is drawn in: its slot of the row (where its cursor is too), from its icon to its name and price */
+  private getOptionHitRect(option: ModifierOption, count: number, shop: boolean) {
+    const slotWidth = globalScene.scaledCanvas.width / (count + 2);
+    const scale = option.scaleX;
+    return {
+      x: option.x - slotWidth / 2,
+      y: option.y - 32 * scale,
+      width: slotWidth,
+      height: (32 + (shop ? 40 : 38)) * scale,
+    };
+  }
+
+  /** The area of a button's text (and what is drawn after it, like the Reroll cost) */
+  private getButtonHitRect(
+    container: Phaser.GameObjects.Container,
+    text: Phaser.GameObjects.Text,
+    extraWidth = 0,
+  ): { x: number; y: number; width: number; height: number } {
+    return {
+      x: container.x + text.x - text.originX * text.displayWidth - 1,
+      y: container.y + text.y,
+      width: text.displayWidth + extraWidth + 2,
+      // the Reroll and Lock Rarities buttons are 12 apart
+      height: Math.min(Math.max(text.displayHeight + 2, 10), 12),
+    };
+  }
+
+  /**
+   * (Re)build the pointer hit areas from what is drawn: the buttons (hover selects, a click activates), the reward and
+   * shop items (a click selects, a second click or a right click activates), and the rest of the screen, where a click
+   * cancels (skips the rewards) when the keyboard's Cancel can.
+   */
+  private updatePointerHitAreas(): void {
+    const hitAreas = this.pointerHitAreas;
+    if (!hitAreas) {
+      return;
+    }
+    this.pointerAreasBuilt = true;
+
+    // The outside zone goes first, so the rows added after it are above it.
+    if (this.player) {
+      hitAreas.setOutsideCancel(() => {
+        if (this.canHandlePointer()) {
+          this.releaseInfo();
+          this.processInput(Button.CANCEL);
+        }
+      });
+    } else {
+      hitAreas.clearOutside();
+    }
+
+    const configs: PointerRowHitAreaConfig[] = [];
+    const addButton = (
+      row: number,
+      cursor: number,
+      rect: { x: number; y: number; width: number; height: number },
+    ): void => {
+      configs.push({
+        ...rect,
+        onHover: () => {
+          if (this.canHandlePointer()) {
+            this.selectWithPointer(row, cursor);
+          }
+        },
+        onActivate: () => this.pressWithPointer(row, cursor),
+      });
+    };
+
+    // Reroll (with its cost), Manage Items, Check Team, Lock Rarities, Trade
+    if (this.rerollButtonContainer.visible) {
+      const text = this.rerollButtonContainer.getAt<Phaser.GameObjects.Text>(0);
+      const extra = this.rerollCostText.visible
+        ? this.rerollCostText.x + this.rerollCostText.displayWidth - (text.x + text.displayWidth)
+        : 0;
+      addButton(0, 0, this.getButtonHitRect(this.rerollButtonContainer, text, extra));
+    }
+    if (this.transferButtonContainer.visible) {
+      addButton(
+        0,
+        1,
+        this.getButtonHitRect(
+          this.transferButtonContainer,
+          this.transferButtonContainer.getAt<Phaser.GameObjects.Text>(0),
+        ),
+      );
+    }
+    if (this.checkButtonContainer.visible) {
+      addButton(
+        0,
+        2,
+        this.getButtonHitRect(this.checkButtonContainer, this.checkButtonContainer.getAt<Phaser.GameObjects.Text>(0)),
+      );
+    }
+    if (this.lockRarityButtonContainer.visible) {
+      addButton(0, 3, this.getButtonHitRect(this.lockRarityButtonContainer, this.lockRarityButtonText));
+    }
+    if (this.tradeButtonContainer.visible) {
+      addButton(0, TRADE_CURSOR, this.getButtonHitRect(this.tradeButtonContainer, this.tradeButtonText));
+    }
+
+    // The Continue button, in the place of the rewards when there are none
+    if (this.options.length === 0 && this.continueButtonContainer.visible) {
+      const text = this.continueButtonContainer.getAt<Phaser.GameObjects.Text>(0);
+      addButton(1, 0, this.getButtonHitRect(this.continueButtonContainer, text));
+    }
+
+    const addItem = (option: ModifierOption, row: number, cursor: number, count: number, shop: boolean): void => {
+      configs.push({
+        ...this.getOptionHitRect(option, count, shop),
+        onActivate: () => this.clickItemWithPointer(row, cursor, false),
+        onRightClick: () => this.clickItemWithPointer(row, cursor, true),
+      });
+    };
+    for (const [index, option] of this.options.entries()) {
+      addItem(option, 1, index, this.options.length, false);
+    }
+    // the first shop row is the highest cursor row, and the last one is row 2
+    for (const [rowIndex, rowOptions] of this.shopOptionsRows.entries()) {
+      const row = this.shopOptionsRows.length - rowIndex + 1;
+      for (const [index, option] of rowOptions.entries()) {
+        addItem(option, row, index, rowOptions.length, true);
+      }
+    }
+
+    hitAreas.setRows(configs);
+  }
+
+  // #endregion
+
   // #region Co-op (D11, D16)
 
   /** The line that says who is choosing, on the screen of the player who is not (D9, D17); `null` takes it away */
@@ -953,6 +1170,9 @@ export class ModifierSelectUiHandler extends AwaitableUiHandler {
     const style = requested ? TextStyle.SUMMARY_BLUE : TextStyle.PARTY;
     this.tradeButtonText.setColor(getTextColor(style));
     this.tradeButtonText.setShadowColor(getTextColor(style, true));
+    if (this.pointerAreasBuilt) {
+      this.updatePointerHitAreas();
+    }
   }
 
   /** @returns What the cursor points at, for a ping (D16); `null` if it is on a button */

@@ -8,7 +8,13 @@ import type { MappingSettingName } from "#types/inputs";
 import type { SettingsCategory, SettingsUiItem } from "#types/settings";
 import type { ConfirmModeConfig, InputsIcons } from "#types/ui-types";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { ScrollBar } from "#ui/scroll-bar";
+import { getLocalBounds, getRowValueHitAreas, getTabMenuHitAreas } from "#ui/settings-pointer";
 import { TabMenu } from "#ui/tab-menu";
 import { addTextObject, getTextColor } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -36,6 +42,11 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
   private scrollBar: ScrollBar;
 
   private optionsBg: Phaser.GameObjects.NineSlice;
+  private actionsBg: Phaser.GameObjects.NineSlice;
+  /** The "Back" icon and label drawn in the bottom bar */
+  private backButtonObjects: [Phaser.GameObjects.Sprite, Phaser.GameObjects.Text];
+
+  private pointerHitAreas: PointerHitAreaManager | null = null;
 
   private optionCursors: number[];
 
@@ -85,9 +96,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
     const menuWidth = globalScene.scaledCanvas.width;
 
-    this.tabMenu = new TabMenu(0, 0, menuWidth, tabLabels, newIndex => {
-      globalScene.ui.setMode(this.settingsTabs[newIndex].mode);
-    });
+    this.tabMenu = new TabMenu(0, 0, menuWidth, tabLabels, newIndex => this.openTab(newIndex));
 
     const activeIndex = this.settingsTabs.findIndex(tab => tab.mode === ui.mode);
     if (activeIndex !== -1) {
@@ -101,6 +110,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
     const actionsBg = addWindow(0, canvasHeight - navHeight, canvasWidth - 2, 22) // formatting
       .setOrigin(0);
+    this.actionsBg = actionsBg;
 
     const iconAction = globalScene.add
       .sprite(0, 0, "keyboard")
@@ -120,6 +130,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
     const cancelText = addTextObject(0, 0, i18next.t("settings:back"), TextStyle.SETTINGS_LABEL) // formatting
       .setOrigin(0, 0.15);
     cancelText.setPositionRelative(iconCancel, -cancelText.width / 6 - 2, 0);
+    this.backButtonObjects = [iconCancel, cancelText];
 
     this.optionsContainer = globalScene.add.container();
 
@@ -215,10 +226,120 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
     ui.add(this.settingsContainer);
 
+    this.pointerHitAreas = this.createPointerHitAreas(this.settingsContainer);
+    // The settings screen covers everything, so a right click that misses every hit area lands here instead of on the
+    // empty space handled by the global pointer router
+    this.settingsContainer.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown() && this.isPointerInputEnabled()) {
+        this.processInput(Button.CANCEL);
+      }
+    });
+
     this.setCursor(0);
     this.setScrollCursor(0);
 
     this.settingsContainer.setVisible(false);
+  }
+
+  /** Switch to the settings tab at the given index of {@linkcode settingsTabs} */
+  private openTab(index: number): void {
+    globalScene.ui.setMode(this.settingsTabs[index].mode);
+  }
+
+  /**
+   * Rebuild the pointer hit areas: tab titles and arrows, the visible rows and their values, and the "Back" button.
+   * Hovering a row selects it; clicking a value selects that value as LEFT / RIGHT would.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas || !this.active) {
+      return;
+    }
+
+    const configs: PointerRowHitAreaConfig[] = getTabMenuHitAreas(
+      this.tabMenu,
+      index => this.onTabPointerActivate(index),
+      () => this.onPointerButton(Button.CYCLE_FORM),
+      () => this.onPointerButton(Button.CYCLE_SHINY),
+    );
+
+    const rowHeight = 16;
+    const rowX = this.optionsBg.x + 4;
+    const rowWidth = globalScene.scaledCanvas.width - (this.scrollBar.visible ? 16 : 10);
+    for (let row = 0; row < this.rowsToDisplay; row++) {
+      const settingIndex = this.scrollCursor + row;
+      if (settingIndex >= this.uiItems.length) {
+        break;
+      }
+      const rowY = this.optionsBg.y + 4 + row * rowHeight;
+      configs.push({
+        x: rowX,
+        y: rowY,
+        width: rowWidth,
+        height: rowHeight,
+        onHover: () => this.onRowPointerHover(row),
+        onActivate: () => this.onRowPointerHover(row),
+      });
+      configs.push(
+        ...getRowValueHitAreas(this.optionValueLabels[settingIndex], this.optionsContainer.x, rowY, rowHeight, {
+          onHover: () => this.onRowPointerHover(row),
+          onActivate: valueIndex => this.onValuePointerActivate(row, valueIndex),
+        }),
+      );
+    }
+
+    const backBounds = getLocalBounds(...this.backButtonObjects);
+    configs.push({
+      x: backBounds.left - 2,
+      y: this.actionsBg.y,
+      width: backBounds.right - backBounds.left + 4,
+      height: this.actionsBg.displayHeight,
+      onActivate: () => this.onPointerButton(Button.CANCEL),
+    });
+
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private onTabPointerActivate(index: number): void {
+    if (!this.isPointerInputEnabled() || index === this.tabMenu.selectedIndex) {
+      return;
+    }
+    this.tabMenu.setIndex(index);
+    this.getUi().playSelect();
+    this.openTab(index);
+  }
+
+  private onPointerButton(button: Button): void {
+    if (this.isPointerInputEnabled()) {
+      this.processInput(button);
+    }
+  }
+
+  /** Select the given visible row (as UP / DOWN would) */
+  private onRowPointerHover(row: number): void {
+    if (this.isPointerInputEnabled() && this.setCursor(row)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /** Select the given visible row and give its setting the clicked value (as LEFT / RIGHT would) */
+  private onValuePointerActivate(row: number, valueIndex: number): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    const rowChanged = this.setCursor(row);
+    const valueChanged = this.setOptionCursor(this.scrollCursor + row, valueIndex, true);
+    if (rowChanged || valueChanged) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /** Scroll the rows by one (mouse wheel), without wrapping around */
+  private onPointerWheel(direction: -1 | 1): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    const maxScrollCursor = Math.max(this.uiItems.length - this.rowsToDisplay, 0);
+    this.setScrollCursor(Phaser.Math.Clamp(this.scrollCursor + direction, 0, maxScrollCursor));
   }
 
   /**
@@ -284,6 +405,10 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
     ui.moveTo(this.settingsContainer, ui.length - 1);
 
     ui.hideTooltip();
+
+    ensureCanvasContextMenuDisabled();
+    this.pointerHitAreas?.setWheelHandler(direction => this.onPointerWheel(direction));
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -491,6 +616,8 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
     this.setCursor(this.cursor);
 
+    this.updatePointerHitAreas();
+
     return true;
   }
 
@@ -518,6 +645,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
     this.settingsContainer.setVisible(false);
     this.setScrollCursor(0);
     this.eraseCursor();
+    this.pointerHitAreas?.clear();
     this.getUi().bgmBar.toggleBgmBar(settings.display.showBgmBar);
   }
 
@@ -545,6 +673,7 @@ export class BaseSettingsUiHandler extends MessageUiHandler {
 
   protected updateOptionValueLabel(settingIndex: number, optionIndex: number, newLabel: string) {
     this.optionValueLabels[settingIndex][optionIndex].setText(newLabel);
+    this.updatePointerHitAreas();
   }
 
   protected handleSaveSetting<V = any>(uiItem: SettingsUiItem, newValue: V): void {

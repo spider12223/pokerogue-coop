@@ -9,6 +9,11 @@ import type { Voucher } from "#system/voucher";
 import { getVoucherTypeIcon, getVoucherTypeName, vouchers } from "#system/voucher";
 import type { AchvUnlocks, VoucherUnlocks } from "#types/save-data";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { ScrollBar } from "#ui/scroll-bar";
 import { addTextObject } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -61,6 +66,11 @@ export class AchvsUiHandler extends MessageUiHandler {
   private cursorObj: Phaser.GameObjects.NineSlice | null;
   private currentPage: Page;
 
+  /** Hit areas over the visible icon grid (inside `iconsContainer`) */
+  private iconPointerHitAreas: PointerHitAreaManager | null = null;
+  /** Hit area over the header's page-switch button and label (inside `mainContainer`) */
+  private headerPointerHitAreas: PointerHitAreaManager | null = null;
+
   setup() {
     const ui = this.getUi();
 
@@ -72,6 +82,7 @@ export class AchvsUiHandler extends MessageUiHandler {
     this.mainContainer = globalScene.add.container(1, -HEIGHT + 1);
 
     this.mainContainer.setInteractive(new Phaser.Geom.Rectangle(0, 0, WIDTH, HEIGHT), Phaser.Geom.Rectangle.Contains);
+    this.mainContainer.on("pointerdown", (pointer: Phaser.Input.Pointer) => this.handleBackgroundPointerDown(pointer));
 
     this.headerBg = addWindow(0, 0, WIDTH - 2, 24);
 
@@ -106,6 +117,7 @@ export class AchvsUiHandler extends MessageUiHandler {
     this.iconsContainer = globalScene.add.container(5, this.headerBg.height + 8);
 
     this.icons = [];
+    this.iconPointerHitAreas = this.createPointerHitAreas(this.iconsContainer);
 
     for (let a = 0; a < this.ROWS * this.COLS; a++) {
       const x = (a % this.COLS) * 17;
@@ -167,6 +179,8 @@ export class AchvsUiHandler extends MessageUiHandler {
 
     ui.add(this.mainContainer);
 
+    this.headerPointerHitAreas = this.createPointerHitAreas(this.mainContainer);
+
     this.currentPage = Page.ACHIEVEMENTS;
 
     this.mainContainer.setVisible(false);
@@ -175,6 +189,7 @@ export class AchvsUiHandler extends MessageUiHandler {
   show(args: any[]): boolean {
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
     this.headerBgX = this.headerBg.getTopRight().x;
     this.updateAchvIcons();
 
@@ -188,7 +203,89 @@ export class AchvsUiHandler extends MessageUiHandler {
 
     this.getUi().hideTooltip();
 
+    this.iconPointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
+
     return true;
+  }
+
+  private canHandlePointer(): boolean {
+    return this.active;
+  }
+
+  /**
+   * Rebuild the invisible hit areas: one per visible icon (select on click) and one over the header's
+   * "switch page" button + label (same as pressing ACTION).
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.iconPointerHitAreas || !this.headerPointerHitAreas) {
+      return;
+    }
+
+    const iconConfigs: PointerRowHitAreaConfig[] = [];
+    const visibleCount = Math.min(this.icons.length, this.currentTotal - this.scrollCursor * this.COLS);
+    for (let i = 0; i < visibleCount; i++) {
+      const icon = this.icons[i];
+      iconConfigs.push({
+        x: icon.x,
+        y: icon.y,
+        width: 17,
+        height: 19,
+        onActivate: () => this.handleIconPointer(i),
+        // Icons have nothing to activate, so right click keeps meaning "back"
+        onRightClick: () => this.handleBackPointer(),
+      });
+    }
+    this.iconPointerHitAreas.setRows(iconConfigs);
+
+    const left = this.headerActionButton.x;
+    const right = this.headerActionText.x + this.headerActionText.displayWidth;
+    const switchPage = () => this.handleHeaderPointer();
+    this.headerPointerHitAreas.setRows([
+      {
+        x: left,
+        y: this.headerBg.y,
+        width: Math.max(right - left, 1),
+        height: this.headerBg.height,
+        onActivate: switchPage,
+        onRightClick: () => this.handleBackPointer(),
+      },
+    ]);
+  }
+
+  private handleIconPointer(index: number): void {
+    if (this.canHandlePointer() && this.setCursor(index)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  private handleBackPointer(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.CANCEL);
+    }
+  }
+
+  /**
+   * The container is a full screen interactive rectangle (so presses do not fall through to what is below), which
+   * means the global pointer router never sees a press here as "empty space"; right click goes back from here instead.
+   */
+  private handleBackgroundPointerDown(pointer: Phaser.Input.Pointer): void {
+    if (pointer.rightButtonDown() || pointer.button === 2) {
+      this.handleBackPointer();
+    }
+  }
+
+  private handleHeaderPointer(): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.processInput(direction < 0 ? Button.UP : Button.DOWN);
   }
 
   protected showAchv(achv: Achv) {
@@ -475,6 +572,7 @@ export class AchvsUiHandler extends MessageUiHandler {
     }
 
     this.currentTotal = totalItems;
+    this.updatePointerHitAreas();
   }
 
   /**
@@ -512,6 +610,8 @@ export class AchvsUiHandler extends MessageUiHandler {
     this.setScrollCursor(0);
     this.setCursor(0, true);
     this.eraseCursor();
+    this.iconPointerHitAreas?.clear();
+    this.headerPointerHitAreas?.clear();
   }
 
   eraseCursor() {

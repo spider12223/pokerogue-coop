@@ -419,13 +419,13 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
         width: rowWidth,
         height: rowHeight,
         onHover: () => {
-          if (this.blockInput || !this.active) {
+          if (this.blockInput || !this.isPointerInputEnabled()) {
             return;
           }
           this.setCursor(visibleIndex);
         },
         onActivate: () => {
-          if (!this.active) {
+          if (!this.isPointerInputEnabled()) {
             return;
           }
           this.setCursor(visibleIndex);
@@ -435,6 +435,17 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
     }
 
     this.pointerHitAreas.setRows(configs);
+
+    // Lists longer than the visible rows scroll with the mouse wheel, like UP / DOWN
+    if (this.options.length > this.maxOptions) {
+      this.pointerHitAreas.setWheelHandler(direction => {
+        if (!this.blockInput && this.isPointerInputEnabled()) {
+          this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+        }
+      });
+    } else {
+      this.pointerHitAreas.clearWheel();
+    }
   }
 
   private setupOutsideCancelHitArea(): void {
@@ -445,8 +456,11 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
     }
 
     this.outsideCancelHitAreas?.setOutsideCancel(() => {
-      if (!this.active || this.blockInput) {
-        if (this.blockInput && this.config?.canBypassInputDelay) {
+      if (!this.isPointerInputEnabled()) {
+        return;
+      }
+      if (this.blockInput) {
+        if (this.config?.canBypassInputDelay) {
           this.processInput(Button.CANCEL);
         }
         return;

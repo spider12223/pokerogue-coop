@@ -17,6 +17,8 @@ import type { ConfirmModeConfig, OptionSelectItem, OptionSelectModeConfig } from
 import type { AwaitableUiHandler } from "#ui/awaitable-ui-handler";
 import { BgmBar } from "#ui/bgm-bar";
 import { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
+import type { PointerHitAreaManager } from "#ui/pointer-hit-areas";
+import { pressButton } from "#ui/pointer-input";
 import { addTextObject } from "#ui/text";
 import { addWindow, WindowVariant } from "#ui/ui-theme";
 import { fixedInt, sessionIdKey } from "#utils/common";
@@ -75,6 +77,11 @@ export class MenuUiHandler extends OptionSelectUiHandler {
   protected communityConfig: OptionSelectModeConfig;
 
   public bgmBar: BgmBar;
+
+  /** Clicks left of the menu window close the menu */
+  private outsideHitAreas: PointerHitAreaManager | null = null;
+  /** Clicks on the menu window that miss every option stop there, instead of reaching the screen under the menu */
+  private windowHitAreas: PointerHitAreaManager | null = null;
 
   constructor() {
     super(UiMode.MENU);
@@ -157,14 +164,45 @@ export class MenuUiHandler extends OptionSelectUiHandler {
 
     this.optionSelectContainer.add(this.menuContainer);
 
+    // On the UI root, under the menu (brought back on top in `setupPointerBackground`)
+    this.outsideHitAreas = this.createPointerHitAreas(ui);
+    this.windowHitAreas = this.createPointerHitAreas(ui);
+
     this.initManageDataOptions();
     this.initCommunityMenuOptions();
+  }
+
+  /**
+   * The menu window fills the screen's height on the right: a click (or right click) left of it closes the menu, as
+   * CANCEL does, or moves on a tutorial / message waiting for a press. A click on the window that misses the options does
+   * nothing. The menu's options keep their own hit areas above these.
+   */
+  private setupPointerBackground(): void {
+    const { width, height } = globalScene.scaledCanvas;
+    const windowLeft = this.optionSelectContainer.x - this.optionSelectBg.displayWidth;
+
+    this.outsideHitAreas?.setOutsideCancel(() => this.onPointerOutside(), windowLeft, height);
+    this.windowHitAreas?.setOutsideCancel(() => {}, width - windowLeft, height, windowLeft);
+    globalScene.ui.bringToTop(this.optionSelectContainer);
+  }
+
+  private onPointerOutside(): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    if (this.acceptsEmptySpaceTap()) {
+      pressButton(Button.ACTION);
+      return;
+    }
+    this.processInput(Button.CANCEL);
   }
 
   public override show(): boolean {
     const config: OptionSelectModeConfig = this.getMenuOptionsConfig();
 
     super.show([config]);
+
+    this.setupPointerBackground();
 
     // Make sure the tutorial overlay sits above everything, but below the message box
     this.menuContainer.bringToTop(this.tutorialOverlay);
@@ -790,6 +828,11 @@ export class MenuUiHandler extends OptionSelectUiHandler {
   public override processInput(button: Button): boolean {
     const ui = this.getUi();
 
+    // The UI sends keys to `processTutorialInput` during a tutorial; a click on an option comes here
+    if (this.tutorialActive) {
+      return this.processTutorialInput(button);
+    }
+
     if (button === Button.CANCEL) {
       ui.playSelect();
       ui.revertMode().then(result => {
@@ -820,6 +863,8 @@ export class MenuUiHandler extends OptionSelectUiHandler {
   public override clear(): void {
     super.clear();
 
+    this.outsideHitAreas?.clear();
+    this.windowHitAreas?.clear();
     this.bgmBar.toggleBgmBar(false);
   }
 }

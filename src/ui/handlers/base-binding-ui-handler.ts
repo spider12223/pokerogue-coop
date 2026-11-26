@@ -1,6 +1,8 @@
 import { globalScene } from "#app/global-scene";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
+import type { PointerHitAreaManager } from "#ui/pointer-hit-areas";
+import { getLocalBounds } from "#ui/settings-pointer";
 import type { TabMenu } from "#ui/tab-menu";
 import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
@@ -46,6 +48,8 @@ export abstract class BaseBindingUiHandler extends UiHandler {
   // The specific setting being modified.
   protected target;
   protected tabMenu: TabMenu | undefined;
+
+  private pointerHitAreas: PointerHitAreaManager | null = null;
 
   public override setup(): void {
     const ui = this.getUi();
@@ -102,6 +106,43 @@ export abstract class BaseBindingUiHandler extends UiHandler {
     this.cancelLabel.setOrigin(0, 0.5);
     this.cancelLabel.setPositionRelative(this.actionBg, 10, this.actionBg.height / 2);
     this.actionsContainer.add(this.cancelLabel);
+
+    this.pointerHitAreas = this.createPointerHitAreas(this.actionsContainer);
+  }
+
+  /**
+   * Make the "Back" (cursor 0) and assign / swap (cursor 1) labels of the action bar clickable once a button was pressed:
+   * hover selects the label, a click selects it and presses ACTION.
+   */
+  private updatePointerHitAreas(): void {
+    const labels = [this.cancelLabel, this.actionLabel];
+    this.pointerHitAreas?.setRows(
+      labels.map((label, cursor) => {
+        const bounds = getLocalBounds(label);
+        return {
+          x: bounds.left - 2,
+          y: this.actionBg.y - this.actionBg.displayHeight / 2,
+          width: bounds.right - bounds.left + 4,
+          height: this.actionBg.displayHeight,
+          onHover: () => {
+            if (this.canHandlePointer() && this.cursor !== cursor) {
+              this.setCursor(cursor);
+              this.getUi().playSelect();
+            }
+          },
+          onActivate: () => {
+            if (this.canHandlePointer()) {
+              this.setCursor(cursor);
+              this.processInput(Button.ACTION);
+            }
+          },
+        };
+      }),
+    );
+  }
+
+  private canHandlePointer(): boolean {
+    return this.isPointerInputEnabled() && this.buttonPressed !== null;
   }
 
   private manageAutoCloseTimer(): void {
@@ -238,6 +279,7 @@ export abstract class BaseBindingUiHandler extends UiHandler {
     this.actionsContainer.setVisible(false);
     this.newButtonIcon.setVisible(false);
     this.buttonPressed = null;
+    this.pointerHitAreas?.clear();
   }
 
   /**
@@ -261,5 +303,6 @@ export abstract class BaseBindingUiHandler extends UiHandler {
     this.newButtonIcon.setVisible(true);
     this.setCursor(0);
     this.actionsContainer.setVisible(true);
+    this.updatePointerHitAreas();
   }
 }

@@ -64,6 +64,7 @@ export class SettingsKeyboardUiHandler extends BaseControlSettingsUiHandler {
 
     this.settingsContainer.add(iconDelete);
     this.settingsContainer.add(deleteText);
+    this.actionBarButtons.push({ objects: [iconDelete, deleteText], onClick: () => this.onDeleteDown() });
 
     // Map the 'noKeyboard' layout options for easy access.
     this.layout["noKeyboard"].optionsContainer = optionsContainer;
@@ -77,9 +78,7 @@ export class SettingsKeyboardUiHandler extends BaseControlSettingsUiHandler {
     if (![UiMode.SETTINGS_KEYBOARD, UiMode.SETTINGS_GAMEPAD].includes(globalScene.ui.mode)) {
       return;
     }
-    const isKeyboard = globalScene.ui.mode === UiMode.SETTINGS_KEYBOARD;
-    globalScene.gameData.resetMappingToDefault(isKeyboard ? Device.KEYBOARD : Device.GAMEPAD);
-    this.tabMenu?.updateIcons();
+    globalScene.ui.getHandler<BaseControlSettingsUiHandler>().resetBindingsToDefault();
   }
 
   /**
@@ -151,5 +150,6 @@ export class SettingsKeyboardUiHandler extends BaseControlSettingsUiHandler {
         }
       }
     }
+    this.updatePointerHitAreas();
   }
 }

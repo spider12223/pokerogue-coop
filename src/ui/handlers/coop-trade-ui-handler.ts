@@ -13,6 +13,11 @@ import { coopText } from "#coop/ui/text";
 import { Button } from "#enums/buttons";
 import { TextStyle } from "#enums/text-style";
 import type { PlayerPokemon } from "#field/pokemon";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -137,6 +142,11 @@ export class CoopTradeUiHandler extends UiHandler {
   private give: number | null = null;
   private want: number | null = null;
 
+  /** Invisible pointer hit areas: the rows of the lists, the actions, and the rest of the screen (cancels the picks) */
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+  /** What the hit areas were built for, so that a render that only moves the cursor keeps them (a tap needs its area) */
+  private pointerAreasKey: string | null = null;
+
   setup(): void {
     const ui = this.getUi();
     const { width, height } = globalScene.scaledCanvas;
@@ -168,11 +178,14 @@ export class CoopTradeUiHandler extends UiHandler {
 
     this.arrow = addTextObject(0, 0, "▶", TextStyle.WINDOW);
     this.container.add(this.arrow);
+
+    this.pointerHitAreas = this.createPointerHitAreas(this.container);
   }
 
   /** @param args - `[actions, model]` */
   override show(args: any[]): boolean {
     super.show(args);
+    ensureCanvasContextMenuDisabled();
     this.actions = args[0] as TradeScreenActions;
     this.model = args[1] as TradeScreenModel;
     this.row = 0;
@@ -181,6 +194,13 @@ export class CoopTradeUiHandler extends UiHandler {
     // Opening on a proposal of the partner (a reload, a rejoin) the cursor is on its answers
     this.focusFor(this.mode());
     this.container.setVisible(true);
+    // A click anywhere else clears the picks, as Cancel does; the rows are added after this zone, so they are above it
+    this.pointerAreasKey = null;
+    this.pointerHitAreas?.setOutsideCancel(() => {
+      if (this.isPointerInputEnabled() && this.model !== null) {
+        this.processInput(Button.CANCEL);
+      }
+    });
     this.render();
     return true;
   }
@@ -405,6 +425,102 @@ export class CoopTradeUiHandler extends UiHandler {
     this.arrow.setVisible(this.mode() !== "watch");
     // the cursor stays on top of what was drawn again
     this.container.bringToTop(this.arrow);
+    this.updatePointerHitAreas();
+  }
+
+  /** Move the cursor onto a row of a list, as the arrow keys would end up on it */
+  private selectRowWithPointer(side: number, row: number): void {
+    if (this.side === side && this.row === row) {
+      return;
+    }
+    this.side = side;
+    this.row = row;
+    this.lastList = side;
+    this.getUi().playSelect();
+    this.render();
+  }
+
+  /** Move the cursor onto an action, as the arrow keys would end up on it */
+  private selectActionWithPointer(index: number): void {
+    if (this.side === 2 && this.actionIndex === index) {
+      return;
+    }
+    this.toActions(this.side === 2 ? this.lastList : this.side);
+    this.actionIndex = index;
+    this.getUi().playSelect();
+    this.render();
+  }
+
+  /**
+   * The rows of the lists are a grid (the first click puts the cursor on a Pokémon, a click on it again picks it; a right
+   * click does both) and only exist while a deal is being composed. The actions are a menu of buttons: hovering puts the
+   * cursor on one, a click selects and activates it.
+   */
+  private updatePointerHitAreas(): void {
+    const model = this.model;
+    if (!this.pointerHitAreas || model === null) {
+      return;
+    }
+    const { height } = globalScene.scaledCanvas;
+    const key = `${this.mode()}|${this.sizes().join(",")}|${this.currentActions()
+      .map(action => action.label)
+      .join(",")}`;
+    if (key === this.pointerAreasKey) {
+      return;
+    }
+    this.pointerAreasKey = key;
+    const configs: PointerRowHitAreaConfig[] = [];
+
+    if (this.mode() === "compose") {
+      const sizes = this.sizes();
+      for (const side of [0, 1]) {
+        const compact = sizes[side] > FULL_ROWS;
+        for (let row = 0; row < sizes[side]; row++) {
+          const activate = (rightClick: boolean): void => {
+            if (!this.isPointerInputEnabled() || this.model === null) {
+              return;
+            }
+            if (rightClick || (this.side === side && this.row === row)) {
+              this.selectRowWithPointer(side, row);
+              this.processInput(Button.ACTION);
+              return;
+            }
+            this.selectRowWithPointer(side, row);
+          };
+          configs.push({
+            // from the cursor (left of the box) to the right end of the box
+            x: PANEL_X[side] + 2,
+            y: this.rowTop(row, compact),
+            width: PANEL_WIDTH - 8,
+            height: compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT,
+            onActivate: () => activate(false),
+            onRightClick: () => activate(true),
+          });
+        }
+      }
+    }
+
+    for (const index of this.currentActions().keys()) {
+      configs.push({
+        x: ACTIONS_X,
+        y: -height + DEAL_TOP + 2 + index * ACTION_LINE,
+        width: ACTIONS_WIDTH,
+        height: ACTION_LINE,
+        onHover: () => {
+          if (this.isPointerInputEnabled() && this.model !== null) {
+            this.selectActionWithPointer(index);
+          }
+        },
+        onActivate: () => {
+          if (this.isPointerInputEnabled() && this.model !== null) {
+            this.selectActionWithPointer(index);
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    }
+
+    this.pointerHitAreas.setRows(configs);
   }
 
   private keep<T extends Phaser.GameObjects.GameObject>(object: T): T {
@@ -785,6 +901,8 @@ export class CoopTradeUiHandler extends UiHandler {
     for (const object of this.drawn.splice(0)) {
       object.destroy();
     }
+    this.pointerHitAreas?.clear();
+    this.pointerAreasKey = null;
     this.container.setVisible(false);
     this.actions = null;
     this.model = null;

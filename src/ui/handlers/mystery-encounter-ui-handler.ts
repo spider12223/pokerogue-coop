@@ -20,6 +20,11 @@ import { getEncounterText } from "#mystery-encounters/encounter-dialogue-utils";
 import type { OptionSelectSettings } from "#mystery-encounters/encounter-phase-utils";
 import type { MysteryEncounterOption } from "#mystery-encounters/mystery-encounter-option";
 import type { MysteryEncounterPhase } from "#phases/mystery-encounter-phases";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addBBCodeTextObject, getBBCodeFrag } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow, WindowVariant } from "#ui/ui-theme";
@@ -62,6 +67,15 @@ export class MysteryEncounterUiHandler extends UiHandler {
 
   protected blockInput = true;
 
+  /**
+   * Holds the invisible pointer hit areas. Not {@linkcode optionsContainer}, which is emptied (and its children destroyed)
+   * every time the options are drawn, but at the same place so that the areas share its coordinates.
+   */
+  private pointerContainer: Phaser.GameObjects.Container;
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+  /** Where the View Party button is drawn, in the coordinates of {@linkcode optionsContainer} */
+  private viewPartyRect: { x: number; y: number; width: number; height: number } | null = null;
+
   override setup() {
     const ui = this.getUi();
 
@@ -80,6 +94,9 @@ export class MysteryEncounterUiHandler extends UiHandler {
     this.tooltipContainer = globalScene.add.container(210, -48);
     this.tooltipContainer.setVisible(false);
     ui.add(this.tooltipContainer);
+    this.pointerContainer = globalScene.add.container(12, -38.7);
+    ui.add(this.pointerContainer);
+    this.pointerHitAreas = this.createPointerHitAreas(this.pointerContainer);
 
     this.setCursor(this.getCursor());
 
@@ -104,6 +121,7 @@ export class MysteryEncounterUiHandler extends UiHandler {
 
   override show(args: any[]): boolean {
     super.show(args);
+    ensureCanvasContextMenuDisabled();
 
     this.overrideSettings = (args[0] as OptionSelectSettings) ?? {};
     const showDescriptionContainer =
@@ -130,10 +148,71 @@ export class MysteryEncounterUiHandler extends UiHandler {
       }, 1000);
     }
     this.displayOptionTooltip();
+    this.updatePointerHitAreas();
     // Co-op (D29): the chooser's cursor, if it came before this screen opened
     getCosmeticView()?.drawMeCursor();
 
     return true;
+  }
+
+  /** Whether a pointer may act now: the screen is shown, and not still blocking the first presses */
+  private canHandlePointer(): boolean {
+    return this.active && !this.blockInput;
+  }
+
+  /**
+   * Move the cursor to an option (or View Party) as the arrow keys would, with what `processInput` does after a move: the
+   * option's tooltip, the cursor's own color and the co-op announcement of it.
+   */
+  private selectWithPointer(index: number): void {
+    const changed = this.setCursor(index);
+    if (!changed) {
+      return;
+    }
+    this.displayOptionTooltip();
+    // Co-op: this player's own cursor again, not the chooser's it was following
+    this.cursorObj?.clearTint();
+    this.announceCursor();
+    this.getUi().playSelect();
+  }
+
+  /**
+   * The options and View Party are a menu of buttons: hovering selects one (and shows its tooltip), a click selects and
+   * activates it. An option that cannot be chosen is selected too (its tooltip says why) and does nothing when activated.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    const add = (index: number, rect: { x: number; y: number; width: number; height: number }): void => {
+      configs.push({
+        ...rect,
+        onHover: () => {
+          if (this.canHandlePointer()) {
+            this.selectWithPointer(index);
+          }
+        },
+        onActivate: () => {
+          if (this.canHandlePointer()) {
+            this.selectWithPointer(index);
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    };
+
+    const count = this.encounterOptions.length;
+    for (let i = 0; i < count; i++) {
+      // the options are drawn two to a row, at x 0 and 100 (a text is about 90 wide), and the cursor is left of the text
+      const column = i % 2 === 0 ? 0 : 100;
+      const row = count === 2 ? 8 : i < 2 ? 0 : 16;
+      add(i, { x: column - 10, y: row, width: 100, height: 16 });
+    }
+    if (this.viewPartyRect) {
+      add(count, this.viewPartyRect);
+    }
+    this.pointerHitAreas.setRows(configs);
   }
 
   override processInput(button: Button): boolean {
@@ -546,6 +625,13 @@ export class MysteryEncounterUiHandler extends UiHandler {
     this.optionsContainer.add(viewPartyText);
     viewPartyText.x -= viewPartyText.displayWidth + 16;
     this.viewPartyXPosition = viewPartyText.x - 10;
+    // (the cursor is left of the text)
+    this.viewPartyRect = {
+      x: viewPartyText.x - 10,
+      y: viewPartyText.y,
+      width: viewPartyText.displayWidth + 10,
+      height: Math.max(viewPartyText.displayHeight, 10),
+    };
 
     // Description Window
     const titleTextObject = addBBCodeTextObject(0, 0, titleText ?? "", TextStyle.TOOLTIP_TITLE, {
@@ -731,6 +817,8 @@ export class MysteryEncounterUiHandler extends UiHandler {
   override clear(): void {
     super.clear();
     this.overrideSettings = undefined;
+    this.pointerHitAreas?.clear();
+    this.viewPartyRect = null;
     this.optionsContainer.setVisible(false);
     this.optionsContainer.removeAll(true);
     this.dexProgressContainer.setVisible(false);

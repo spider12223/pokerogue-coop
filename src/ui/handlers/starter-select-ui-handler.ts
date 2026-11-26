@@ -65,6 +65,7 @@ import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, S
 import { FilterBar } from "#ui/filter-bar";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import { type KeyedPointerRow, SyncedPointerHitAreas } from "#ui/pointer-hit-area-sync";
 import {
   ensureCanvasContextMenuDisabled,
   PointerHitAreaManager,
@@ -242,6 +243,8 @@ export class StarterSelectUiHandler extends MessageUiHandler {
   private filterPointerHitAreas: PointerHitAreaManager | null = null;
   private partyColumnPointerHitAreas: PointerHitAreaManager | null = null;
   private outsideCancelHitAreas: PointerHitAreaManager | null = null;
+  /** Hit areas over the instruction rows (cycle form/gender/..., filters), standing in for the keys' on-screen buttons */
+  private instructionPointerHitAreas: SyncedPointerHitAreas | null = null;
 
   public override setup(): void {
     const ui = this.getUi();
@@ -369,6 +372,9 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     );
     this.outsideCancelHitAreas = new PointerHitAreaManager(this.starterSelectContainer, style =>
       this.setMouseCursorStyle(style),
+    );
+    this.instructionPointerHitAreas = new SyncedPointerHitAreas(
+      new PointerHitAreaManager(this.starterSelectContainer, style => this.setMouseCursorStyle(style)),
     );
 
     eventBus.on("settings/update/success", ({ key, value }: SettingsUpdateEventArgs) => {
@@ -2429,6 +2435,73 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.instructionsContainer.updateInstructions(this.canCycle, !!dexEntry.caughtAttr, this.filterMode);
     // Co-op: the status plate is where the filter hint goes
     this.coopUi?.coverFilterHint(this.instructionsContainer);
+    this.updateInstructionPointerHitAreas();
+  }
+
+  /** Whether a pointer press on an instruction row (a stand-in for its key) may act right now. */
+  private canHandleInstructionPointer(): boolean {
+    return (
+      this.canHandlePointer() && this.isPointerInputEnabled() && !this.isAwaitingActionInput && !this.tutorialActive
+    );
+  }
+
+  /**
+   * Make every instruction row (cycle shiny/form/gender/ability/nature/tera, open filters) clickable. A click sends the
+   * same button as the key shown on the row, so it goes through the keyboard path.
+   * The rows are rebuilt only when their geometry changes, as this runs after every cursor move.
+   */
+  private updateInstructionPointerHitAreas(): void {
+    if (!this.instructionPointerHitAreas) {
+      return;
+    }
+    if (!this.active || !this.starterSelectContainer.visible) {
+      this.instructionPointerHitAreas.clearRows();
+      return;
+    }
+
+    const rows: KeyedPointerRow[] = this.instructionsContainer.getInstructionHitAreas().map(area => ({
+      id: `key:${area.button}`,
+      x: this.instructionsContainer.x + area.x,
+      y: this.instructionsContainer.y + area.y,
+      width: area.width,
+      height: area.height,
+      onActivate: () => this.handleInstructionPointerActivate(area.button),
+    }));
+
+    if (!this.instructionPointerHitAreas.set(rows)) {
+      return;
+    }
+    // Keep the message box above the new hit areas, as it was before they were added
+    this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
+  }
+
+  /**
+   * Press the key of an instruction row, as the keyboard would.
+   * Outside the box (party icons, Start / Random, filter bar) the key is not handled, so focus first returns to the grid.
+   * @param button - The button shown on the clicked row
+   */
+  private handleInstructionPointerActivate(button: Button): void {
+    if (!this.canHandleInstructionPointer()) {
+      return;
+    }
+
+    if (this.filterBar.openDropDown) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+
+    if (button === Button.STATS) {
+      // "Filters" opens the filter bar's first dropdown directly; it is not offered (and does nothing) in filter mode
+      if (!this.filterMode) {
+        this.processInput(Button.STATS);
+      }
+      return;
+    }
+
+    if (!this.isGridFocused()) {
+      this.leaveNonGridFoci();
+    }
+    this.processInput(button);
   }
 
   protected updateStarters(): void {
@@ -3796,6 +3869,7 @@ export class StarterSelectUiHandler extends MessageUiHandler {
     this.filterPointerHitAreas?.clear();
     this.partyColumnPointerHitAreas?.clear();
     this.outsideCancelHitAreas?.clear();
+    this.instructionPointerHitAreas?.clear();
     this.filterBar.hideDropDowns();
 
     this.starterSelectContainer.setVisible(false);

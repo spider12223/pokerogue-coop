@@ -12,6 +12,11 @@ import { UiMode } from "#enums/ui-mode";
 import type { PokemonData } from "#system/pokemon-data";
 import type { RunEntry } from "#types/save-data";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { RunDisplayMode } from "#ui/run-info-ui-handler";
 import { addTextObject } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -40,12 +45,15 @@ export class RunHistoryUiHandler extends MessageUiHandler {
 
   private runContainerInitialY: number;
 
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+
   override setup() {
     const ui = this.getUi();
 
     this.runSelectContainer = globalScene.add.container(0, 0);
     this.runSelectContainer.setVisible(false);
     ui.add(this.runSelectContainer);
+    this.pointerHitAreas = this.createPointerHitAreas(this.runSelectContainer);
 
     const loadSessionBg = globalScene.add.rectangle(
       0,
@@ -76,6 +84,7 @@ export class RunHistoryUiHandler extends MessageUiHandler {
   override show(args: any[]): boolean {
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
     this.getUi().bringToTop(this.runSelectContainer);
     this.runSelectContainer.setVisible(true);
     this.populateRuns().then(() => {
@@ -86,7 +95,9 @@ export class RunHistoryUiHandler extends MessageUiHandler {
       if (this.runs.length === 0) {
         this.clearCursor();
       }
+      this.updatePointerHitAreas();
     });
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
 
     return true;
   }
@@ -152,6 +163,59 @@ export class RunHistoryUiHandler extends MessageUiHandler {
     return success || error;
   }
 
+  private canHandlePointer(): boolean {
+    return this.active && this.runs.length > 0 && globalScene.ui.getHandler() === this;
+  }
+
+  /**
+   * Rebuild the invisible hit areas over the (up to {@linkcode maxRows}) visible run entries.
+   * Click: select the entry, or open it if it is already selected. Right click: select and open.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    const visibleRows = Math.min(this.maxRows, this.runs.length - this.scrollCursor);
+    for (let row = 0; row < visibleRows; row++) {
+      configs.push({
+        x: this.runsContainer.x + 4,
+        y: this.runContainerInitialY + 4 + row * 56,
+        width: 296,
+        height: 46,
+        onActivate: () => this.handleRunPointerActivate(row),
+        onRightClick: () => this.handleRunPointerRightClick(row),
+      });
+    }
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private handleRunPointerActivate(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (row === this.cursor) {
+      this.processInput(Button.ACTION);
+    } else if (this.setCursor(row)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  private handleRunPointerRightClick(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.setCursor(row);
+    this.processInput(Button.ACTION);
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+  }
+
   /**
    * This retrieves the player's run history and facilitates the processes necessary for the output display.
    * Runs are displayed from newest --> oldest in descending order.
@@ -212,6 +276,7 @@ export class RunHistoryUiHandler extends MessageUiHandler {
     if (changed) {
       this.scrollCursor = scrollCursor;
       this.setCursor(this.cursor);
+      this.updatePointerHitAreas();
       globalScene.tweens.add({
         targets: this.runsContainer,
         y: this.runContainerInitialY - 56 * scrollCursor,
@@ -230,6 +295,7 @@ export class RunHistoryUiHandler extends MessageUiHandler {
     super.clear();
     this.runSelectContainer.setVisible(false);
     this.setScrollCursor(0);
+    this.pointerHitAreas?.clear();
     this.clearCursor();
     this.clearRuns();
   }

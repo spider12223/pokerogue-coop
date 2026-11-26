@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { Button } from "#enums/buttons";
 import { Device } from "#enums/devices";
 import { TextStyle } from "#enums/text-style";
 import { SettingKeyboard } from "#system/settings-keyboard";
@@ -9,7 +10,37 @@ import i18next from "i18next";
 import type { GameObjects } from "phaser";
 import Phaser from "phaser";
 
+/** A visible instruction row (key icon + label) and the {@linkcode Button} that its key triggers. */
+interface InstructionRow {
+  button: Button;
+  icon: GameObjects.Sprite;
+  label: GameObjects.Text;
+}
+
+/** Hit bounds of an instruction row, relative to the {@linkcode StarterSelectInstructionsContainer}. */
+export interface InstructionHitArea {
+  /** The button that the row's key triggers */
+  button: Button;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const SETTING_TO_BUTTON: Partial<Record<SettingKeyboard, Button>> = {
+  [SettingKeyboard.BUTTON_CYCLE_SHINY]: Button.CYCLE_SHINY,
+  [SettingKeyboard.BUTTON_CYCLE_FORM]: Button.CYCLE_FORM,
+  [SettingKeyboard.BUTTON_CYCLE_GENDER]: Button.CYCLE_GENDER,
+  [SettingKeyboard.BUTTON_CYCLE_ABILITY]: Button.CYCLE_ABILITY,
+  [SettingKeyboard.BUTTON_CYCLE_NATURE]: Button.CYCLE_NATURE,
+  [SettingKeyboard.BUTTON_CYCLE_TERA]: Button.CYCLE_TERA,
+  [SettingKeyboard.BUTTON_STATS]: Button.STATS,
+};
+
 export class StarterSelectInstructionsContainer extends Phaser.GameObjects.Container {
+  /** The rows that are currently shown, in drawing order */
+  private readonly visibleRows: InstructionRow[] = [];
+
   private shinyIconElement: Phaser.GameObjects.Sprite;
   private formIconElement: Phaser.GameObjects.Sprite;
   private abilityIconElement: Phaser.GameObjects.Sprite;
@@ -201,6 +232,7 @@ export class StarterSelectInstructionsContainer extends Phaser.GameObjects.Conta
       .setPosition(this.instructionRowX + this.INSTRUCTION_TEXT_OFFSET, this.instructionRowY)
       .setVisible(true);
     this.add([iconElement, controlLabel]);
+    this.registerRow(iconSetting, iconElement, controlLabel);
     this.instructionRowY += 8;
     if (this.instructionRowY >= this.INSTRUCTION_ROW_Y + 24) {
       this.instructionRowY = this.INSTRUCTION_ROW_Y;
@@ -226,6 +258,34 @@ export class StarterSelectInstructionsContainer extends Phaser.GameObjects.Conta
       .setPosition(this.FILTER_INSTRUCTION_ROW_X + this.INSTRUCTION_TEXT_OFFSET, this.FILTER_INSTRUCTION_ROW_Y)
       .setVisible(true);
     this.add([this.goFilterIconElement, this.goFilterLabel]);
+    this.registerRow(iconSetting, this.goFilterIconElement, this.goFilterLabel);
+  }
+
+  private registerRow(iconSetting: SettingKeyboard, icon: GameObjects.Sprite, label: GameObjects.Text): void {
+    const button = SETTING_TO_BUTTON[iconSetting];
+    if (button !== undefined) {
+      this.visibleRows.push({ button, icon, label });
+    }
+  }
+
+  /**
+   * Hit bounds of every instruction row that is currently shown (the key icon and its label together), so a pointer can
+   * trigger the same action as the key. Coordinates are relative to this container.
+   * @returns One entry per visible row; empty while the instructions are hidden
+   */
+  public getInstructionHitAreas(): InstructionHitArea[] {
+    const areas: InstructionHitArea[] = [];
+    for (const { button, icon, label } of this.visibleRows) {
+      if (!icon.visible || !label.visible) {
+        continue;
+      }
+      const left = Math.min(icon.x, label.x);
+      const right = Math.max(icon.x + icon.displayWidth, label.x + label.displayWidth);
+      const top = Math.min(icon.y, label.y);
+      const bottom = Math.max(icon.y + icon.displayHeight, label.y + label.displayHeight);
+      areas.push({ button, x: left, y: top, width: right - left, height: bottom - top });
+    }
+    return areas;
   }
 
   public updateInstructions(canCycle: CanCycle, isCaught = false, filterMode = false): void {
@@ -234,6 +294,7 @@ export class StarterSelectInstructionsContainer extends Phaser.GameObjects.Conta
 
     this.hideInstructions();
     this.removeAll();
+    this.visibleRows.length = 0;
 
     let gamepadType: string;
     if (globalScene.inputMethod === "gamepad") {
@@ -291,6 +352,7 @@ export class StarterSelectInstructionsContainer extends Phaser.GameObjects.Conta
   }
 
   public hideInstructions(): void {
+    this.visibleRows.length = 0;
     this.shinyIconElement.setVisible(false);
     this.shinyLabel.setVisible(false);
 

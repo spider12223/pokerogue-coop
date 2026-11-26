@@ -9,7 +9,13 @@ import { UiMode } from "#enums/ui-mode";
 import { getIconWithSettingName } from "#inputs/config-handler";
 import type { CustomInterfaceConfig, InterfaceConfig, MappingSettingName } from "#types/inputs";
 import type { InputsIcons, LayoutConfig } from "#types/ui-types";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { ScrollBar } from "#ui/scroll-bar";
+import { getLocalBounds, getRowValueHitAreas, getTabMenuHitAreas } from "#ui/settings-pointer";
 import { specialIconKeys, specialIcons } from "#ui/special-icons";
 import { TabMenu } from "#ui/tab-menu";
 import { addTextObject, getTextColor } from "#ui/text";
@@ -68,6 +74,15 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
   protected rowsToDisplay: number;
   protected device: Device;
 
+  /** Whether a device layout is shown (otherwise the "no gamepad / press a key" message is) */
+  private layoutShown = false;
+  protected pointerHitAreas: PointerHitAreaManager | null = null;
+  /** The labelled buttons drawn in the bottom bar, and what a click on each does */
+  protected actionBarButtons: {
+    objects: (Phaser.GameObjects.Sprite | Phaser.GameObjects.Text)[];
+    onClick: () => void;
+  }[] = [];
+
   abstract setSetting(setting: MappingSettingName, value: number): boolean;
 
   constructor() {
@@ -94,9 +109,7 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     );
     const menuWidth = globalScene.scaledCanvas.width;
 
-    this.tabMenu = new TabMenu(0, 0, menuWidth, tabLabels, newIndex => {
-      globalScene.ui.setMode(this.settingsTabs[newIndex].mode);
-    });
+    this.tabMenu = new TabMenu(0, 0, menuWidth, tabLabels, newIndex => this.openTab(newIndex));
 
     const activeIndex = this.settingsTabs.findIndex(tab => tab.mode === ui.mode);
     if (activeIndex !== -1) {
@@ -151,6 +164,12 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     const resetText = addTextObject(0, 0, i18next.t("settings:reset"), TextStyle.SETTINGS_LABEL) //
       .setOrigin(0, 0.15);
     resetText.setPositionRelative(iconReset, -resetText.width / 6 - 2, 0);
+
+    this.actionBarButtons = [
+      { objects: [iconAction, actionText], onClick: () => this.processInput(Button.ACTION) },
+      { objects: [iconCancel, cancelText], onClick: () => this.processInput(Button.CANCEL) },
+      { objects: [iconReset, resetText], onClick: () => this.resetBindingsToDefault() },
+    ];
 
     this.settingsContainer.add([
       this.optionsBg,
@@ -275,7 +294,154 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
 
     ui.add(this.settingsContainer);
 
+    this.pointerHitAreas = this.createPointerHitAreas(this.settingsContainer);
+    // The settings screen covers everything, so a right click that misses every hit area lands here instead of on the
+    // empty space handled by the global pointer router
+    this.settingsContainer.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown() && this.isPointerInputEnabled()) {
+        this.processInput(Button.CANCEL);
+      }
+    });
+
     this.settingsContainer.setVisible(false);
+  }
+
+  /** Switch to the settings tab at the given index of {@linkcode settingsTabs} */
+  private openTab(index: number): void {
+    globalScene.ui.setMode(this.settingsTabs[index].mode);
+  }
+
+  /** Restore the default bindings of this screen's device (the Home key) */
+  public resetBindingsToDefault(): void {
+    globalScene.gameData.resetMappingToDefault(this.device);
+    this.tabMenu?.updateIcons();
+  }
+
+  /**
+   * Rebuild the pointer hit areas: tab titles and arrows, the visible rows and their values, and the bottom bar buttons.
+   * Hovering a row selects it; clicking a row presses ACTION on it (assigns a binding), clicking a value of a cyclable
+   * setting selects that value as LEFT / RIGHT would.
+   */
+  protected updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas || !this.active) {
+      return;
+    }
+
+    const configs: PointerRowHitAreaConfig[] = getTabMenuHitAreas(
+      this.tabMenu,
+      index => this.onTabPointerActivate(index),
+      () => this.onPointerAction(() => this.processInput(Button.CYCLE_FORM)),
+      () => this.onPointerAction(() => this.processInput(Button.CYCLE_SHINY)),
+    );
+
+    if (this.layoutShown && this.optionsContainer && this.settingLabels && this.optionValueLabels) {
+      const rowHeight = 16;
+      const rowX = this.optionsBg.x + 4;
+      const rowWidth = globalScene.scaledCanvas.width - (this.scrollBar.visible ? 16 : 10);
+      for (let row = 0; row < this.rowsToDisplay; row++) {
+        const settingIndex = this.scrollCursor + row;
+        if (settingIndex >= this.settingLabels.length) {
+          break;
+        }
+        const rowY = this.optionsBg.y + 4 + row * rowHeight;
+        configs.push({
+          x: rowX,
+          y: rowY,
+          width: rowWidth,
+          height: rowHeight,
+          onHover: () => this.onRowPointerHover(row),
+          onActivate: () => this.onRowPointerActivate(row),
+        });
+        if (this.isCyclableSetting(this.getSettingAt(settingIndex))) {
+          const values = this.optionValueLabels[settingIndex] as Phaser.GameObjects.Text[];
+          configs.push(
+            ...getRowValueHitAreas(values, this.optionsContainer.x, rowY, rowHeight, {
+              onHover: () => this.onRowPointerHover(row),
+              onActivate: valueIndex => this.onValuePointerActivate(row, valueIndex),
+            }),
+          );
+        }
+      }
+    }
+
+    for (const { objects, onClick } of this.actionBarButtons) {
+      const bounds = getLocalBounds(...objects);
+      configs.push({
+        x: bounds.left - 2,
+        y: this.actionsBg.y,
+        width: bounds.right - bounds.left + 4,
+        height: this.actionsBg.displayHeight,
+        onActivate: () => this.onPointerAction(onClick),
+      });
+    }
+
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private onTabPointerActivate(index: number): void {
+    if (!this.isPointerInputEnabled() || index === this.tabMenu.selectedIndex) {
+      return;
+    }
+    this.tabMenu.setIndex(index);
+    this.getUi().playSelect();
+    this.openTab(index);
+  }
+
+  private onPointerAction(action: () => void): void {
+    if (this.isPointerInputEnabled()) {
+      action();
+    }
+  }
+
+  /** Select the given visible row (as UP / DOWN would) */
+  private onRowPointerHover(row: number): void {
+    if (this.isPointerInputEnabled() && this.setCursor(row)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /** Select the given visible row and press ACTION on it */
+  private onRowPointerActivate(row: number): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    this.setCursor(row);
+    this.processInput(Button.ACTION);
+  }
+
+  /** Select the given visible row and give its setting the clicked value (as LEFT / RIGHT would) */
+  private onValuePointerActivate(row: number, valueIndex: number): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    const rowChanged = this.setCursor(row);
+    const settingIndex = this.scrollCursor + row;
+    const valueChanged = this.optionCursors[settingIndex] !== valueIndex;
+    if (valueChanged) {
+      this.setOptionCursor(settingIndex, valueIndex, true);
+    }
+    if (rowChanged || valueChanged) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /** Scroll the rows by one (mouse wheel), without wrapping around */
+  private onPointerWheel(direction: -1 | 1): void {
+    if (!this.isPointerInputEnabled() || !this.layoutShown || !this.settingLabels) {
+      return;
+    }
+    const maxScrollCursor = Math.max(this.settingLabels.length - this.rowsToDisplay, 0);
+    this.setScrollCursor(Phaser.Math.Clamp(this.scrollCursor + direction, 0, maxScrollCursor));
+  }
+
+  /** The setting shown on the given row, the way {@linkcode processInput} reads it */
+  private getSettingAt(settingIndex: number): MappingSettingName {
+    return this.setting[Object.keys(this.setting)[settingIndex]];
+  }
+
+  /** Whether LEFT / RIGHT change the value of the given setting (it is not locked, and not a button binding) */
+  private isCyclableSetting(setting: MappingSettingName | undefined): boolean {
+    return setting != null && !this.settingBlacklisted.includes(setting) && !setting.includes("BUTTON_");
   }
 
   /**
@@ -296,8 +462,11 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     // Note: `setLayout` is always invoked here (even when `activeConfig` is null) because it is
     // responsible for displaying the "no gamepad connected" fallback message in that case.
     if (!this.setLayout(activeConfig)) {
+      this.layoutShown = false;
+      this.updatePointerHitAreas();
       return;
     }
+    this.layoutShown = true;
 
     this.keys.forEach((key, index) => {
       if (key === "enabled") {
@@ -309,6 +478,7 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     // by default, if custom does not exists, a default is assigned to it
     // it only means the gamepad is not yet initalized
     if (!activeConfig.custom) {
+      this.updatePointerHitAreas();
       return;
     }
 
@@ -325,6 +495,7 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
 
     this.setCursor(this.cursor);
     this.setScrollCursor(this.scrollCursor);
+    this.updatePointerHitAreas();
   }
 
   private updateNavigationDisplay(): void {
@@ -371,6 +542,10 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     ui.moveTo(this.settingsContainer, ui.length - 1);
 
     ui.hideTooltip();
+
+    ensureCanvasContextMenuDisabled();
+    this.pointerHitAreas?.setWheelHandler(direction => this.onPointerWheel(direction));
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -561,6 +736,8 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
 
     this.setCursor(this.cursor);
 
+    this.updatePointerHitAreas();
+
     return true;
   }
 
@@ -622,6 +799,7 @@ export abstract class BaseControlSettingsUiHandler extends UiHandler {
     this.settingsContainer.setVisible(false);
 
     this.eraseCursor();
+    this.pointerHitAreas?.clear();
   }
 
   /** Erase the cursor from the UI. */

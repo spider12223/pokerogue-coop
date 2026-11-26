@@ -54,6 +54,14 @@ import { BaseStatsOverlay } from "#ui/base-stats-overlay";
 import { getLearnableMoveSourceIconFrame } from "#ui/learnable-move-utils";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import {
+  getDisplayBounds,
+  type KeyedPointerRow,
+  type PointerBounds,
+  SyncedPointerHitAreas,
+  unionBounds,
+} from "#ui/pointer-hit-area-sync";
+import { ensureCanvasContextMenuDisabled } from "#ui/pointer-hit-areas";
 import { PokedexInfoOverlay } from "#ui/pokedex-info-overlay";
 import { RibbonTray } from "#ui/ribbon-tray-container";
 import { isPassiveAvailable, isSameSpeciesEggAvailable, isValueReductionAvailable } from "#ui/starter-select-ui-utils";
@@ -328,6 +336,14 @@ export class PokedexPageUiHandler extends MessageUiHandler {
   // Ribbons
   private ribbonContainer: RibbonTray;
   private isRibbonTrayOpen = false;
+
+  /** Pointer hit areas of the menu rows, the key hints and the values that a key cycles */
+  private pageHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas that replace the page ones while the ribbon tray is open */
+  private ribbonHits: SyncedPointerHitAreas | null = null;
+  /** Greater than 0 while a pointer callback runs; hit areas are then rebuilt after it, not under its feet */
+  private pointerDispatchDepth = 0;
+  private pointerRebuildQueued = false;
 
   public override setup() {
     const ui = this.getUi();
@@ -739,6 +755,9 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
     this.previousSpecies = [];
     this.previousStarterPreferences = [];
+
+    this.pageHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.starterSelectContainer));
+    this.ribbonHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.starterSelectContainer));
   }
 
   public override show(args: any[]): boolean {
@@ -769,6 +788,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     this.infoOverlay.clear();
 
     super.show(args);
+    ensureCanvasContextMenuDisabled();
 
     this.starterSelectContainer.setVisible(true);
     this.getUi().bringToTop(this.starterSelectContainer);
@@ -786,6 +806,9 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     this.optionSelectText.setText(this.getMenuText());
 
     this.setCursor(0);
+
+    this.pageHits?.manager.setWheelHandler(direction => this.runPointerAction(() => this.handleWheel(direction)));
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -1159,6 +1182,13 @@ export class PokedexPageUiHandler extends MessageUiHandler {
   }
 
   public override processInput(button: Button): boolean {
+    const handled = this.handleInput(button);
+    // Keep the pointer targets in sync with what the input changed (ribbon tray, key hints)
+    this.updatePointerHitAreas();
+    return handled;
+  }
+
+  private handleInput(button: Button): boolean {
     if (this.blockInput) {
       return false;
     }
@@ -2309,6 +2339,7 @@ export class PokedexPageUiHandler extends MessageUiHandler {
       this.updateButtonIcon(SettingKeyboard.BUTTON_CYCLE_FORM, gamepadType, this.formIconElement, this.formLabel);
     }
     this.updateButtonIcon(SettingKeyboard.BUTTON_CYCLE_TERA, gamepadType, this.ivIconElement, this.ivLabel);
+    this.updatePointerHitAreas();
   }
 
   public override setCursor(cursor: number): boolean {
@@ -2330,6 +2361,8 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     } else {
       ui.showText("");
     }
+
+    this.updatePointerHitAreas();
 
     return ret;
   }
@@ -2819,6 +2852,309 @@ export class PokedexPageUiHandler extends MessageUiHandler {
     this.statsContainer.updateIvs(ivs);
   }
 
+  // -------------------------------------------------------------------------------------------------------------------
+  // Pointer (mouse / touch) support
+  // -------------------------------------------------------------------------------------------------------------------
+
+  /** Only show the pointer cursor while this screen is the one on top (its hit areas stay under option menus). */
+  protected override setMouseCursorStyle(cursorStyle: "pointer" | "default"): void {
+    super.setMouseCursorStyle(this.isPointerInputEnabled() ? cursorStyle : "default");
+  }
+
+  private canHandlePointer(): boolean {
+    return (
+      this.isPointerInputEnabled()
+      && !this.blockInput
+      && this.starterSelectContainer.visible
+      && !this.isAwaitingActionInput
+      && !this.tutorialActive
+    );
+  }
+
+  /**
+   * Run a pointer callback. Hit areas that it asks to rebuild are rebuilt right after it, so the rectangle that is
+   * dispatching the event is not destroyed from inside its own handler.
+   */
+  private runPointerAction(action: () => void): void {
+    this.pointerDispatchDepth++;
+    try {
+      action();
+    } finally {
+      this.pointerDispatchDepth--;
+    }
+    if (this.pointerDispatchDepth === 0 && this.pointerRebuildQueued) {
+      this.updatePointerHitAreas();
+    }
+  }
+
+  /**
+   * Bring all hit areas in line with the screen. Cheap to call often: areas whose geometry did not change are kept.
+   * While the ribbon tray is open only it (and a click outside it) is interactive.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pageHits || !this.ribbonHits) {
+      return;
+    }
+    if (this.pointerDispatchDepth > 0) {
+      this.pointerRebuildQueued = true;
+      return;
+    }
+    this.pointerRebuildQueued = false;
+
+    if (!this.active || !this.starterSelectContainer.visible || !this.menuOptions) {
+      this.pageHits.clearRows();
+      this.ribbonHits.clearRows();
+      return;
+    }
+
+    if (this.isRibbonTrayOpen) {
+      this.pageHits.clearRows();
+      this.updateRibbonHitAreas();
+      return;
+    }
+
+    this.ribbonHits.clearRows();
+    this.updatePageHitAreas();
+  }
+
+  /** The box of an object inside a scaled container, in the coordinates of the container's parent. */
+  private getBoundsInScaledContainer(
+    container: Phaser.GameObjects.Container,
+    obj: Phaser.GameObjects.Sprite | Phaser.GameObjects.Text,
+  ): PointerBounds {
+    const box = getDisplayBounds(obj);
+    return {
+      x: container.x + box.x * container.scaleX,
+      y: container.y + box.y * container.scaleY,
+      width: box.width * container.scaleX,
+      height: box.height * container.scaleY,
+    };
+  }
+
+  private updatePageHitAreas(): void {
+    if (!this.pageHits) {
+      return;
+    }
+    const { width, height } = globalScene.scaledCanvas;
+    const rows: KeyedPointerRow[] = [];
+
+    // The whole screen except the candy count (which has its own hover tooltip): a right click anywhere goes back (the
+    // screen has full-size interactive containers of its own, so the global right click would never reach empty space).
+    const candy = this.pokemonCandyContainer;
+    const candyRight = candy.x + 30;
+    const candyBottom = candy.y + 20;
+    const goBack = (): void => this.runPointerAction(() => this.handleCancelPointer());
+    for (const [id, x, y, w, h] of [
+      ["top", 0, 0, width, candy.y],
+      ["bottom", 0, candyBottom, width, height - candyBottom],
+      ["left", 0, candy.y, candy.x, candyBottom - candy.y],
+      ["right", candyRight, candy.y, width - candyRight, candyBottom - candy.y],
+    ] as const) {
+      rows.push({ id: `bg:${id}`, x, y, width: w, height: h, onRightClick: goBack });
+    }
+
+    // The menu: hover selects a row, click selects and opens it
+    const rowPitch = 96 * this.scale;
+    const menuX = this.menuContainer.x + this.menuBg.x;
+    const menuY = this.menuContainer.y + this.menuBg.y;
+    this.menuOptions.forEach((_option, index) => {
+      rows.push({
+        id: `menu:${index}`,
+        x: menuX,
+        y: menuY + 6 + 3 + index * rowPitch - 4,
+        width: this.menuBg.displayWidth,
+        height: rowPitch,
+        onHover: () => this.runPointerAction(() => this.handleMenuPointerHover(index)),
+        onActivate: () => this.runPointerAction(() => this.handleMenuPointerActivate(index)),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    });
+
+    // The key hints (an icon and its label) and the values that the same key changes
+    const hints: { id: string; button: Button; icon: Phaser.GameObjects.Sprite; label: Phaser.GameObjects.Text }[] = [
+      { id: "candy", button: Button.STATS, icon: this.candyUpgradeIconElement, label: this.candyUpgradeLabel },
+      { id: "shiny", button: Button.CYCLE_SHINY, icon: this.shinyIconElement, label: this.shinyLabel },
+      { id: "form", button: Button.CYCLE_FORM, icon: this.formIconElement, label: this.formLabel },
+      { id: "gender", button: Button.CYCLE_GENDER, icon: this.genderIconElement, label: this.genderLabel },
+      { id: "iv", button: Button.CYCLE_TERA, icon: this.ivIconElement, label: this.ivLabel },
+    ];
+    const addRow = (id: string, button: Button, box: PointerBounds): void => {
+      rows.push({
+        id: `key:${id}`,
+        ...box,
+        onActivate: () => this.runPointerAction(() => this.handleKeyPointerActivate(button)),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    };
+    for (const { id, button, icon, label } of hints) {
+      if (!icon.visible || !label.visible) {
+        continue;
+      }
+      const box = unionBounds(getDisplayBounds(icon), getDisplayBounds(label));
+      addRow(id, button, {
+        ...box,
+        x: this.instructionsContainer.x + box.x,
+        y: this.instructionsContainer.y + box.y,
+      });
+    }
+    if (this.showBackSpriteIconElement.visible && this.showBackSpriteLabel.visible) {
+      addRow(
+        "backSprite",
+        Button.CYCLE_ABILITY,
+        unionBounds(getDisplayBounds(this.showBackSpriteIconElement), getDisplayBounds(this.showBackSpriteLabel)),
+      );
+    }
+
+    if (!this.statsMode) {
+      if (this.canCycleGender && this.pokemonGenderText.visible && this.pokemonGenderText.text) {
+        addRow("genderValue", Button.CYCLE_GENDER, getDisplayBounds(this.pokemonGenderText));
+      }
+      if (this.canCycleForm && this.pokemonFormText.visible && this.pokemonFormText.text) {
+        addRow("formValue", Button.CYCLE_FORM, getDisplayBounds(this.pokemonFormText));
+      }
+      if (this.canCycleShiny && this.pokemonCaughtHatchedContainer.visible) {
+        this.pokemonShinyIcons.forEach((icon, index) => {
+          if (icon.visible) {
+            addRow(
+              `shinyValue${index}`,
+              Button.CYCLE_SHINY,
+              this.getBoundsInScaledContainer(this.pokemonCaughtHatchedContainer, icon),
+            );
+          }
+        });
+      }
+
+      // The species picture: its left half shows the previous species, its right half the next one (LEFT / RIGHT)
+      const pictureX = 5;
+      const pictureY = 40;
+      const pictureWidth = 96;
+      const pictureHeight = 48;
+      for (const [id, button, offset] of [
+        ["previous", Button.LEFT, 0],
+        ["next", Button.RIGHT, pictureWidth / 2],
+      ] as const) {
+        addRow(`species:${id}`, button, {
+          x: pictureX + offset,
+          y: pictureY,
+          width: pictureWidth / 2,
+          height: pictureHeight,
+        });
+      }
+    }
+
+    this.pageHits.set(rows);
+    // Keep the message box above the new hit areas, as it was before they were added
+    this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
+  }
+
+  /** Hover moves the menu cursor, like UP / DOWN. */
+  private handleMenuPointerHover(index: number): void {
+    if (!this.canHandlePointer() || this.blockInputOverlay || this.cursor === index) {
+      return;
+    }
+    this.setCursor(index);
+    this.getUi().playSelect();
+  }
+
+  /** Click selects the menu row and opens it, like moving to it and pressing ACTION. */
+  private handleMenuPointerActivate(index: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.blockInputOverlay) {
+      // The base stats overlay waits for a press: this click closes it, like CANCEL
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    this.setCursor(index);
+    this.processInput(Button.ACTION);
+  }
+
+  /** Click on a key hint or on the value it changes: press that key. */
+  private handleKeyPointerActivate(button: Button): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.blockInputOverlay) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    this.processInput(button);
+  }
+
+  /** Right click goes back: the keyboard CANCEL (closes stats / the ribbon tray, returns to the previous species or exits). */
+  private handleCancelPointer(): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.processInput(Button.CANCEL);
+  }
+
+  /** The mouse wheel moves through the menu rows, like UP / DOWN. */
+  private handleWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer() || this.isRibbonTrayOpen) {
+      return;
+    }
+    this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+  }
+
+  /**
+   * While the ribbon tray is open: a click outside it closes it, a click on a ribbon selects it (its description is
+   * shown, as with LEFT / RIGHT), a right click goes back.
+   */
+  private updateRibbonHitAreas(): void {
+    if (!this.ribbonHits) {
+      return;
+    }
+    const { width, height } = globalScene.scaledCanvas;
+    const rows: KeyedPointerRow[] = [
+      {
+        id: "outside",
+        x: 0,
+        y: 0,
+        width,
+        height,
+        onActivate: () => this.runPointerAction(() => this.handleCancelPointer()),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      },
+    ];
+
+    // The tray holds its window and cursor first, then one icon per ribbon
+    const tray = this.ribbonContainer;
+    const trayBg = tray.list[0] as Phaser.GameObjects.NineSlice | undefined;
+    if (trayBg) {
+      rows.push({
+        id: "tray",
+        x: tray.x,
+        y: tray.y,
+        width: trayBg.displayWidth,
+        height: trayBg.displayHeight,
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    }
+    const ribbonCount = Math.max(tray.list.length - 2, 0);
+    const maxColumns = 6;
+    for (let index = 0; index < ribbonCount; index++) {
+      const select = (): void => {
+        if (this.canHandlePointer() && this.isRibbonTrayOpen) {
+          this.ribbonContainer.setTrayCursor(index);
+        }
+      };
+      rows.push({
+        id: `ribbon:${index}`,
+        x: tray.x + 5 + (index % maxColumns) * 18,
+        y: tray.y + 4 + Math.floor(index / maxColumns) * 17,
+        width: 18,
+        height: 17,
+        onActivate: () => this.runPointerAction(select),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    }
+
+    this.ribbonHits.set(rows);
+    this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
+  }
+
   public override clearText() {
     this.starterSelectMessageBoxContainer.setVisible(false);
     super.clearText();
@@ -2839,6 +3175,9 @@ export class PokedexPageUiHandler extends MessageUiHandler {
 
   public override clear(): void {
     super.clear();
+
+    this.pageHits?.clear();
+    this.ribbonHits?.clear();
 
     this.cursor = -1;
     this.hideInstructions();

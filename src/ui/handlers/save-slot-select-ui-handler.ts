@@ -17,6 +17,11 @@ import type {
   SaveSlotSelectCallback,
 } from "#types/ui-types";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { RunDisplayMode } from "#ui/run-info-ui-handler";
 import { addTextObject } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -50,6 +55,8 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
   private sessionSlotsContainerInitialY: number;
 
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+
   setup() {
     const ui = this.getUi();
 
@@ -71,6 +78,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
     this.sessionSlotsContainer = globalScene.add.container(8, this.sessionSlotsContainerInitialY);
     this.saveSlotSelectContainer.add(this.sessionSlotsContainer);
+    this.pointerHitAreas = this.createPointerHitAreas(this.saveSlotSelectContainer);
 
     this.saveSlotSelectMessageBoxContainer = globalScene.add.container(0, 0);
     this.saveSlotSelectMessageBoxContainer.setVisible(false);
@@ -94,6 +102,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
     this.uiMode = args[0] as SaveSlotUiMode;
     this.saveSlotSelectCallback = args[1] as SaveSlotSelectCallback;
     this.coopFiles = (args[2] as CoopSaveFiles | undefined) ?? null;
@@ -103,7 +112,100 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
 
     this.setScrollCursor(0);
     this.setCursor(0);
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
     return true;
+  }
+
+  private canHandlePointer(): boolean {
+    return this.active && this.sessionSlots.length > 0 && globalScene.ui.getHandler() === this;
+  }
+
+  /**
+   * Rebuild the invisible hit areas over the {@linkcode SLOTS_ON_SCREEN} visible slots, plus one over the
+   * "preview run" arrow beside the selected slot (same as pressing RIGHT).
+   * Click: select the slot, or activate it if already selected. Right click: select and activate.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    const visibleRows = Math.min(SLOTS_ON_SCREEN, this.sessionSlots.length - this.scrollCursor);
+    for (let row = 0; row < visibleRows; row++) {
+      configs.push({
+        x: this.sessionSlotsContainer.x,
+        y: this.sessionSlotsContainerInitialY + row * 76,
+        width: 304,
+        height: 70,
+        onActivate: () => this.handleSlotPointerActivate(row),
+        onRightClick: () => this.handleSlotPointerRightClick(row),
+      });
+    }
+
+    const selected = this.sessionSlots[this.cursor + this.scrollCursor];
+    if (selected?.hasData && !selected.malformed && selected.saveData) {
+      configs.push({
+        // The arrow sits at the right of the selection cursor, which is shifted to x=145 for slots with data
+        x: this.sessionSlotsContainer.x + 145 + 160 - 8,
+        y: this.sessionSlotsContainerInitialY + 20 + 76 * this.cursor + 15 - 8,
+        width: 16,
+        height: 16,
+        onActivate: () => this.handlePreviewPointerActivate(),
+      });
+    }
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private handleSlotPointerActivate(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (row !== this.cursor) {
+      this.selectSlotRow(row);
+    } else if (this.canActivateSlot()) {
+      this.processInput(Button.ACTION);
+    }
+  }
+
+  private handleSlotPointerRightClick(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (row !== this.cursor) {
+      this.selectSlotRow(row);
+    }
+    if (this.canActivateSlot()) {
+      this.processInput(Button.ACTION);
+    }
+  }
+
+  private handlePreviewPointerActivate(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.RIGHT);
+    }
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (this.canHandlePointer()) {
+      this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+    }
+  }
+
+  /** Whether activating the selected slot is allowed (loading a slot without data only errors) */
+  private canActivateSlot(): boolean {
+    const slot = this.sessionSlots[this.cursor + this.scrollCursor];
+    return !!slot && (this.uiMode !== SaveSlotUiMode.LOAD || slot.hasData);
+  }
+
+  /**
+   * Select a visible slot row the same way UP / DOWN does (moving the old slot back to its resting position).
+   * @param row - The visible row, between `0` and `SLOTS_ON_SCREEN - 1`
+   */
+  private selectSlotRow(row: number): void {
+    const previousIndex = this.cursor + this.scrollCursor;
+    if (this.setCursor(row, previousIndex)) {
+      this.getUi().playSelect();
+    }
   }
 
   public override processInput(button: Button): boolean {
@@ -406,6 +508,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
       this.sessionSlotsContainer.add(sessionSlot);
       this.sessionSlots.push(sessionSlot);
       sessionSlot.load().then(success => {
+        this.updatePointerHitAreas();
         // If the cursor was moved to this slot while the session was loading
         // call setCursor again to shift the slot position and show the arrow for save preview
         if (success && this.cursor + this.scrollCursor === s) {
@@ -484,6 +587,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
     if (prevSlotIndex != null) {
       this.revertSessionSlot(prevSlotIndex);
     }
+    this.updatePointerHitAreas();
 
     return changed;
   }
@@ -540,6 +644,7 @@ export class SaveSlotSelectUiHandler extends MessageUiHandler {
     this.eraseCursor();
     this.saveSlotSelectCallback = null;
     this.clearSessionSlots();
+    this.pointerHitAreas?.clear();
   }
 
   eraseCursor() {

@@ -7,6 +7,11 @@ import { Button } from "#enums/buttons";
 import { DexAttr } from "#enums/dex-attr";
 import { TextStyle } from "#enums/text-style";
 import type { GameData } from "#system/game-data";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -240,6 +245,7 @@ export class GameStatsUiHandler extends UiHandler {
 
   private arrowUp: Phaser.GameObjects.Sprite;
   private arrowDown: Phaser.GameObjects.Sprite;
+  private pointerHitAreas: PointerHitAreaManager | null = null;
 
   /** Logged in username */
   private headerText: Phaser.GameObjects.Text;
@@ -369,6 +375,12 @@ export class GameStatsUiHandler extends UiHandler {
       new Phaser.Geom.Rectangle(0, 0, sWidth, sHeight),
       Phaser.Geom.Rectangle.Contains,
     );
+    // The full screen interactive rectangle hides presses from the global pointer router, so right click goes back here
+    this.gameStatsContainer.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (this.isPointerInputEnabled() && (pointer.rightButtonDown() || pointer.button === 2)) {
+        this.processInput(Button.CANCEL);
+      }
+    });
 
     const headerBg = addWindow(0, 0, sWidth - 2, 24).setOrigin(0);
 
@@ -418,12 +430,16 @@ export class GameStatsUiHandler extends UiHandler {
 
     ui.add(this.gameStatsContainer);
 
+    this.pointerHitAreas = this.createPointerHitAreas(this.gameStatsContainer);
+
     this.setCursor(0);
     this.gameStatsContainer.setVisible(false);
   }
 
   show([username, data, callback]: [] | [username: string, data: GameData, callback?: () => void]): boolean {
     super.show([]);
+
+    ensureCanvasContextMenuDisabled();
 
     if (username != null && data != null) {
       this.gameData = data;
@@ -454,7 +470,45 @@ export class GameStatsUiHandler extends UiHandler {
       .moveTo(this.gameStatsContainer, this.getUi().length - 1)
       .hideTooltip();
 
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerScroll(direction));
+    this.updatePointerHitAreas();
+
     return true;
+  }
+
+  /**
+   * Rebuild the invisible hit areas over the scroll arrows (only the visible ones are clickable).
+   * Clicking an arrow scrolls like pressing UP / DOWN.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    const addArrow = (arrow: Phaser.GameObjects.Sprite, direction: -1 | 1) => {
+      if (!arrow.visible) {
+        return;
+      }
+      const scroll = () => this.handlePointerScroll(direction);
+      configs.push({
+        x: arrow.x - 8,
+        y: arrow.y - 5,
+        width: 16,
+        height: 10,
+        onActivate: scroll,
+        onRightClick: () => this.processInput(Button.CANCEL),
+      });
+    };
+    addArrow(this.arrowUp, -1);
+    addArrow(this.arrowDown, 1);
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private handlePointerScroll(direction: -1 | 1): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    this.processInput(direction < 0 ? Button.UP : Button.DOWN);
   }
 
   /**
@@ -542,12 +596,14 @@ export class GameStatsUiHandler extends UiHandler {
     // NOTE: Do not toggle the arrows' "active" property here, as this would cause their animations to desync
     this.arrowUp.setVisible(this.cursor > 0);
     this.arrowDown.setVisible(this.cursor < this.maxCursorPos);
+    this.updatePointerHitAreas();
 
     return true;
   }
 
   clear() {
     super.clear();
+    this.pointerHitAreas?.clear();
     this.gameStatsContainer.setVisible(false).setActive(false);
 
     const callback = this.exitCallback;

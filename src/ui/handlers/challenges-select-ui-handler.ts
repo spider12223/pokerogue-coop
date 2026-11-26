@@ -6,6 +6,14 @@ import { ChallengeCategory } from "#enums/challenge-category";
 import { Challenges } from "#enums/challenges";
 import { Color, ShadowColor } from "#enums/color";
 import { TextStyle } from "#enums/text-style";
+import {
+  getDisplayBounds,
+  type KeyedPointerRow,
+  type PointerBounds,
+  SyncedPointerHitAreas,
+  unionBounds,
+} from "#ui/pointer-hit-area-sync";
+import { ensureCanvasContextMenuDisabled } from "#ui/pointer-hit-areas";
 import { TabMenu } from "#ui/tab-menu";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
@@ -58,6 +66,15 @@ export class GameChallengesUiHandler extends UiHandler {
   private optionsWidth: number;
 
   private tabMenu: TabMenu;
+  private resetIcon: Phaser.GameObjects.Sprite;
+  private resetLabel: Phaser.GameObjects.Text;
+
+  /** Pointer hit areas: tabs, reset, challenge rows and their values, start */
+  private pointerHits: SyncedPointerHitAreas | null = null;
+  /** Greater than 0 while a pointer callback runs; hit areas are then rebuilt after it, not under its feet */
+  private pointerDispatchDepth = 0;
+  private pointerRebuildQueued = false;
+
   private readonly challengeCategories: ChallengeCategory[] = Object.values(ChallengeCategory).filter(
     cat => cat !== ChallengeCategory.UNUSED,
   );
@@ -168,6 +185,8 @@ export class GameChallengesUiHandler extends UiHandler {
 
     iconReset.setPositionRelative(headerBg, headerBg.width - resetGroupWidth - 8, 5);
     resetText.setPositionRelative(iconReset, 26, 0);
+    this.resetIcon = iconReset;
+    this.resetLabel = resetText;
 
     this.valuesContainer = globalScene.add //
       .container(0, 0)
@@ -232,6 +251,8 @@ export class GameChallengesUiHandler extends UiHandler {
     this.setScrollCursor(0);
 
     this.challengesContainer.setVisible(false);
+
+    this.pointerHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.challengesContainer));
   }
 
   /**
@@ -417,6 +438,8 @@ export class GameChallengesUiHandler extends UiHandler {
       .setAlpha(alphaValue)
       .setPositionRelative(this.startBg, (this.startBg.width - this.startText.displayWidth) / 2, 4);
 
+    this.updatePointerHitAreas();
+
     this.challengesContainer.update();
   }
 
@@ -443,6 +466,10 @@ export class GameChallengesUiHandler extends UiHandler {
     this.getUi().moveTo(this.challengesContainer, this.getUi().length - 1);
 
     this.getUi().hideTooltip();
+
+    ensureCanvasContextMenuDisabled();
+    this.pointerHits?.manager.setWheelHandler(direction => this.runPointerAction(() => this.handleWheel(direction)));
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -673,6 +700,270 @@ export class GameChallengesUiHandler extends UiHandler {
     this.resetChallengesToDefault();
   }
 
+  // -------------------------------------------------------------------------------------------------------------------
+  // Pointer (mouse / touch) support
+  // -------------------------------------------------------------------------------------------------------------------
+
+  private canHandlePointer(): boolean {
+    return this.isPointerInputEnabled() && this.challengesContainer.visible;
+  }
+
+  /**
+   * Run a pointer callback. Hit areas that it asks to rebuild are rebuilt right after it, so the rectangle that is
+   * dispatching the event is not destroyed from inside its own handler.
+   */
+  private runPointerAction(action: () => void): void {
+    this.pointerDispatchDepth++;
+    try {
+      action();
+    } finally {
+      this.pointerDispatchDepth--;
+    }
+    if (this.pointerDispatchDepth === 0 && this.pointerRebuildQueued) {
+      this.updatePointerHitAreas();
+    }
+  }
+
+  /** The tab titles of the tab menu, in the coordinates of the challenges container. */
+  private getTabBounds(): PointerBounds[] {
+    // The tab menu holds its background first, then one text per tab, then the previous / next tab icons
+    const count = this.challengeCategories.length;
+    const titles = this.tabMenu.list.slice(1, 1 + count) as Phaser.GameObjects.Text[];
+    if (titles.length !== count) {
+      return [];
+    }
+
+    // Each tab reaches halfway to its neighbours, so that there are no gaps between tabs
+    const gap = 4;
+    return titles.map((title, i) => {
+      const previous = titles[i - 1];
+      const next = titles[i + 1];
+      const left = previous ? (previous.x + previous.displayWidth + title.x) / 2 : title.x - gap;
+      const right = next ? (title.x + title.displayWidth + next.x) / 2 : title.x + title.displayWidth + gap;
+      return { x: this.tabMenu.x + left, y: this.tabMenu.y, width: right - left, height: this.tabMenu.height };
+    });
+  }
+
+  /** The icons that cycle to the previous / next tab, in the coordinates of the challenges container. */
+  private getTabArrowBounds(): { button: Button; bounds: PointerBounds }[] {
+    const count = this.challengeCategories.length;
+    const [previous, next] = this.tabMenu.list.slice(1 + count, 3 + count) as Phaser.GameObjects.Sprite[];
+    const arrows: { button: Button; bounds: PointerBounds }[] = [];
+    for (const [button, icon] of [
+      [Button.CYCLE_FORM, previous],
+      [Button.CYCLE_SHINY, next],
+    ] as const) {
+      // The icon is invisible (alpha 0) while no key icon is known for it
+      if (icon && icon.alpha > 0) {
+        const box = getDisplayBounds(icon);
+        arrows.push({ button, bounds: { ...box, x: this.tabMenu.x + box.x, y: this.tabMenu.y + box.y } });
+      }
+    }
+    return arrows;
+  }
+
+  /**
+   * Bring all hit areas in line with the screen: tabs, reset, the challenge rows (hover selects, the left / right half of
+   * the value decreases / increases it), the start button. Cheap to call often: unchanged areas are kept.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHits) {
+      return;
+    }
+    if (this.pointerDispatchDepth > 0) {
+      this.pointerRebuildQueued = true;
+      return;
+    }
+    this.pointerRebuildQueued = false;
+
+    if (!this.active || !this.challengesContainer.visible) {
+      this.pointerHits.clearRows();
+      return;
+    }
+
+    const { width, height } = globalScene.scaledCanvas;
+    const goBack = (): void => this.runPointerAction(() => this.handleCancelPointer());
+    const rows: KeyedPointerRow[] = [];
+
+    // The whole screen: a right click anywhere goes back (this screen's container is interactive over the whole screen,
+    // so the global right click would never reach empty space).
+    rows.push({ id: "bg", x: 0, y: 0, width, height, onRightClick: goBack });
+
+    // Tabs: click selects the tab
+    this.getTabBounds().forEach((bounds, index) => {
+      rows.push({
+        id: `tab:${index}`,
+        ...bounds,
+        onActivate: () => this.runPointerAction(() => this.handleTabPointerActivate(index)),
+        onRightClick: goBack,
+      });
+    });
+    for (const { button, bounds } of this.getTabArrowBounds()) {
+      rows.push({
+        id: `tabArrow:${button}`,
+        ...bounds,
+        onActivate: () => this.runPointerAction(() => this.handleTabArrowPointerActivate(button)),
+        onRightClick: goBack,
+      });
+    }
+
+    // Reset (the HOME key)
+    rows.push({
+      id: "reset",
+      ...unionBounds(getDisplayBounds(this.resetIcon), getDisplayBounds(this.resetLabel)),
+      onActivate: () => this.runPointerAction(() => this.handleResetPointerActivate()),
+      onRightClick: goBack,
+    });
+
+    // Challenge rows
+    const challenges = this.getFilteredChallenges();
+    const rowX = this.optionsBg.x + 4;
+    const rowWidth = this.optionsWidth - 8;
+    for (let i = 0; i < Math.min(MAX_ROWS_TO_DISPLAY, challenges.length - this.scrollCursor); i++) {
+      const row = i;
+      const rowY = this.optionsBg.y + 4 + row * 16;
+      const { leftArrow, rightArrow } = this.challengeLabels[row];
+      const valueCenterX = Math.round((leftArrow.x + rightArrow.x + leftArrow.displayWidth) / 2);
+      const leftEdge = leftArrow.x - 6;
+      const rightEdge = rightArrow.x + rightArrow.displayWidth + 6;
+
+      rows.push({
+        id: `row:${row}`,
+        x: rowX,
+        y: rowY,
+        width: rowWidth,
+        height: 16,
+        onHover: () => this.runPointerAction(() => this.handleRowPointerHover(row)),
+        onActivate: () => this.runPointerAction(() => this.handleRowPointerActivate(row, null)),
+        onRightClick: goBack,
+      });
+      // The value: its left half (and the left arrow) decreases it, its right half (and the right arrow) increases it
+      rows.push({
+        id: `row:${row}:decrease`,
+        x: leftEdge,
+        y: rowY,
+        width: valueCenterX - leftEdge,
+        height: 16,
+        onActivate: () => this.runPointerAction(() => this.handleRowPointerActivate(row, Button.LEFT)),
+        onRightClick: goBack,
+      });
+      rows.push({
+        id: `row:${row}:increase`,
+        x: valueCenterX,
+        y: rowY,
+        width: rightEdge - valueCenterX,
+        height: 16,
+        onActivate: () => this.runPointerAction(() => this.handleRowPointerActivate(row, Button.RIGHT)),
+        onRightClick: goBack,
+      });
+    }
+
+    // Start (the first click focuses it, the second one starts, as with the keyboard)
+    rows.push({
+      id: "start",
+      x: this.startBg.x,
+      y: this.startBg.y,
+      width: this.startBg.displayWidth,
+      height: this.startBg.displayHeight,
+      onActivate: () => this.runPointerAction(() => this.handleStartPointerActivate()),
+      onRightClick: goBack,
+    });
+
+    this.pointerHits.set(rows);
+  }
+
+  /** Click on a tab: cycle to it with the same previous / next tab keys. */
+  private handleTabPointerActivate(index: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    const count = this.challengeCategories.length;
+    const forward = (index - this.tabMenu.selectedIndex + count) % count;
+    const backward = count - forward;
+    const steps = Math.min(forward, backward);
+    const button = forward <= backward ? Button.CYCLE_SHINY : Button.CYCLE_FORM;
+    for (let step = 0; step < steps; step++) {
+      this.processInput(button);
+    }
+  }
+
+  /** Click on the previous / next tab icon: the previous / next tab key. */
+  private handleTabArrowPointerActivate(button: Button): void {
+    if (this.canHandlePointer()) {
+      this.processInput(button);
+    }
+  }
+
+  /** Click on reset: the HOME key. */
+  private handleResetPointerActivate(): void {
+    if (this.canHandlePointer()) {
+      this.resetChallengesToDefault();
+    }
+  }
+
+  /** Make a challenge row the selected one, as moving the cursor onto it with UP / DOWN would. */
+  private selectRow(row: number): boolean {
+    let changed = false;
+    if (this.startCursor.visible) {
+      this.deactivateStartCursor();
+      changed = true;
+    }
+    if (this.cursor !== row || !this.cursorObj?.visible) {
+      this.setCursor(row);
+      changed = true;
+    }
+    if (changed) {
+      this.updateText();
+    }
+    return changed;
+  }
+
+  private handleRowPointerHover(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.selectRow(row)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /**
+   * Click on a challenge row: select it, and when the click was on the left / right half of the value, press LEFT / RIGHT
+   * to change the value.
+   */
+  private handleRowPointerActivate(row: number, button: Button.LEFT | Button.RIGHT | null): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    const changed = this.selectRow(row);
+    if (button !== null) {
+      this.processInput(button);
+    } else if (changed) {
+      this.getUi().playSelect();
+    }
+  }
+
+  /** Click on the start button: ACTION (focuses it; once focused, starts the run). */
+  private handleStartPointerActivate(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.ACTION);
+    }
+  }
+
+  /** Right click goes back: the keyboard CANCEL (leaves the start button, or returns to the title screen). */
+  private handleCancelPointer(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.CANCEL);
+    }
+  }
+
+  /** The mouse wheel moves through the challenges, like UP / DOWN. */
+  private handleWheel(direction: -1 | 1): void {
+    if (this.canHandlePointer()) {
+      this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+    }
+  }
+
   private resetChallengesToDefault(): void {
     for (const challenge of globalScene.gameMode.challenges) {
       challenge.reset();
@@ -720,6 +1011,7 @@ export class GameChallengesUiHandler extends UiHandler {
 
   public override clear(): void {
     super.clear();
+    this.pointerHits?.clear();
     this.challengesContainer.setVisible(false);
     if (this.descriptionScrollTween) {
       this.descriptionScrollTween.remove();

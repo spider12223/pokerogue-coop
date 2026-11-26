@@ -8,6 +8,11 @@ import { EggSkipPreference } from "#enums/egg-skip-preference";
 import { PokemonIconAnimMode } from "#enums/pokemon-icon-anim-mode";
 import { HatchedPokemonContainer } from "#ui/hatched-pokemon-container";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { PokemonHatchInfoContainer } from "#ui/pokemon-hatch-info-container";
 import { PokemonIconAnimHelper } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
@@ -47,6 +52,8 @@ export class EggSummaryUiHandler extends MessageUiHandler {
   /** used to add a delay before which it is not possible to exit the summary */
   private blockExit: boolean;
 
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+
   /**
    * Allows subscribers to listen for events
    *
@@ -79,6 +86,7 @@ export class EggSummaryUiHandler extends MessageUiHandler {
     this.pokemonContainers = [];
     this.pokemonIconsContainer = globalScene.add.container(iconContainerX, iconContainerY);
     this.summaryContainer.add(this.pokemonIconsContainer);
+    this.pointerHitAreas = this.createPointerHitAreas(this.pokemonIconsContainer);
 
     this.infoContainer = new PokemonHatchInfoContainer(this.summaryContainer);
     this.infoContainer.setup();
@@ -108,6 +116,7 @@ export class EggSummaryUiHandler extends MessageUiHandler {
     this.scrollGridHandler.reset();
     this.cursor = -1;
 
+    this.pointerHitAreas?.clear();
     this.summaryContainer.setVisible(false);
     this.pokemonIconsContainer.removeAll(true);
     this.pokemonContainers = [];
@@ -142,6 +151,7 @@ export class EggSummaryUiHandler extends MessageUiHandler {
    */
   show(args: EggHatchData[][]): boolean {
     super.show(args);
+    ensureCanvasContextMenuDisabled();
     if (args.length > 0) {
       // sort the egg hatch data by egg tier then by species number (then by order hatched)
       this.eggHatchData = args[0].sort(function sortHatchData(a: EggHatchData, b: EggHatchData) {
@@ -172,6 +182,7 @@ export class EggSummaryUiHandler extends MessageUiHandler {
     this.scrollGridHandler.setTotalElements(this.eggHatchData.length);
     this.updatePokemonIcons();
     this.setCursor(0);
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
 
     audioManager.replaceBgmUntilEnd("bw/evolution_fanfare");
 
@@ -210,6 +221,74 @@ export class EggSummaryUiHandler extends MessageUiHandler {
         this.iconAnimHandler.addOrUpdate(hatchContainer.icon, PokemonIconAnimMode.NONE);
       }
     }
+    this.updatePointerHitAreas();
+  }
+
+  /**
+   * Rebuild the invisible hit areas over the visible hatched Pokemon icons.
+   * Clicking a Pokemon selects it (there is no activation action in this list); right click goes back like CANCEL.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    this.pokemonContainers.forEach((hatchContainer, i) => {
+      if (!hatchContainer.visible) {
+        return;
+      }
+      configs.push({
+        x: hatchContainer.x,
+        y: hatchContainer.y,
+        width: iconSize,
+        height: iconSize,
+        onActivate: () => this.selectPokemonWithPointer(i),
+        // Nothing to activate here, so right click keeps meaning "back"
+        onRightClick: () => this.handleBackPointer(),
+      });
+    });
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private canHandlePointer(): boolean {
+    return this.active && this.pokemonContainers.length > 0;
+  }
+
+  /**
+   * Move the cursor to the given visible icon index by replaying directional input,
+   * so the scroll helper stays in sync with the cursor.
+   * @param index - Index of the icon within the visible grid
+   */
+  private selectPokemonWithPointer(index: number): void {
+    if (!this.canHandlePointer() || index === this.cursor || index < 0 || index >= this.pokemonContainers.length) {
+      return;
+    }
+    let guard = numRows + numCols;
+    while (guard-- > 0 && Math.floor(this.cursor / numCols) !== Math.floor(index / numCols)) {
+      if (!this.scrollGridHandler.processInput(index > this.cursor ? Button.DOWN : Button.UP)) {
+        break;
+      }
+    }
+    guard = numCols;
+    while (guard-- > 0 && this.cursor !== index) {
+      if (!this.scrollGridHandler.processInput(index > this.cursor ? Button.RIGHT : Button.LEFT)) {
+        break;
+      }
+    }
+    this.getUi().playSelect();
+  }
+
+  private handleBackPointer(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.CANCEL);
+    }
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.scrollGridHandler.processInput(direction < 0 ? Button.UP : Button.DOWN);
   }
 
   processInput(button: Button): boolean {

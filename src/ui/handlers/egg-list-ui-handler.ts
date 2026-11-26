@@ -3,6 +3,11 @@ import { Button } from "#enums/buttons";
 import { PokemonIconAnimMode } from "#enums/pokemon-icon-anim-mode";
 import { TextStyle } from "#enums/text-style";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { PokemonIconAnimHelper } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
 import { ScrollableGridHelper } from "#ui/scrollable-grid-helper";
@@ -28,6 +33,7 @@ export class EggListUiHandler extends MessageUiHandler {
   private scrollGridHandler: ScrollableGridHelper;
 
   private iconAnimHandler: PokemonIconAnimHelper;
+  private pointerHitAreas: PointerHitAreaManager | null = null;
 
   setup() {
     const ui = this.getUi();
@@ -52,6 +58,7 @@ export class EggListUiHandler extends MessageUiHandler {
     this.eggGachaInfoText = addTextObject(8, 152, "", TextStyle.EGG_LIST).setWordWrapWidth(540);
 
     this.eggListIconContainer = globalScene.add.container(113, 5);
+    this.pointerHitAreas = this.createPointerHitAreas(this.eggListIconContainer);
 
     this.cursorObj = globalScene.add.image(0, 0, "select_cursor").setOrigin(0);
 
@@ -95,6 +102,7 @@ export class EggListUiHandler extends MessageUiHandler {
   override show(args: any[]): boolean {
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
     this.initEggIcons();
 
     this.getUi().bringToTop(this.eggListContainer);
@@ -105,6 +113,7 @@ export class EggListUiHandler extends MessageUiHandler {
 
     this.updateEggIcons();
     this.setCursor(0);
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
 
     return true;
   }
@@ -143,6 +152,75 @@ export class EggListUiHandler extends MessageUiHandler {
         icon.setVisible(false);
       }
     });
+    this.updatePointerHitAreas();
+  }
+
+  /**
+   * Rebuild the invisible hit areas over the visible egg icons.
+   * Clicking an egg selects it (eggs have no activation action); right click goes back like CANCEL.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    const configs: PointerRowHitAreaConfig[] = [];
+    this.eggIcons.forEach((icon, i) => {
+      if (!icon.visible) {
+        return;
+      }
+      configs.push({
+        x: icon.x,
+        y: icon.y,
+        width: 18,
+        height: 18,
+        onActivate: () => this.selectEggWithPointer(i),
+        // Eggs have nothing to activate, so right click keeps meaning "back"
+        onRightClick: () => this.handleBackPointer(),
+      });
+    });
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private canHandlePointer(): boolean {
+    return this.active && this.eggIcons.length > 0;
+  }
+
+  /**
+   * Move the cursor to the given visible icon index by replaying directional input,
+   * so the scroll helper stays in sync with the cursor.
+   * @param index - Index of the icon within the visible grid
+   */
+  private selectEggWithPointer(index: number): void {
+    if (!this.canHandlePointer() || index === this.cursor || index < 0 || index >= this.eggIcons.length) {
+      return;
+    }
+    let guard = this.ROWS + this.COLUMNS;
+    while (guard-- > 0 && Math.floor(this.cursor / this.COLUMNS) !== Math.floor(index / this.COLUMNS)) {
+      const down = index > this.cursor;
+      if (!this.scrollGridHandler.processInput(down ? Button.DOWN : Button.UP)) {
+        break;
+      }
+    }
+    guard = this.COLUMNS;
+    while (guard-- > 0 && this.cursor !== index) {
+      if (!this.scrollGridHandler.processInput(index > this.cursor ? Button.RIGHT : Button.LEFT)) {
+        break;
+      }
+    }
+    this.getUi().playSelect();
+  }
+
+  private handleBackPointer(): void {
+    if (this.canHandlePointer()) {
+      this.processInput(Button.CANCEL);
+    }
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.processInput(direction < 0 ? Button.UP : Button.DOWN);
   }
 
   /**
@@ -210,6 +288,7 @@ export class EggListUiHandler extends MessageUiHandler {
     super.clear();
     this.scrollGridHandler.reset();
     this.cursor = -1;
+    this.pointerHitAreas?.clear();
     this.eggListContainer.setVisible(false);
     this.iconAnimHandler.removeAll();
     this.eggListIconContainer.removeAll(true);

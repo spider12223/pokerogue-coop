@@ -26,6 +26,11 @@ import type { Variant } from "#sprites/variant";
 import { getVariantTint } from "#sprites/variant";
 import { achvs } from "#system/achv";
 import type { ConfirmModeConfig, OptionSelectItem } from "#types/ui-types";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addBBCodeTextObject, addTextObject, getBBCodeFrag, getTextColor, updateCandyCountTextStyle } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { argbFromRgba, rgbHexToRgba } from "#utils/color-utils";
@@ -133,6 +138,8 @@ export class SummaryUiHandler extends UiHandler {
   private selectedMoveIndex: number;
   private selectCallback: ((cursor: number) => void) | null;
 
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+
   setup() {
     const ui = this.getUi();
 
@@ -143,6 +150,18 @@ export class SummaryUiHandler extends UiHandler {
     const summaryBg = globalScene.add.image(0, 0, "summary_bg");
     summaryBg.setOrigin(0, 1);
     this.summaryContainer.add(summaryBg);
+    // Invisible: keeps presses on the summary from reaching what is below it (e.g. the party slots). Because this hides
+    // them from the global pointer router, right click goes back from here instead.
+    summaryBg.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, globalScene.scaledCanvas.width, globalScene.scaledCanvas.height),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    summaryBg.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown() || pointer.button === 2) {
+        this.handleBackPointer();
+      }
+    });
+    this.pointerHitAreas = this.createPointerHitAreas(this.summaryContainer);
 
     this.tabSprite = globalScene.add.sprite(81, -summaryBg.displayHeight + 16, getLocalizedSpriteKey("summary_tabs_1")); // Pixel text 'STATUS' tab
     this.tabSprite.setOrigin(0, 1);
@@ -357,6 +376,8 @@ export class SummaryUiHandler extends UiHandler {
   ): boolean {
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
+
     /* args[] information
      * args[0] : the Pokemon displayed in the Summary-UI
      * args[1] : the summaryUiMode (defaults to 0)
@@ -531,8 +552,194 @@ export class SummaryUiHandler extends UiHandler {
       this.hideStatus(!fromSummary);
     }
 
+    this.pointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
+    this.updatePointerHitAreas();
+
     return true;
   }
+
+  // #region Pointer input
+
+  private canHandlePointer(): boolean {
+    return this.active && !!this.pokemon && !this.transitioning && globalScene.ui.getHandler() === this;
+  }
+
+  /**
+   * Rebuild the invisible hit areas for the current page and state:
+   * - the page tab: left half = LEFT (previous page), right half = RIGHT (next page); the tab artwork carries the arrows
+   * - the Pokemon portrait (opened from the party only): top half = UP (previous party member), bottom half = DOWN (next)
+   * - Profile (with a passive) / Stats: the key prompt + label line = ACTION (switch ability/passive, show IVs)
+   * - Moves: one row per move (and the extra row while selecting): first click selects (entering move select if
+   *   needed), click on the selected row activates (ACTION); right click selects and activates
+   * Right click on the non-row areas goes back like CANCEL (the hit areas hide the press from the global router).
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas) {
+      return;
+    }
+    if (!this.canHandlePointer()) {
+      this.pointerHitAreas.clearRows();
+      return;
+    }
+
+    const back = () => this.handleBackPointer();
+    const configs: PointerRowHitAreaConfig[] = [];
+    const pageBg = this.summaryPageContainer.getAt(0) as Phaser.GameObjects.Sprite | undefined;
+    const pageHeight = pageBg?.height ?? 0;
+
+    // Page tab
+    const tabX = this.tabSprite.x;
+    const tabY = this.tabSprite.y - this.tabSprite.displayHeight;
+    const tabHalf = this.tabSprite.displayWidth / 2;
+    configs.push(
+      {
+        x: tabX,
+        y: tabY,
+        width: tabHalf,
+        height: this.tabSprite.displayHeight,
+        onActivate: () => this.handlePointerButton(Button.LEFT),
+        onRightClick: back,
+      },
+      {
+        x: tabX + tabHalf,
+        y: tabY,
+        width: tabHalf,
+        height: this.tabSprite.displayHeight,
+        onActivate: () => this.handlePointerButton(Button.RIGHT),
+        onRightClick: back,
+      },
+    );
+
+    // Portrait: previous / next party member
+    if (
+      !this.moveSelect
+      && this.summaryUiMode === SummaryUiMode.DEFAULT
+      && globalScene.ui.handlers[UiMode.PARTY].active
+    ) {
+      configs.push(
+        {
+          x: 3,
+          y: -149,
+          width: 99,
+          height: 48,
+          onActivate: () => this.handlePointerButton(Button.UP),
+          onRightClick: back,
+        },
+        {
+          x: 3,
+          y: -101,
+          width: 99,
+          height: 48,
+          onActivate: () => this.handlePointerButton(Button.DOWN),
+          onRightClick: back,
+        },
+      );
+    }
+
+    // Key prompt lines on the Profile (passive) and Stats (IVs) pages
+    if (!this.moveSelect) {
+      if (this.cursor === Page.PROFILE && this.pokemon?.hasPassive()) {
+        configs.push({
+          x: 106 + 7,
+          y: -pageHeight + 39,
+          width: 70,
+          height: 16,
+          onActivate: () => this.handlePointerButton(Button.ACTION),
+          onRightClick: back,
+        });
+      } else if (this.cursor === Page.STATS) {
+        configs.push({
+          x: 106 + 7,
+          y: -pageHeight + 51,
+          width: 70,
+          height: 16,
+          onActivate: () => this.handlePointerButton(Button.ACTION),
+          onRightClick: back,
+        });
+      }
+    }
+
+    // Move rows
+    if (this.cursor === Page.MOVES) {
+      const rowCount = this.moveSelect ? 5 : 4;
+      for (let row = 0; row < rowCount; row++) {
+        configs.push({
+          x: 106 + 5 - 2,
+          y: -pageHeight + 26 + 16 * row - 15,
+          width: 211,
+          height: 16,
+          onActivate: () => this.handleMoveRowPointerActivate(row),
+          onRightClick: () => this.handleMoveRowPointerRightClick(row),
+        });
+      }
+    }
+
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private handlePointerButton(button: Button): void {
+    if (this.canHandlePointer()) {
+      this.processInput(button);
+    }
+  }
+
+  private handleBackPointer(): void {
+    this.handlePointerButton(Button.CANCEL);
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    this.handlePointerButton(direction < 0 ? Button.UP : Button.DOWN);
+  }
+
+  /** Whether activating the given move row does something (empty move slots cannot be activated) */
+  private canActivateMoveRow(row: number): boolean {
+    return row === 4 || (!!this.pokemon && row < this.pokemon.moveset.length);
+  }
+
+  /**
+   * Select a move row, first entering move select (as ACTION on the Moves page does) when it is not active yet.
+   * @returns `true` if the row was already the selected one while move select was active
+   */
+  private selectMoveRowWithPointer(row: number): boolean {
+    if (!this.moveSelect) {
+      this.processInput(Button.ACTION);
+      if (!this.moveSelect) {
+        return false;
+      }
+      if (this.moveCursor !== row && this.setCursor(row)) {
+        this.getUi().playSelect();
+      }
+      return false;
+    }
+    if (this.moveCursor === row) {
+      return true;
+    }
+    if (this.setCursor(row)) {
+      this.getUi().playSelect();
+    }
+    return false;
+  }
+
+  private handleMoveRowPointerActivate(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.selectMoveRowWithPointer(row) && this.canActivateMoveRow(row)) {
+      this.processInput(Button.ACTION);
+    }
+  }
+
+  private handleMoveRowPointerRightClick(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    this.selectMoveRowWithPointer(row);
+    if (this.moveSelect && this.canActivateMoveRow(row)) {
+      this.processInput(Button.ACTION);
+    }
+  }
+
+  // #endregion Pointer input
 
   processInput(button: Button): boolean {
     if (this.transitioning) {
@@ -774,6 +981,8 @@ export class SummaryUiHandler extends UiHandler {
       ui.playError();
     }
 
+    this.updatePointerHitAreas();
+
     return success || error;
   }
 
@@ -884,6 +1093,7 @@ export class SummaryUiHandler extends UiHandler {
               }
               this.summaryPageTransitionContainer.setVisible(false);
               this.transitioning = false;
+              this.updatePointerHitAreas();
             },
           });
           this.summaryPageTransitionContainer.setVisible(true);
@@ -893,6 +1103,8 @@ export class SummaryUiHandler extends UiHandler {
         }
       }
     }
+
+    this.updatePointerHitAreas();
 
     return changed;
   }
@@ -1431,6 +1643,7 @@ export class SummaryUiHandler extends UiHandler {
 
     this.destroyBlinkCursor();
     this.hideMoveEffect();
+    this.updatePointerHitAreas();
   }
 
   destroyBlinkCursor() {
@@ -1476,6 +1689,7 @@ export class SummaryUiHandler extends UiHandler {
 
   clear() {
     super.clear();
+    this.pointerHitAreas?.clear();
     this.pokemon = null;
     this.cursor = -1;
     this.newMove = null;

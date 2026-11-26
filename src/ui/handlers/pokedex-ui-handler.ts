@@ -30,6 +30,14 @@ import { DropDown, DropDownLabel, DropDownOption, DropDownState, DropDownType, S
 import { FilterBar } from "#ui/filter-bar";
 import { FilterText, FilterTextRow } from "#ui/filter-text";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  getDisplayBounds,
+  type KeyedPointerRow,
+  type PointerBounds,
+  SyncedPointerHitAreas,
+  unionBounds,
+} from "#ui/pointer-hit-area-sync";
+import { ensureCanvasContextMenuDisabled, type PointerHitAreaManager } from "#ui/pointer-hit-areas";
 import { PokedexMonContainer } from "#ui/pokedex-mon-container";
 import { PokemonIconAnimHelper } from "#ui/pokemon-icon-anim-helper";
 import { ScrollBar } from "#ui/scroll-bar";
@@ -198,6 +206,7 @@ export class PokedexUiHandler extends MessageUiHandler {
   private starterSelectContainer: Phaser.GameObjects.Container;
   private starterSelectScrollBar: ScrollBar;
   private filterBarContainer: Phaser.GameObjects.Container;
+  private starterBoxContainer: Phaser.GameObjects.Container;
   private filterBar: FilterBar;
   private pokemonContainers: PokedexMonContainer[] = [];
   private filteredPokemonData: ContainerData[] = [];
@@ -264,6 +273,26 @@ export class PokedexUiHandler extends MessageUiHandler {
   private gameData: GameData;
   private exitCallback?: (() => void) | undefined;
   private blockOpenPage = false;
+
+  /** Pointer hit areas of the species grid (children of the grid container) */
+  private gridHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas of the filter bar labels */
+  private filterLabelHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas of the options of the open filter dropdown */
+  private dropDownHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas of the text filter rows (name, moves, abilities) */
+  private filterTextHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas of the key hints (filters, decorations, forms) */
+  private instructionHits: SyncedPointerHitAreas | null = null;
+  /** Pointer hit areas of the icons in the open form tray */
+  private trayHits: SyncedPointerHitAreas | null = null;
+  /** Covers the screen under an open filter dropdown: a click outside closes it */
+  private dropDownOutsideCancel: PointerHitAreaManager | null = null;
+  /** Covers the screen under the open form tray: a click outside closes it */
+  private trayOutsideCancel: PointerHitAreaManager | null = null;
+  /** Greater than 0 while a pointer callback runs; hit areas are then rebuilt after it, not under its feet */
+  private pointerDispatchDepth = 0;
+  private pointerRebuildQueued = false;
 
   setup() {
     const ui = this.getUi();
@@ -516,24 +545,24 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.pokemonFormText.setOrigin(0, 0);
     this.starterSelectContainer.add(this.pokemonFormText);
 
-    const starterBoxContainer = globalScene.add.container(speciesContainerX + 6, 9); //115
+    this.starterBoxContainer = globalScene.add.container(speciesContainerX + 6, 9); //115
 
     this.starterSelectScrollBar = new ScrollBar(161, 12, 5, pokemonContainerWindow.height - 6, 9);
 
-    starterBoxContainer.add(this.starterSelectScrollBar);
+    this.starterBoxContainer.add(this.starterSelectScrollBar);
 
     this.pokerusCursorObjs = [];
     for (let i = 0; i < POKERUS_STARTER_COUNT; i++) {
       const cursorObj = globalScene.add.image(0, 0, "select_cursor_pokerus");
       cursorObj.setVisible(false);
       cursorObj.setOrigin(0, 0);
-      starterBoxContainer.add(cursorObj);
+      this.starterBoxContainer.add(cursorObj);
       this.pokerusCursorObjs.push(cursorObj);
     }
 
     this.cursorObj = globalScene.add.image(0, 0, "select_cursor");
     this.cursorObj.setOrigin(0, 0);
-    starterBoxContainer.add(this.cursorObj);
+    this.starterBoxContainer.add(this.cursorObj);
 
     for (const species of speciesDataRegistry.getAllSpecies()) {
       this.speciesLoaded.set(species.speciesId, false);
@@ -546,7 +575,7 @@ export class PokedexUiHandler extends MessageUiHandler {
       pokemonContainer.setPosition(pos.x, pos.y);
       this.iconAnimHandler.addOrUpdate(pokemonContainer.icon, PokemonIconAnimMode.NONE);
       this.pokemonContainers.push(pokemonContainer);
-      starterBoxContainer.add(pokemonContainer);
+      this.starterBoxContainer.add(pokemonContainer);
     }
 
     // Tray to display forms
@@ -559,11 +588,11 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.trayCursorObj = globalScene.add.image(0, 0, "select_cursor");
     this.trayCursorObj.setOrigin(0, 0);
     this.formTrayContainer.add(this.trayCursorObj);
-    starterBoxContainer.add(this.formTrayContainer);
-    starterBoxContainer.bringToTop(this.formTrayContainer);
+    this.starterBoxContainer.add(this.formTrayContainer);
+    this.starterBoxContainer.bringToTop(this.formTrayContainer);
     this.formTrayContainer.setVisible(false);
 
-    this.starterSelectContainer.add(starterBoxContainer);
+    this.starterSelectContainer.add(this.starterBoxContainer);
 
     this.pokemonSprite = globalScene.add
       .sprite(96, 143, "pkmn__sub")
@@ -658,6 +687,15 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
     this.starterSelectContainer.bringToTop(this.pokemonNameText);
     this.starterSelectContainer.bringToTop(this.pokemonFormText);
+
+    this.gridHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.starterBoxContainer));
+    this.filterLabelHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.filterBar));
+    this.dropDownHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.filterBar));
+    this.filterTextHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.filterText));
+    this.instructionHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.starterSelectContainer));
+    this.trayHits = new SyncedPointerHitAreas(this.createPointerHitAreas(this.formTrayContainer));
+    this.dropDownOutsideCancel = this.createPointerHitAreas(this.starterSelectContainer);
+    this.trayOutsideCancel = this.createPointerHitAreas(this.starterBoxContainer);
   }
 
   show(args: any[]): boolean {
@@ -680,6 +718,7 @@ export class PokedexUiHandler extends MessageUiHandler {
     }
 
     super.show(args);
+    ensureCanvasContextMenuDisabled();
 
     this.starterSelectContainer.setVisible(true);
 
@@ -704,6 +743,9 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.setCursor(0);
 
     this.filterTextContainer.setVisible(true);
+
+    this.gridHits?.manager.setWheelHandler(direction => this.runPointerAction(() => this.handleWheel(direction)));
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -1283,6 +1325,9 @@ export class PokedexUiHandler extends MessageUiHandler {
     } else if (error) {
       ui.playError();
     }
+
+    // Keep the pointer targets in sync with what the input changed (dropdown rows, tray, key hints)
+    this.updatePointerHitAreas();
 
     return success || error;
   }
@@ -1893,6 +1938,8 @@ export class PokedexUiHandler extends MessageUiHandler {
         }
       }
     });
+
+    this.updatePointerHitAreas();
   };
 
   setCursor(cursor: number): boolean {
@@ -1938,6 +1985,7 @@ export class PokedexUiHandler extends MessageUiHandler {
       if (filterMode) {
         this.setSpecies(null);
       }
+      this.updatePointerHitAreas();
       return true;
     }
     return false;
@@ -1956,6 +2004,7 @@ export class PokedexUiHandler extends MessageUiHandler {
       if (filterTextMode) {
         this.setSpecies(null);
       }
+      this.updatePointerHitAreas();
       return true;
     }
     return false;
@@ -2020,6 +2069,8 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.showFormTrayIconElement.setVisible(false);
     this.showFormTrayLabel.setVisible(false);
 
+    this.updatePointerHitAreas();
+
     return true;
   }
 
@@ -2033,6 +2084,7 @@ export class PokedexUiHandler extends MessageUiHandler {
     this.showingTray = false;
 
     this.setSpeciesDetails(this.lastSpecies);
+    this.updatePointerHitAreas();
     return true;
   }
 
@@ -2272,6 +2324,8 @@ export class PokedexUiHandler extends MessageUiHandler {
     } else {
       this.setTypeIcons(null, null);
     }
+
+    this.updatePointerHitAreas();
   }
 
   setTypeIcons(type1: PokemonType | null, type2: PokemonType | null): void {
@@ -2317,6 +2371,475 @@ export class PokedexUiHandler extends MessageUiHandler {
       starter.label.setColor(getTextColor(textStyle));
       starter.label.setShadowColor(getTextColor(textStyle, true));
     }
+  }
+
+  // -------------------------------------------------------------------------------------------------------------------
+  // Pointer (mouse / touch) support
+  // -------------------------------------------------------------------------------------------------------------------
+
+  /** Only show the pointer cursor while this screen is the one on top (its hit areas stay under overlays). */
+  protected override setMouseCursorStyle(cursorStyle: "pointer" | "default"): void {
+    super.setMouseCursorStyle(this.isPointerInputEnabled() ? cursorStyle : "default");
+  }
+
+  private canHandlePointer(): boolean {
+    return this.isPointerInputEnabled() && !this.blockInput && this.starterSelectContainer.visible;
+  }
+
+  /**
+   * Run a pointer callback. Hit areas that it asks to rebuild are rebuilt right after it, so the rectangle that is
+   * dispatching the event is not destroyed from inside its own handler.
+   */
+  private runPointerAction(action: () => void): void {
+    this.pointerDispatchDepth++;
+    try {
+      action();
+    } finally {
+      this.pointerDispatchDepth--;
+    }
+    if (this.pointerDispatchDepth === 0 && this.pointerRebuildQueued) {
+      this.updatePointerHitAreas();
+    }
+  }
+
+  private clearPointerHitAreas(): void {
+    this.gridHits?.clear();
+    this.filterLabelHits?.clear();
+    this.dropDownHits?.clear();
+    this.filterTextHits?.clear();
+    this.instructionHits?.clear();
+    this.trayHits?.clear();
+    this.dropDownOutsideCancel?.clear();
+    this.trayOutsideCancel?.clear();
+  }
+
+  /**
+   * Bring all hit areas in line with the screen: the species grid, the filter bar and its open dropdown, the text
+   * filter rows, the key hints and the form tray. Cheap to call often: areas whose geometry did not change are kept.
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.gridHits) {
+      return;
+    }
+    if (this.pointerDispatchDepth > 0) {
+      this.pointerRebuildQueued = true;
+      return;
+    }
+    this.pointerRebuildQueued = false;
+
+    if (!this.active || !this.starterSelectContainer.visible) {
+      this.clearPointerHitAreas();
+      return;
+    }
+
+    this.updateGridHitAreas();
+    this.updateFilterLabelHitAreas();
+    this.updateDropDownHitAreas();
+    this.updateFilterTextHitAreas();
+    this.updateInstructionHitAreas();
+    this.updateTrayHitAreas();
+  }
+
+  /** Whether the species grid is what has the focus (no filter row, dropdown or form tray). */
+  private isGridFocused(): boolean {
+    return (
+      !this.filterMode
+      && !this.filterTextMode
+      && !this.showingTray
+      && !this.filterBar.openDropDown
+      && this.cursorObj.visible
+    );
+  }
+
+  /** Move the focus back to the species grid, closing a dropdown and leaving the filter rows. */
+  private focusGrid(): void {
+    this.filterBar.hideDropDowns();
+    if (this.filterMode) {
+      this.setFilterMode(false);
+    }
+    if (this.filterTextMode) {
+      this.setFilterTextMode(false);
+    }
+  }
+
+  private updateGridHitAreas(): void {
+    if (!this.gridHits) {
+      return;
+    }
+    // Under an open dropdown or form tray the screen is covered by an outside-cancel area instead
+    if (this.filterBar.openDropDown || this.showingTray) {
+      this.gridHits.clearRows();
+      return;
+    }
+
+    const rows: KeyedPointerRow[] = [];
+    this.pokemonContainers.forEach((container, index) => {
+      if (!container.visible) {
+        return;
+      }
+      const pos = calcStarterPosition(index);
+      rows.push({
+        id: `grid:${index}`,
+        x: pos.x,
+        y: pos.y,
+        width: 18,
+        height: 17,
+        onActivate: () => this.runPointerAction(() => this.handleGridPointerActivate(index)),
+        onRightClick: () => this.runPointerAction(() => this.handleGridPointerRightClick(index)),
+      });
+    });
+    this.gridHits.set(rows);
+  }
+
+  /** 1st click selects the species, a click on the selected one opens its page. */
+  private handleGridPointerActivate(index: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.isGridFocused() && this.cursor === index) {
+      this.processInput(Button.ACTION);
+      return;
+    }
+    this.focusGrid();
+    this.setCursor(index);
+    this.getUi().playSelect();
+  }
+
+  /** Right click selects the species and opens its page. */
+  private handleGridPointerRightClick(index: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (!this.isGridFocused() || this.cursor !== index) {
+      this.focusGrid();
+      this.setCursor(index);
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  /**
+   * The mouse wheel scrolls what is in focus: the open dropdown, or the species grid by one row per notch (without the
+   * wrapping and the jump to the filter bar that the arrow keys do at the ends of the grid).
+   */
+  private handleWheel(direction: -1 | 1): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.filterMode && this.filterBar.openDropDown) {
+      this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+      return;
+    }
+    if (!this.isGridFocused()) {
+      return;
+    }
+
+    const maxColumns = 9;
+    const numberOfRows = Math.ceil(this.filteredPokemonData.length / maxColumns);
+    const currentRow = Math.floor((this.scrollCursor * maxColumns + this.cursor) / maxColumns);
+    if (direction < 0) {
+      if (currentRow > 0) {
+        this.processInput(Button.UP);
+      }
+    } else if (
+      currentRow < numberOfRows - 1
+      && this.scrollCursor * maxColumns + this.cursor + maxColumns < this.filteredPokemonData.length
+    ) {
+      this.processInput(Button.DOWN);
+    }
+  }
+
+  private updateFilterLabelHitAreas(): void {
+    if (!this.filterLabelHits) {
+      return;
+    }
+    const rows: KeyedPointerRow[] = [];
+    for (let i = 0; i < this.filterBar.numFilters; i++) {
+      const bounds = this.filterBar.getLabelHitBounds(i);
+      if (!bounds) {
+        continue;
+      }
+      const filterIndex = i;
+      rows.push({
+        id: `filter:${i}`,
+        ...bounds,
+        onActivate: () => this.runPointerAction(() => this.handleFilterLabelPointerActivate(filterIndex)),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    }
+    this.filterLabelHits.set(rows);
+  }
+
+  /** Click on a filter label: select the filter and open its dropdown. */
+  private handleFilterLabelPointerActivate(filterIndex: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.showingTray) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+
+    if (this.filterTextMode) {
+      this.setFilterTextMode(false);
+    }
+    this.filterBarCursor = filterIndex;
+    if (this.filterMode) {
+      this.setCursor(filterIndex);
+    } else {
+      this.setFilterMode(true);
+    }
+    this.filterBar.openDropDownAt(filterIndex);
+    this.getUi().playSelect();
+    this.updatePointerHitAreas();
+  }
+
+  /** Right click goes back: the keyboard CANCEL (closes a dropdown / form tray, resets a filter, or asks to exit). */
+  private handleCancelPointer(): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.filterBar.openDropDown && !this.filterMode) {
+      this.setFilterMode(true);
+    }
+    this.processInput(Button.CANCEL);
+  }
+
+  /**
+   * Rows for the options of the open dropdown (hover selects, click toggles/selects), and an outside area under the
+   * filter bar so that a click anywhere else closes the dropdown.
+   */
+  private updateDropDownHitAreas(): void {
+    if (!this.dropDownHits || !this.dropDownOutsideCancel) {
+      return;
+    }
+    const dropDown = this.filterBar.openDropDown ? this.filterBar.getDropDown(this.filterBarCursor) : undefined;
+    if (!dropDown?.visible) {
+      this.dropDownHits.clearRows();
+      this.dropDownOutsideCancel.clearOutside();
+      return;
+    }
+
+    const rows: KeyedPointerRow[] = dropDown.getVisibleOptionHitAreas().map(area => ({
+      id: `option:${this.filterBarCursor}:${area.index}`,
+      x: dropDown.x + area.x,
+      y: dropDown.y + area.y,
+      width: area.width,
+      height: area.height,
+      onHover: () =>
+        this.runPointerAction(() => {
+          if (!this.canHandlePointer() || !this.filterBar.openDropDown) {
+            return;
+          }
+          const firstBefore = dropDown.getVisibleOptionHitAreas()[0]?.index;
+          dropDown.setCursor(area.index);
+          const firstAfter = dropDown.getVisibleOptionHitAreas()[0]?.index;
+          // Scrolling changes the visible rows: rebuild them once this hover event is over
+          if (firstBefore !== firstAfter) {
+            globalScene.time.delayedCall(0, () => {
+              if (this.active && this.filterBar.openDropDown) {
+                this.updatePointerHitAreas();
+              }
+            });
+          }
+        }),
+      onActivate: () =>
+        this.runPointerAction(() => {
+          if (!this.canHandlePointer() || !this.filterBar.openDropDown) {
+            return;
+          }
+          dropDown.setCursor(area.index);
+          this.processInput(Button.ACTION);
+        }),
+      onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+    }));
+    this.dropDownHits.set(rows);
+
+    // The screen under the dropdown: any click outside it closes it (the keyboard CANCEL)
+    this.dropDownOutsideCancel.setOutsideCancel(
+      () =>
+        this.runPointerAction(() => {
+          if (this.canHandlePointer() && this.filterBar.openDropDown) {
+            this.handleCancelPointer();
+          }
+        }),
+      globalScene.scaledCanvas.width,
+      globalScene.scaledCanvas.height,
+      0,
+      0,
+    );
+    this.dropDownOutsideCancel.bringOutsideToTop();
+    this.starterSelectContainer.bringToTop(this.filterBarContainer);
+    this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
+  }
+
+  /** Row bounds of the text filters, relative to the text filter container. */
+  private getFilterTextRowBounds(): PointerBounds[] {
+    // The container holds its window and cursor first, then a label and a value text per row
+    const labels: Phaser.GameObjects.Text[] = [];
+    for (let i = 0; i < this.filterText.numFilters; i++) {
+      const label = this.filterText.list[2 + 2 * i] as Phaser.GameObjects.Text | undefined;
+      if (!label) {
+        return [];
+      }
+      labels.push(label);
+    }
+
+    // Each row reaches halfway to its neighbours, so that there are no gaps between rows
+    return labels.map((label, i) => {
+      const top = i === 0 ? 0 : (labels[i - 1].y + labels[i - 1].displayHeight + label.y) / 2;
+      const next = labels[i + 1];
+      const bottom = next ? (label.y + label.displayHeight + next.y) / 2 : this.filterText.height;
+      return { x: 0, y: top, width: this.filterText.width, height: bottom - top };
+    });
+  }
+
+  private updateFilterTextHitAreas(): void {
+    if (!this.filterTextHits) {
+      return;
+    }
+    const rows: KeyedPointerRow[] = this.getFilterTextRowBounds().map((bounds, i) => ({
+      id: `text:${i}`,
+      ...bounds,
+      onActivate: () => this.runPointerAction(() => this.handleFilterTextPointerActivate(i)),
+      onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+    }));
+    this.filterTextHits.set(rows);
+  }
+
+  /** Click on a text filter row: select it and open its search box. */
+  private handleFilterTextPointerActivate(row: number): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.showingTray || this.filterBar.openDropDown) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+
+    if (this.filterMode) {
+      this.setFilterMode(false);
+    }
+    this.filterTextCursor = row;
+    if (this.filterTextMode) {
+      this.setCursor(row);
+    } else {
+      this.setFilterTextMode(true);
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  /**
+   * The key hints: C / V "filters" (filter bar / text filters), R "decorations" and F "forms". A click presses the key.
+   */
+  private updateInstructionHitAreas(): void {
+    if (!this.instructionHits) {
+      return;
+    }
+    const hints: { id: string; button: Button; parts: (Phaser.GameObjects.Sprite | Phaser.GameObjects.Text)[] }[] = [
+      { id: "filterBar", button: Button.STATS, parts: [this.goFilterIconElement1] },
+      { id: "filterText", button: Button.CYCLE_TERA, parts: [this.goFilterIconElement2] },
+      { id: "filterLabel", button: Button.STATS, parts: [this.goFilterLabel] },
+      {
+        id: "decorations",
+        button: Button.CYCLE_SHINY,
+        parts: [this.toggleDecorationsIconElement, this.toggleDecorationsLabel],
+      },
+      { id: "forms", button: Button.CYCLE_FORM, parts: [this.showFormTrayIconElement, this.showFormTrayLabel] },
+    ];
+
+    const rows: KeyedPointerRow[] = [];
+    for (const { id, button, parts } of hints) {
+      if (!parts.every(part => part.visible)) {
+        continue;
+      }
+      const bounds = unionBounds(...parts.map(part => getDisplayBounds(part)));
+      rows.push({
+        id: `hint:${id}`,
+        ...bounds,
+        onActivate: () => this.runPointerAction(() => this.handleInstructionPointerActivate(button)),
+        onRightClick: () => this.runPointerAction(() => this.handleCancelPointer()),
+      });
+    }
+    this.instructionHits.set(rows);
+    // Keep the message box above the new hit areas, as it was before they were added
+    this.starterSelectContainer.bringToTop(this.starterSelectMessageBoxContainer);
+  }
+
+  /** Press the key of a key hint, as the keyboard would. */
+  private handleInstructionPointerActivate(button: Button): void {
+    if (!this.canHandlePointer()) {
+      return;
+    }
+    if (this.showingTray && button !== Button.CYCLE_FORM) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    if (this.filterBar.openDropDown) {
+      this.handleCancelPointer();
+      return;
+    }
+    this.processInput(button);
+  }
+
+  /** The icons of the open form tray: 1st click selects a form, a click on the selected one opens its page. */
+  private updateTrayHitAreas(): void {
+    if (!this.trayHits || !this.trayOutsideCancel) {
+      return;
+    }
+    if (!this.showingTray) {
+      this.trayHits.clearRows();
+      this.trayOutsideCancel.clearOutside();
+      return;
+    }
+
+    const rows: KeyedPointerRow[] = this.trayContainers.map((_container, index) => ({
+      id: `tray:${index}`,
+      x: 5 + (index % 9) * 18,
+      y: 4 + Math.floor(index / 9) * 17,
+      width: 18,
+      height: 17,
+      onActivate: () => this.runPointerAction(() => this.handleTrayPointerActivate(index)),
+      onRightClick: () => this.runPointerAction(() => this.handleTrayPointerRightClick(index)),
+    }));
+    this.trayHits.set(rows);
+
+    // A click anywhere else closes the tray (the keyboard CANCEL). The area is in the grid container, below the tray.
+    this.trayOutsideCancel.setOutsideCancel(
+      () =>
+        this.runPointerAction(() => {
+          if (this.canHandlePointer() && this.showingTray) {
+            this.processInput(Button.CANCEL);
+          }
+        }),
+      globalScene.scaledCanvas.width,
+      globalScene.scaledCanvas.height,
+      -this.starterBoxContainer.x,
+      -this.starterBoxContainer.y,
+    );
+    this.trayOutsideCancel.bringOutsideToTop();
+    this.starterBoxContainer.bringToTop(this.formTrayContainer);
+  }
+
+  private handleTrayPointerActivate(index: number): void {
+    if (!this.canHandlePointer() || !this.showingTray) {
+      return;
+    }
+    if (this.trayCursor === index) {
+      this.processInput(Button.ACTION);
+      return;
+    }
+    this.setTrayCursor(index);
+    this.getUi().playSelect();
+  }
+
+  private handleTrayPointerRightClick(index: number): void {
+    if (!this.canHandlePointer() || !this.showingTray) {
+      return;
+    }
+    if (this.trayCursor !== index) {
+      this.setTrayCursor(index);
+    }
+    this.processInput(Button.ACTION);
   }
 
   tryExit(): boolean {
@@ -2387,6 +2910,8 @@ export class PokedexUiHandler extends MessageUiHandler {
 
   clear(): void {
     super.clear();
+
+    this.clearPointerHitAreas();
 
     this.cursor = -1;
     this.oldCursor = -1;

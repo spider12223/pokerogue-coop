@@ -3,6 +3,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { ModalConfig } from "#types/ui-types";
 import { ModalUiHandler } from "#ui/modal-ui-handler";
+import type { PointerHitAreaManager } from "#ui/pointer-hit-areas";
 import { addTextObject } from "#ui/text";
 import { playTween } from "#utils/anim-utils";
 import { fixedInt } from "#utils/common";
@@ -12,6 +13,8 @@ export class AlertModalUiHandler extends ModalUiHandler {
   private label: Phaser.GameObjects.Text;
   private allowClosing = false;
   private overlay: Phaser.GameObjects.Rectangle;
+  /** A click anywhere closes the alert, like any button does */
+  private pointerHitAreas: PointerHitAreaManager | null = null;
 
   private width = 250;
   private height = 32;
@@ -49,6 +52,8 @@ export class AlertModalUiHandler extends ModalUiHandler {
       .setOrigin(0.5, 0.5);
 
     this.modalContainer.add(this.label);
+
+    this.pointerHitAreas = this.createPointerHitAreas(this.getUi());
   }
 
   /**
@@ -89,7 +94,22 @@ export class AlertModalUiHandler extends ModalUiHandler {
         this.allowClosing = true;
       });
     }
-    return super.show([config]);
+    if (!super.show([config])) {
+      return false;
+    }
+    // Above the overlay and the alert (the alert has just been brought on top)
+    this.pointerHitAreas?.setOutsideCancel(() => {
+      if (this.isPointerInputEnabled()) {
+        this.processInput();
+      }
+    });
+    return true;
+  }
+
+  public override clear(): void {
+    super.clear();
+
+    this.pointerHitAreas?.clear();
   }
 
   public override processInput(): boolean {

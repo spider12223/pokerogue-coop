@@ -99,5 +99,6 @@ export class SettingsGamepadUiHandler extends BaseControlSettingsUiHandler {
         }
       }
     }
+    this.updatePointerHitAreas();
   }
 }

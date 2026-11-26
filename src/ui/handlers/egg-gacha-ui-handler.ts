@@ -14,6 +14,11 @@ import { TextStyle } from "#enums/text-style";
 import { VoucherType } from "#enums/voucher-type";
 import { getVoucherTypeIcon } from "#system/voucher";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addTextObject, getEggTierTextTint, getTextStyleOptions } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
 import { fixedInt, randInt, randSeedShuffle } from "#utils/common";
@@ -27,6 +32,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
   private eggGachaOptionSelectBg: Phaser.GameObjects.NineSlice;
 
   private readonly gachaContainers: Phaser.GameObjects.Container[] = [];
+  private readonly gachaSprites: Phaser.GameObjects.Sprite[] = [];
   private readonly gachaKnobs: Phaser.GameObjects.Sprite[] = [];
   private readonly gachaHatches: Phaser.GameObjects.Sprite[] = [];
   private readonly gachaInfoContainers: Phaser.GameObjects.Container[] = [];
@@ -34,6 +40,13 @@ export class EggGachaUiHandler extends MessageUiHandler {
   private eggGachaSummaryContainer: Phaser.GameObjects.Container;
 
   private readonly voucherCountLabels: Phaser.GameObjects.Text[] = [];
+
+  /** Hit areas over the pull option rows (inside `eggGachaOptionsContainer`) */
+  private optionsPointerHitAreas: PointerHitAreaManager | null = null;
+  /** One manager per machine, living inside its `gachaContainer` so the hit area slides with the machine */
+  private readonly machinePointerHitAreas: PointerHitAreaManager[] = [];
+  /** Full screen hit area used to skip the pull animation / dismiss the summary */
+  private overlayPointerHitAreas: PointerHitAreaManager | null = null;
 
   private gachaCursor: number;
 
@@ -153,6 +166,8 @@ export class EggGachaUiHandler extends MessageUiHandler {
     );
 
     this.gachaContainers.push(gachaContainer);
+    this.gachaSprites.push(gacha);
+    this.machinePointerHitAreas.push(this.createPointerHitAreas(gachaContainer));
     this.gachaKnobs.push(gachaKnob);
     this.gachaHatches.push(gachaHatch);
     this.gachaInfoContainers.push(gachaInfoContainer);
@@ -328,6 +343,9 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.initTutorialOverlay(this.eggGachaContainer);
     this.eggGachaContainer.add(gachaMessageBoxContainer);
 
+    this.optionsPointerHitAreas = this.createPointerHitAreas(this.eggGachaOptionsContainer);
+    this.overlayPointerHitAreas = this.createPointerHitAreas(this.eggGachaContainer);
+
     this.initNameBox(gachaMessageBoxContainer, 8, -7);
     this.initPromptSprite(gachaMessageBoxContainer);
 
@@ -337,6 +355,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
   show(args: any[]): boolean {
     super.show(args);
 
+    ensureCanvasContextMenuDisabled();
     this.getUi().showText(this.defaultText, 0);
 
     this.setGachaCursor(1);
@@ -354,8 +373,128 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.legendaryExpiration.setText(this.getLegendaryGachaTimeLeft());
     this.legendaryGachaTimer();
 
+    this.updatePointerHitAreas();
+    this.optionsPointerHitAreas?.setWheelHandler(direction => this.handlePointerWheel(direction));
+
     return true;
   }
+
+  // #region Pointer input
+
+  /** Whether the pull menu / machine selector may react to the pointer (not pulling, scrolling, in the summary...) */
+  private canHandleMenuPointer(): boolean {
+    return (
+      this.active
+      && !this.transitioning
+      && !this.tutorialActive
+      && !this.eggGachaSummaryContainer.visible
+      && this.eggGachaOptionsContainer.visible
+    );
+  }
+
+  /** Whether the pull animation is playing or the summary is shown (where ACTION skips / dismisses) */
+  private isPullOrSummaryActive(): boolean {
+    return this.eggGachaSummaryContainer.visible || !this.eggGachaOptionsContainer.visible;
+  }
+
+  /**
+   * Rebuild the invisible hit areas:
+   * - one per pull option row (hover selects, click selects and activates; the last row is "Cancel"),
+   * - one per machine to jump to it (same as LEFT / RIGHT),
+   * - a full screen one while pulling or in the summary (same as ACTION, to skip / dismiss).
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.optionsPointerHitAreas || !this.overlayPointerHitAreas) {
+      return;
+    }
+
+    const bg = this.eggGachaOptionSelectBg;
+    const rowHeight = 96 * this.scale;
+    const optionConfigs: PointerRowHitAreaConfig[] = [];
+    for (let i = 0; i < 6; i++) {
+      optionConfigs.push({
+        x: -bg.displayWidth,
+        y: -bg.displayHeight + 9 + i * rowHeight,
+        width: bg.displayWidth,
+        height: rowHeight,
+        onHover: () => this.handleOptionPointerHover(i),
+        onActivate: () => this.handleOptionPointerActivate(i),
+      });
+    }
+    this.optionsPointerHitAreas.setRows(optionConfigs);
+
+    this.machinePointerHitAreas.forEach((manager, i) => {
+      const sprite = this.gachaSprites[i];
+      manager.setRows([
+        {
+          x: 0,
+          y: 0,
+          width: sprite.displayWidth,
+          height: sprite.displayHeight,
+          onActivate: () => this.handleMachinePointerActivate(i),
+          onRightClick: () => this.handleBackPointer(),
+        },
+      ]);
+    });
+
+    if (this.isPullOrSummaryActive()) {
+      this.overlayPointerHitAreas.setRows([
+        {
+          x: 0,
+          y: 0,
+          width: globalScene.scaledCanvas.width,
+          height: globalScene.scaledCanvas.height,
+          onActivate: () => this.handleOverlayPointerActivate(),
+          onRightClick: () => this.handleOverlayPointerActivate(),
+        },
+      ]);
+    } else {
+      this.overlayPointerHitAreas.clearRows();
+    }
+  }
+
+  private handleOptionPointerHover(row: number): void {
+    if (this.canHandleMenuPointer() && this.setCursor(row)) {
+      this.getUi().playSelect();
+    }
+  }
+
+  private handleOptionPointerActivate(row: number): void {
+    if (!this.canHandleMenuPointer()) {
+      return;
+    }
+    this.setCursor(row);
+    this.processInput(Button.ACTION);
+  }
+
+  private handleMachinePointerActivate(machine: number): void {
+    if (!this.canHandleMenuPointer() || machine === this.gachaCursor) {
+      return;
+    }
+    this.processInput(machine > this.gachaCursor ? Button.RIGHT : Button.LEFT);
+  }
+
+  /** Right click over a machine goes back like CANCEL (the zone hides the press from the global pointer router) */
+  private handleBackPointer(): void {
+    if (this.canHandleMenuPointer()) {
+      this.processInput(Button.CANCEL);
+    }
+  }
+
+  private handleOverlayPointerActivate(): void {
+    if (!this.active || this.tutorialActive || !this.isPullOrSummaryActive()) {
+      return;
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  private handlePointerWheel(direction: -1 | 1): void {
+    if (this.canHandleMenuPointer()) {
+      this.processInput(direction < 0 ? Button.UP : Button.DOWN);
+    }
+  }
+
+  // #endregion Pointer input
 
   getDelayValue(delay: number) {
     if (this.transitioning && this.transitionCancelled) {
@@ -519,6 +658,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
 
     this.eggGachaOptionsContainer.setVisible(false);
     this.setTransitioning(true);
+    this.updatePointerHitAreas();
 
     // Co-op: only the account is saved; the run is saved at the start of a wave, to the co-op slot (D19). An account the
     // browser refuses to save is told, and the machine goes on: a reset would end the run of both players
@@ -576,6 +716,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
     this.transitionCancelled = false;
     this.setTransitioning(true);
     this.eggGachaSummaryContainer.setVisible(true);
+    this.updatePointerHitAreas();
 
     const eggScale = eggs.length < 20 ? 1 : 0.5;
 
@@ -650,6 +791,7 @@ export class EggGachaUiHandler extends MessageUiHandler {
         this.setTransitioning(false);
         this.summaryFinished = false;
         this.eggGachaOptionsContainer.setVisible(true);
+        this.updatePointerHitAreas();
       },
     });
   }
@@ -951,5 +1093,10 @@ export class EggGachaUiHandler extends MessageUiHandler {
       this.playTimeTimer = null;
     }
     this.eggGachaContainer.setActive(false);
+    this.optionsPointerHitAreas?.clear();
+    this.overlayPointerHitAreas?.clear();
+    for (const manager of this.machinePointerHitAreas) {
+      manager.clear();
+    }
   }
 }

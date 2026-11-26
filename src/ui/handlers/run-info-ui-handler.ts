@@ -21,6 +21,11 @@ import { getVariantTint } from "#sprites/variant";
 import type { PokemonData } from "#system/pokemon-data";
 import { SettingKeyboard } from "#system/settings-keyboard";
 import type { SessionSaveData } from "#types/save-data";
+import {
+  ensureCanvasContextMenuDisabled,
+  type PointerHitAreaManager,
+  type PointerRowHitAreaConfig,
+} from "#ui/pointer-hit-areas";
 import { addBBCodeTextObject, addTextObject, getTextColor, RAINBOW_TINT } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -70,12 +75,28 @@ export class RunInfoUiHandler extends UiHandler {
   private partyVisibility: boolean;
   private modifiersModule: any;
 
+  /** Hit areas live inside `runContainer`; created lazily and cleared whenever the screen is closed */
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+  /** Bounds (in `runContainer` coordinates) of the "view held items" header label + key icon, if drawn */
+  private heldItemsButtonRect: { x: number; y: number; width: number; height: number } | null = null;
+  /** Bounds (in `runContainer` coordinates) of the "view Hall of Fame" line (victory only), if drawn */
+  private hallOfFameButtonRect: { x: number; y: number; width: number; height: number } | null = null;
+  /** Bounds (in `runContainer` coordinates) of the "view ending splash" line (victory only), if drawn */
+  private endingSplashButtonRect: { x: number; y: number; width: number; height: number } | null = null;
+
   override async setup() {
     this.runContainer = globalScene.add.container(1, -globalScene.scaledCanvas.height + 1);
     // The import of the modifiersModule is loaded here to sidestep async/await issues.
     this.modifiersModule = Modifier;
     this.runContainer.setVisible(false);
     globalScene.loadImage("encounter_exclaim", "mystery-encounters");
+    // `runContainer` is made a full screen interactive rectangle in `show`, which hides presses from the global pointer
+    // router, so right click goes back from here
+    this.runContainer.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (this.isPointerInputEnabled() && (pointer.rightButtonDown() || pointer.button === 2)) {
+        this.handlePointerButton(Button.CANCEL);
+      }
+    });
   }
 
   /**
@@ -91,6 +112,11 @@ export class RunInfoUiHandler extends UiHandler {
    */
   override show(args: any[]): boolean {
     super.show(args);
+
+    ensureCanvasContextMenuDisabled();
+    this.heldItemsButtonRect = null;
+    this.hallOfFameButtonRect = null;
+    this.endingSplashButtonRect = null;
 
     const gameStatsBg = globalScene.add.rectangle(
       0,
@@ -162,7 +188,54 @@ export class RunInfoUiHandler extends UiHandler {
 
     this.getUi().hideTooltip();
 
+    this.updatePointerHitAreas();
+
     return true;
+  }
+
+  /**
+   * Rebuild the invisible hit areas.
+   * - Main page: the "view held items" header label, and (victory only) the "view Hall of Fame" and
+   *   "view ending splash" lines, which press the same cycle buttons as their key icons.
+   * - Hall of Fame / ending art page: the whole screen goes back to the main page (same as CANCEL).
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.active) {
+      return;
+    }
+    this.pointerHitAreas ??= this.createPointerHitAreas(this.runContainer);
+
+    const configs: PointerRowHitAreaConfig[] = [];
+    if (this.pageMode === RunInfoUiMode.MAIN) {
+      const addButton = (rect: { x: number; y: number; width: number; height: number } | null, button: Button) => {
+        if (rect) {
+          configs.push({
+            ...rect,
+            onActivate: () => this.handlePointerButton(button),
+            onRightClick: () => this.handlePointerButton(Button.CANCEL),
+          });
+        }
+      };
+      addButton(this.heldItemsButtonRect, Button.CYCLE_ABILITY);
+      addButton(this.hallOfFameButtonRect, Button.CYCLE_SHINY);
+      addButton(this.endingSplashButtonRect, Button.CYCLE_FORM);
+    } else {
+      configs.push({
+        x: 0,
+        y: 0,
+        width: globalScene.scaledCanvas.width,
+        height: globalScene.scaledCanvas.height,
+        onActivate: () => this.handlePointerButton(Button.CANCEL),
+        onRightClick: () => this.handlePointerButton(Button.CANCEL),
+      });
+    }
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private handlePointerButton(button: Button): void {
+    if (this.isPointerInputEnabled()) {
+      this.processInput(button);
+    }
   }
 
   /**
@@ -198,6 +271,12 @@ export class RunInfoUiHandler extends UiHandler {
         headerBgCoords.x - abilityButtonText.displayWidth - abilityButtonElement.displayWidth - 8,
         10,
       );
+      this.heldItemsButtonRect = {
+        x: abilityButtonContainer.x - abilityButtonElement.displayWidth / 2,
+        y: abilityButtonContainer.y - 2,
+        width: abilityButtonElement.displayWidth / 2 + 8 + abilityButtonText.displayWidth,
+        height: 12,
+      };
       this.runContainer.add(abilityButtonContainer);
     }
     const headerText = addTextObject(0, 0, i18next.t("runHistory:runInfo"), TextStyle.HEADER_LABEL);
@@ -269,6 +348,19 @@ export class RunInfoUiHandler extends UiHandler {
       hallofFameInstructionContainer.add([formButtonText, formButtonElement]);
 
       hallofFameInstructionContainer.setPosition(12, 25);
+      // Rect coordinates are relative to `runContainer` (`runResultContainer` is at y = 24)
+      this.hallOfFameButtonRect = {
+        x: 12 - shinyButtonElement.displayWidth / 2,
+        y: 24 + 25 - 2,
+        width: shinyButtonElement.displayWidth / 2 + 8 + shinyButtonText.displayWidth,
+        height: 12,
+      };
+      this.endingSplashButtonRect = {
+        x: 12 - formButtonElement.displayWidth / 2,
+        y: 24 + 25 + 12 - 2,
+        width: formButtonElement.displayWidth / 2 + 8 + formButtonText.displayWidth,
+        height: 12,
+      };
       this.runResultContainer.add(hallofFameInstructionContainer);
     }
 
@@ -1062,6 +1154,11 @@ export class RunInfoUiHandler extends UiHandler {
     this.runContainer.add(this.hallofFameContainer);
   }
 
+  override clear(): void {
+    this.pointerHitAreas?.clear();
+    super.clear();
+  }
+
   /**
    * Takes input from the user to perform a desired action.
    * @param button - Button object to be processed
@@ -1086,6 +1183,7 @@ export class RunInfoUiHandler extends UiHandler {
           if (this.isVictory) {
             this.hallofFameContainer.removeAll(true);
           }
+          this.pointerHitAreas?.clear();
           super.clear();
           this.runContainer.setVisible(false);
           ui.revertMode();
@@ -1113,6 +1211,7 @@ export class RunInfoUiHandler extends UiHandler {
     } else if (error) {
       ui.playError();
     }
+    this.updatePointerHitAreas();
     return success || error;
   }
 

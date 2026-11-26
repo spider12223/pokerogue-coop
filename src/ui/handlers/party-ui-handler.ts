@@ -1467,7 +1467,7 @@ export class PartyUiHandler extends MessageUiHandler {
   }
 
   private canHandlePartyPointer(): boolean {
-    return this.active && !this.pendingPrompt && !this.blockInput && !this.awaitingActionInput;
+    return this.isPointerInputEnabled() && !this.pendingPrompt && !this.blockInput && !this.awaitingActionInput;
   }
 
   private handlePartySlotPointerActivate(slotIndex: number): void {
