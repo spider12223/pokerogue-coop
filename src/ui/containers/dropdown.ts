@@ -409,6 +409,30 @@ export class DropDown extends Phaser.GameObjects.Container {
     return this.window ? this.window.width : this.width;
   }
 
+  /**
+   * Hit areas for currently visible dropdown options, relative to this DropDown.
+   */
+  public getVisibleOptionHitAreas(): { index: number; x: number; y: number; width: number; height: number }[] {
+    const rowHeight = this.optionHeight + this.optionSpacing;
+    const width = this.getWidth();
+    const areas: { index: number; x: number; y: number; width: number; height: number }[] = [];
+
+    for (let i = this.firstShown; i < this.firstShown + this.shownOptions && i < this.options.length; i++) {
+      if (!this.options[i].visible) {
+        continue;
+      }
+      areas.push({
+        index: i,
+        x: 0,
+        y: this.options[i].y,
+        width,
+        height: Math.max(rowHeight, this.optionHeight),
+      });
+    }
+
+    return areas;
+  }
+
   toggleVisibility(): void {
     this.setVisible(!this.visible);
   }

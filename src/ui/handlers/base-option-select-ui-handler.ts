@@ -4,6 +4,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { OptionSelectItem, OptionSelectModeConfig, UIOptionSelectItem } from "#types/ui-types";
 import { MessageUiHandler } from "#ui/message-ui-handler";
+import { PointerHitAreaManager, type PointerRowHitAreaConfig } from "#ui/pointer-hit-areas";
 import { ScrollBar } from "#ui/scroll-bar";
 import { addBBCodeTextObject, getBBCodeFrag, getTextStyleOptions } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -58,6 +59,9 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
 
   protected scale = 0.1666666667;
 
+  private pointerHitAreas: PointerHitAreaManager | null = null;
+  private outsideCancelHitAreas: PointerHitAreaManager | null = null;
+
   protected get windowHeight(): number {
     return (this.maxOptions + 1) * 96 * this.scale - 2;
   }
@@ -93,6 +97,12 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
       .setName("text-option-select");
     this.optionSelectContainer.add(this.optionSelectText);
 
+    this.pointerHitAreas = new PointerHitAreaManager(this.optionSelectContainer, style =>
+      this.setMouseCursorStyle(style),
+    );
+    // Outside-cancel lives on the UI root so clicks miss the menu window itself.
+    this.outsideCancelHitAreas = new PointerHitAreaManager(ui, style => this.setMouseCursorStyle(style));
+
     this.setCursor(0);
   }
 
@@ -123,6 +133,9 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
       this.cursorObj?.setAlpha(0.8);
       globalScene.time.delayedCall(fixedInt(this.config.inputDelay), () => this.unblockInput());
     }
+
+    this.setupOutsideCancelHitArea();
+    this.updatePointerHitAreas();
 
     return true;
   }
@@ -372,6 +385,78 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
         }
       }
     });
+
+    this.updatePointerHitAreas();
+  }
+
+  /**
+   * Build per-row pointer hit areas for the currently visible options.
+   * Hover moves the cursor; left-click / tap activates the option (ACTION).
+   */
+  private updatePointerHitAreas(): void {
+    if (!this.pointerHitAreas || !this.optionSelectContainer.visible) {
+      return;
+    }
+
+    const rowPitch = 114 * this.scale - 3;
+    const rowWidth = this.optionSelectBg.displayWidth;
+    const rowHeight = Math.max(rowPitch, 1);
+    // Match cursor placement relative to the option window background.
+    const baseX = this.optionSelectBg.x - rowWidth;
+    const baseY = this.optionSelectBg.y - this.optionSelectBg.displayHeight + 102 * this.scale - 2 - rowPitch / 2;
+
+    const configs: PointerRowHitAreaConfig[] = [];
+    for (let i = 0; i < this.maxOptions; i++) {
+      const option = this.options[this.scrollCursor + i];
+      if (!option?.selectable) {
+        continue;
+      }
+
+      const visibleIndex = i;
+      configs.push({
+        x: baseX,
+        y: baseY + i * rowPitch,
+        width: rowWidth,
+        height: rowHeight,
+        onHover: () => {
+          if (this.blockInput || !this.active) {
+            return;
+          }
+          this.setCursor(visibleIndex);
+        },
+        onActivate: () => {
+          if (!this.active) {
+            return;
+          }
+          this.setCursor(visibleIndex);
+          this.processInput(Button.ACTION);
+        },
+      });
+    }
+
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  private setupOutsideCancelHitArea(): void {
+    this.outsideCancelHitAreas?.clearOutside();
+
+    if (this.config?.blockCancelButton) {
+      return;
+    }
+
+    this.outsideCancelHitAreas?.setOutsideCancel(() => {
+      if (!this.active || this.blockInput) {
+        if (this.blockInput && this.config?.canBypassInputDelay) {
+          this.processInput(Button.CANCEL);
+        }
+        return;
+      }
+      this.processInput(Button.CANCEL);
+    });
+
+    // Outside zone above other UI (e.g. party slots), menu above the outside zone.
+    this.outsideCancelHitAreas?.bringOutsideToTop();
+    globalScene.ui.bringToTop(this.optionSelectContainer);
   }
 
   public override processInput(button: Button): boolean {
@@ -548,6 +633,9 @@ export abstract class BaseOptionSelectUiHandler<T extends OptionSelectItem> exte
     this.options = [];
     this.maxOptions = DEFAULT_MAX_OPTIONS;
     this.fullyInitialized = false;
+
+    this.pointerHitAreas?.clear();
+    this.outsideCancelHitAreas?.clear();
 
     this.optionSelectBg.setSize(0, 0);
     this.optionSelectContainer.setVisible(false);

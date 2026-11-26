@@ -1,0 +1,171 @@
+import { globalScene } from "#app/global-scene";
+import type Phaser from "phaser";
+
+export interface PointerRowHitAreaConfig {
+  /** X position of the hit area relative to the parent container */
+  x: number;
+  /** Y position of the hit area relative to the parent container */
+  y: number;
+  width: number;
+  height: number;
+  /** Called on pointerover (mouse hover). Not meaningfully available on touch. */
+  onHover?: () => void;
+  /** Called on left-click / tap */
+  onActivate?: () => void;
+  /** Called on right-click */
+  onRightClick?: () => void;
+}
+
+type CursorStyleSetter = (cursorStyle: "pointer" | "default") => void;
+
+let contextMenuDisabled = false;
+
+/**
+ * Prevent the browser context menu on the game canvas so right-click can be used in-game.
+ * Safe to call repeatedly.
+ */
+export function ensureCanvasContextMenuDisabled(): void {
+  if (contextMenuDisabled) {
+    return;
+  }
+  const canvas = globalScene.game.canvas;
+  canvas.addEventListener("contextmenu", event => event.preventDefault());
+  contextMenuDisabled = true;
+}
+
+function isLeftPointer(pointer: Phaser.Input.Pointer): boolean {
+  // Touch / pen have no mouse buttons; treat as primary activate.
+  if (pointer.wasTouch || pointer.button === undefined || pointer.button < 0) {
+    return true;
+  }
+  return pointer.leftButtonDown() || pointer.button === 0;
+}
+
+function isRightPointer(pointer: Phaser.Input.Pointer): boolean {
+  return pointer.rightButtonDown() || pointer.button === 2;
+}
+
+/**
+ * Manages rebuildable Phaser pointer hit areas for menu rows and optional outside-cancel zones.
+ */
+export class PointerHitAreaManager {
+  private readonly parent: Phaser.GameObjects.Container;
+  private readonly setCursorStyle: CursorStyleSetter;
+  private readonly rowZones: Phaser.GameObjects.Rectangle[] = [];
+  private outsideZone: Phaser.GameObjects.Rectangle | null = null;
+
+  constructor(parent: Phaser.GameObjects.Container, setCursorStyle: CursorStyleSetter) {
+    this.parent = parent;
+    this.setCursorStyle = setCursorStyle;
+  }
+
+  /**
+   * Replace all row hit areas with the given configs.
+   */
+  public setRows(configs: PointerRowHitAreaConfig[]): void {
+    this.clearRows();
+
+    for (const config of configs) {
+      // Invisible rectangle hit targets (Zones are not mocked in unit tests).
+      const zone = globalScene.add
+        .rectangle(config.x, config.y, config.width, config.height, 0xffffff, 0)
+        .setOrigin(0, 0)
+        .setInteractive();
+
+      zone.on("pointerover", () => {
+        this.setCursorStyle("pointer");
+        config.onHover?.();
+      });
+
+      zone.on("pointerout", () => {
+        this.setCursorStyle("default");
+      });
+
+      zone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        if (isRightPointer(pointer)) {
+          config.onRightClick?.();
+          return;
+        }
+        if (isLeftPointer(pointer)) {
+          config.onActivate?.();
+        }
+      });
+
+      this.parent.add(zone);
+      this.rowZones.push(zone);
+    }
+  }
+
+  /**
+   * Full-screen (or custom) zone that fires on pointerdown for clicks outside a menu.
+   * Appended to the parent; callers should `bringToTop` the menu above this zone so
+   * menu rows receive hits first while everything else falls through to cancel.
+   */
+  public setOutsideCancel(
+    onCancel: () => void,
+    width: number = globalScene.scaledCanvas.width,
+    height: number = globalScene.scaledCanvas.height,
+    x = 0,
+    y = -globalScene.scaledCanvas.height,
+  ): void {
+    this.clearOutside();
+
+    const zone = globalScene.add.rectangle(x, y, width, height, 0xffffff, 0).setOrigin(0, 0).setInteractive();
+    zone.on("pointerdown", () => onCancel());
+
+    this.parent.add(zone);
+    this.outsideZone = zone;
+  }
+
+  /** Bring the outside-cancel zone above other siblings (menu should still be brought above this). */
+  public bringOutsideToTop(): void {
+    if (this.outsideZone) {
+      this.parent.bringToTop(this.outsideZone);
+    }
+  }
+
+  public clearRows(): void {
+    for (const zone of this.rowZones) {
+      zone.removeAllListeners();
+      // Parent may have already destroyed children via removeAll(true).
+      if (zone.scene) {
+        zone.destroy();
+      }
+    }
+    this.rowZones.length = 0;
+  }
+
+  public clearOutside(): void {
+    if (this.outsideZone) {
+      this.outsideZone.removeAllListeners();
+      if (this.outsideZone.scene) {
+        this.outsideZone.destroy();
+      }
+      this.outsideZone = null;
+    }
+  }
+
+  public clear(): void {
+    this.clearRows();
+    this.clearOutside();
+    // Scene/input may already be torn down during handler clear in tests.
+    try {
+      this.setCursorStyle("default");
+    } catch {
+      // no-op
+    }
+  }
+
+  /**
+   * Enable or disable interactive input on all managed row zones.
+   */
+  public setRowsEnabled(enabled: boolean): void {
+    for (const zone of this.rowZones) {
+      if (enabled) {
+        zone.setInteractive();
+      } else {
+        zone.disableInteractive();
+      }
+    }
+  }
+}

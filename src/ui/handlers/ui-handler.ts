@@ -41,7 +41,10 @@ export abstract class UiHandler {
    * @param cursorStyle cursor style to apply
    */
   protected setMouseCursorStyle(cursorStyle: "pointer" | "default") {
-    globalScene.input.manager.canvas.style.cursor = cursorStyle;
+    const canvas = globalScene.input?.manager?.canvas;
+    if (canvas) {
+      canvas.style.cursor = cursorStyle;
+    }
   }
 
   clear() {

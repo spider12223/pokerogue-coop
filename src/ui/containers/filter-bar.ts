@@ -158,6 +158,46 @@ export class FilterBar extends Phaser.GameObjects.Container {
     this.dropDowns[index].resetCursor();
   }
 
+  /**
+   * Select a filter and force its dropdown open (does not toggle closed if already open).
+   */
+  public openDropDownAt(index: number): void {
+    if (index < 0 || index >= this.numFilters) {
+      return;
+    }
+
+    if (this.openDropDown && this.lastCursor === index && this.dropDowns[index].visible) {
+      this.cursorObj.setPosition(this.labels[index].x - this.cursorOffset + 2, 6);
+      this.lastCursor = index;
+      return;
+    }
+
+    this.hideDropDowns();
+    this.cursorObj.setPosition(this.labels[index].x - this.cursorOffset + 2, 6);
+    this.lastCursor = index;
+    this.dropDowns[index].setVisible(true);
+    this.openDropDown = true;
+    this.dropDowns[index].resetCursor();
+  }
+
+  public getDropDown(index: number): DropDown | undefined {
+    return this.dropDowns[index];
+  }
+
+  /** Hit area for a top-level filter label, relative to this FilterBar. */
+  public getLabelHitBounds(index: number): { x: number; y: number; width: number; height: number } | null {
+    const label = this.labels[index];
+    if (!label) {
+      return null;
+    }
+    return {
+      x: label.x - this.cursorOffset,
+      y: 0,
+      width: label.displayWidth + this.cursorOffset,
+      height: this.height,
+    };
+  }
+
   hideDropDowns(): void {
     this.dropDowns.forEach(dropDown => {
       dropDown.setVisible(false);

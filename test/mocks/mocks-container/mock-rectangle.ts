@@ -48,7 +48,15 @@ export class MockRectangle implements MockGameObject {
     return this;
   }
 
+  disableInteractive(): this {
+    return this;
+  }
+
   once(_event, _callback, _source): this {
+    return this;
+  }
+
+  removeAllListeners(_event?): this {
     return this;
   }
 

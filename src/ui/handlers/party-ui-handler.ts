@@ -35,6 +35,7 @@ import type { ConfirmModeConfig } from "#types/ui-types";
 import { getLearnableMoveSourceIconFrame } from "#ui/learnable-move-utils";
 import { MessageUiHandler } from "#ui/message-ui-handler";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import { ensureCanvasContextMenuDisabled, PointerHitAreaManager } from "#ui/pointer-hit-areas";
 import { PokemonIconAnimHelper } from "#ui/pokemon-icon-anim-helper";
 import { addBBCodeTextObject, addTextObject, getTextColor } from "#ui/text";
 import { addWindow } from "#ui/ui-theme";
@@ -183,6 +184,9 @@ export class PartyUiHandler extends MessageUiHandler {
 
   private blockInput: boolean;
 
+  private partyPointerHitAreas: PointerHitAreaManager | null = null;
+  private optionsPointerHitAreas: PointerHitAreaManager | null = null;
+
   private static FilterAll = (_pokemon: PlayerPokemon) => null;
 
   public static FilterNonFainted = (pokemon: PlayerPokemon) => {
@@ -314,6 +318,11 @@ export class PartyUiHandler extends MessageUiHandler {
     this.options = [];
 
     this.partySlots = [];
+
+    this.partyPointerHitAreas = new PointerHitAreaManager(partyContainer, style => this.setMouseCursorStyle(style));
+    this.optionsPointerHitAreas = new PointerHitAreaManager(this.optionsContainer, style =>
+      this.setMouseCursorStyle(style),
+    );
   }
 
   show(args: any[]): boolean {
@@ -325,6 +334,8 @@ export class PartyUiHandler extends MessageUiHandler {
     if (args.length === 0 || this.active) {
       return false;
     }
+
+    ensureCanvasContextMenuDisabled();
 
     super.show(args);
 
@@ -369,6 +380,7 @@ export class PartyUiHandler extends MessageUiHandler {
     // Co-op (D7): a switch opens on the first Pokémon that may go in; the top of the party is on the field, and often the
     // partner's
     this.setCursor(isCoop() ? this.coopSwitchCursor() : 0);
+    this.updatePartyPointerHitAreas();
 
     return true;
   }
@@ -1207,6 +1219,7 @@ export class PartyUiHandler extends MessageUiHandler {
           return false;
       }
       this.partyDiscardModeButton.toggleIcon(this.partyUiMode);
+      this.updatePartyPointerHitAreas();
       ui.playSelect();
       return true;
     }
@@ -1398,6 +1411,171 @@ export class PartyUiHandler extends MessageUiHandler {
         partySlot.setAlpha(SPLICE_DIMMED);
       }
     }
+
+    if (this.active) {
+      this.updatePartyPointerHitAreas();
+    }
+  }
+
+  /**
+   * Wire pointer hit areas for party slots, cancel, and the discard/transfer toggle.
+   * Left-click / tap selects; a second click on the same target fires ACTION.
+   * Right-click selects and fires ACTION immediately.
+   */
+  private updatePartyPointerHitAreas(): void {
+    if (!this.partyPointerHitAreas || this.optionsMode) {
+      return;
+    }
+
+    // Party slots use click-to-select (not hover-to-select) so a second click opens options.
+    const configs = this.partySlots.map(slot => {
+      const bounds = slot.getHitBounds();
+      const slotIndex = slot.getSlotIndex();
+      return {
+        x: slot.x + bounds.x,
+        y: slot.y + bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+        onActivate: () => this.handlePartySlotPointerActivate(slotIndex),
+        onRightClick: () => this.handlePartySlotPointerRightClick(slotIndex),
+      };
+    });
+
+    const cancelBounds = this.partyCancelButton.getHitBounds();
+    configs.push({
+      x: this.partyCancelButton.x + cancelBounds.x,
+      y: this.partyCancelButton.y + cancelBounds.y,
+      width: cancelBounds.width,
+      height: cancelBounds.height,
+      onActivate: () => this.handlePartyCancelPointerActivate(),
+      onRightClick: () => this.handlePartyCancelPointerActivate(),
+    });
+
+    if (this.partyDiscardModeButton.visible) {
+      const discardBounds = this.partyDiscardModeButton.getHitBounds();
+      configs.push({
+        x: this.partyDiscardModeButton.x + discardBounds.x,
+        y: this.partyDiscardModeButton.y + discardBounds.y,
+        width: discardBounds.width,
+        height: discardBounds.height,
+        onActivate: () => this.handlePartyDiscardPointerActivate(),
+        onRightClick: () => this.handlePartyDiscardPointerActivate(),
+      });
+    }
+
+    this.partyPointerHitAreas.setRows(configs);
+  }
+
+  private canHandlePartyPointer(): boolean {
+    return this.active && !this.pendingPrompt && !this.blockInput && !this.awaitingActionInput;
+  }
+
+  private handlePartySlotPointerActivate(slotIndex: number): void {
+    if (!this.canHandlePartyPointer()) {
+      return;
+    }
+    if (this.optionsMode) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    if (this.cursor === slotIndex) {
+      this.processInput(Button.ACTION);
+      return;
+    }
+    this.setCursor(slotIndex);
+    this.getUi().playSelect();
+  }
+
+  private handlePartySlotPointerRightClick(slotIndex: number): void {
+    if (!this.canHandlePartyPointer()) {
+      return;
+    }
+    if (this.optionsMode) {
+      this.processInput(Button.CANCEL);
+    }
+    if (this.cursor !== slotIndex) {
+      this.setCursor(slotIndex);
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  private handlePartyCancelPointerActivate(): void {
+    if (!this.canHandlePartyPointer()) {
+      return;
+    }
+    if (this.optionsMode) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    if (this.cursor !== 6) {
+      this.setCursor(6);
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  private handlePartyDiscardPointerActivate(): void {
+    if (!this.canHandlePartyPointer() || !this.partyDiscardModeButton.visible) {
+      return;
+    }
+    if (this.optionsMode) {
+      this.processInput(Button.CANCEL);
+      return;
+    }
+    if (this.cursor !== 7) {
+      this.setCursor(7);
+    }
+    this.processInput(Button.ACTION);
+  }
+
+  /**
+   * Wire pointer hit areas for the party options submenu.
+   * Hover moves the options cursor; click/tap activates; outside cancels when allowed.
+   */
+  private updateOptionsPointerHitAreas(): void {
+    if (!this.optionsPointerHitAreas || !this.optionsMode || !this.optionsBg) {
+      return;
+    }
+
+    const rowHeight = 16;
+    const rowWidth = this.optionsBg.displayWidth;
+    const configs = this.options.map((_, i) => {
+      // optionsCursor 0 is the top row; visual packing matches setOptionsCursor.
+      const y = -19 - rowHeight * (this.options.length - 1 - i) - 2;
+      return {
+        x: -rowWidth,
+        y,
+        width: rowWidth,
+        height: rowHeight,
+        onHover: () => {
+          if (!this.canHandlePartyPointer() || !this.optionsMode) {
+            return;
+          }
+          this.setOptionsCursor(i);
+        },
+        onActivate: () => {
+          if (!this.canHandlePartyPointer() || !this.optionsMode) {
+            return;
+          }
+          this.setOptionsCursor(i);
+          this.processInput(Button.ACTION);
+        },
+      };
+    });
+
+    this.optionsPointerHitAreas.setRows(configs);
+
+    this.partyPointerHitAreas?.clearOutside();
+    this.partyPointerHitAreas?.clearRows();
+    // Options-mode CANCEL always closes the submenu (even when leaving the party is blocked).
+    this.partyPointerHitAreas?.setOutsideCancel(() => {
+      if (!this.canHandlePartyPointer() || !this.optionsMode) {
+        return;
+      }
+      this.processInput(Button.CANCEL);
+    });
+    // Outside zone above party chrome; options window stays above it for row hits.
+    this.partyPointerHitAreas?.bringOutsideToTop();
+    this.partyContainer.bringToTop(this.optionsContainer);
   }
 
   setCursor(cursor: number): boolean {
@@ -1666,6 +1844,8 @@ export class PartyUiHandler extends MessageUiHandler {
 
     if (this.options.length > 0) {
       this.options.splice(0, this.options.length);
+      // Clear managed pointer zones before removeAll so we don't double-destroy them.
+      this.optionsPointerHitAreas?.clearRows();
       this.optionsContainer.removeAll(true);
       this.eraseOptionsCursor();
     }
@@ -2005,6 +2185,8 @@ export class PartyUiHandler extends MessageUiHandler {
             : prefixBaseX - this.optionsBg.width;
       }
     }
+
+    this.updateOptionsPointerHitAreas();
   }
   startTransfer(): void {
     this.transferMode = true;
@@ -2212,6 +2394,8 @@ export class PartyUiHandler extends MessageUiHandler {
     this.optionsScrollCursor = 0;
     this.optionsScrollTotal = 0;
     this.options.splice(0, this.options.length);
+    this.optionsPointerHitAreas?.clear();
+    this.partyPointerHitAreas?.clearOutside();
     this.optionsContainer.removeAll(true);
     this.eraseOptionsCursor();
 
@@ -2222,6 +2406,7 @@ export class PartyUiHandler extends MessageUiHandler {
 
     this.partyMessageBox.setSize(262, 30);
     this.showPartyText();
+    this.updatePartyPointerHitAreas();
   }
 
   eraseOptionsCursor() {
@@ -2235,6 +2420,8 @@ export class PartyUiHandler extends MessageUiHandler {
     super.clear();
     // hide the overlay
     this.moveInfoOverlay.clear();
+    this.optionsPointerHitAreas?.clear();
+    this.partyPointerHitAreas?.clear();
     this.partyContainer.setVisible(false);
     this.clearPartySlots();
     if (isCoop()) {
@@ -2303,6 +2490,20 @@ class PartySlot extends Phaser.GameObjects.Container {
   private slotBgKey: string;
   private pokemonIcon: Phaser.GameObjects.Container;
   private iconAnimHandler: PokemonIconAnimHelper;
+
+  public getSlotIndex(): number {
+    return this.slotIndex;
+  }
+
+  /** Hit area relative to this container's origin (slot background). */
+  public getHitBounds(): { x: number; y: number; width: number; height: number } {
+    return {
+      x: 0,
+      y: 0,
+      width: this.slotBg.displayWidth,
+      height: this.slotBg.displayHeight,
+    };
+  }
 
   constructor(
     slotIndex: number,
@@ -2688,6 +2889,18 @@ class PartyCancelButton extends Phaser.GameObjects.Container {
     this.add(partyCancelText);
   }
 
+  /** Hit area relative to this container's origin (sprite is center-origin). */
+  public getHitBounds(): { x: number; y: number; width: number; height: number } {
+    const width = this.partyCancelBg.displayWidth;
+    const height = this.partyCancelBg.displayHeight;
+    return {
+      x: -width / 2,
+      y: -height / 2,
+      width,
+      height,
+    };
+  }
+
   select() {
     if (this.selected) {
       return;
@@ -2791,6 +3004,19 @@ class PartyDiscardModeButton extends Phaser.GameObjects.Container {
       three ? DISCARD_BUTTON_X_THREE : globalScene.currentBattle.double ? DISCARD_BUTTON_X_DOUBLES : DISCARD_BUTTON_X,
       three ? DISCARD_BUTTON_Y_THREE : globalScene.currentBattle.double ? DISCARD_BUTTON_Y_DOUBLES : DISCARD_BUTTON_Y,
     );
+  }
+
+  /** Hit area relative to this container's origin (icons are center-origin). */
+  public getHitBounds(): { x: number; y: number; width: number; height: number } {
+    const icon = this.transferIcon.visible ? this.transferIcon : this.discardIcon;
+    const width = Math.max(icon.displayWidth, this.textBox.displayWidth);
+    const height = Math.max(icon.displayHeight, this.textBox.displayHeight);
+    return {
+      x: -width / 2,
+      y: -height / 2,
+      width,
+      height,
+    };
   }
 
   clear() {
