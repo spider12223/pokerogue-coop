@@ -13,6 +13,7 @@ import type { Pokemon } from "#field/pokemon";
 import type { ModifierBar } from "#modifiers/modifier";
 import { getMoveTargets } from "#moves/move-utils";
 import type { TargetSelectCallback } from "#types/ui-types";
+import type { PointerHitAreaManager, PointerRowHitAreaConfig } from "#ui/pointer-hit-areas";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt } from "#utils/common";
 
@@ -32,6 +33,8 @@ export class TargetSelectUiHandler extends UiHandler {
   private targetFlashTween: Phaser.Tweens.Tween | null;
   private enemyModifiers: ModifierBar;
   private targetBattleInfoMoveTween: Phaser.Tweens.Tween[] = [];
+  private outsidePointerHitAreas: PointerHitAreaManager;
+  private targetPointerHitAreas: PointerHitAreaManager;
 
   constructor() {
     super();
@@ -39,7 +42,11 @@ export class TargetSelectUiHandler extends UiHandler {
     this.cursor = -1;
   }
 
-  setup(): void {}
+  setup(): void {
+    const ui = this.getUi();
+    this.outsidePointerHitAreas = this.createPointerHitAreas(ui);
+    this.targetPointerHitAreas = this.createPointerHitAreas(ui);
+  }
 
   show(
     args: [fieldIndex: number, moveId: MoveId, callback: TargetSelectCallback, defaultTargets?: BattlerIndex[]],
@@ -70,6 +77,7 @@ export class TargetSelectUiHandler extends UiHandler {
     const defaultTargets = args[3];
     if (defaultTargets && defaultTargets.length > 0 && this.targets.includes(defaultTargets[0])) {
       this.setCursor(defaultTargets[0]);
+      this.updatePointerHitAreas();
       return true;
     }
 
@@ -80,6 +88,64 @@ export class TargetSelectUiHandler extends UiHandler {
     } else if (this.fieldIndex === 2) {
       // Co-op (D40): the third slot of ours in a battle of three
       this.resetCursor(this.cursor2, user);
+    }
+    this.updatePointerHitAreas();
+    return true;
+  }
+
+  /**
+   * Rebuild the invisible pointer hit areas over the Pokémon that can be targeted, and an outside zone that goes back.
+   * The areas are the Pokémon's sprite bounds (in the UI container's coordinates, which is offset by the canvas height).
+   */
+  private updatePointerHitAreas(): void {
+    const { width, height } = globalScene.scaledCanvas;
+    this.outsidePointerHitAreas.setOutsideCancel(
+      () => {
+        if (this.isPointerInputEnabled()) {
+          this.processInput(Button.CANCEL);
+        }
+      },
+      width,
+      height,
+      0,
+      -height,
+    );
+
+    const configs: PointerRowHitAreaConfig[] = [];
+    for (const target of this.targets) {
+      const pokemon = globalScene.getField()[target];
+      if (!pokemon?.isActive(true)) {
+        continue;
+      }
+      const bounds = pokemon.getSprite().getBounds();
+      configs.push({
+        x: bounds.x,
+        y: bounds.y - height,
+        width: bounds.width,
+        height: bounds.height,
+        onHover: () => this.selectTargetWithPointer(target),
+        onActivate: () => {
+          if (this.selectTargetWithPointer(target)) {
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    }
+    this.targetPointerHitAreas.setRows(configs);
+  }
+
+  /**
+   * Move the selection to the target under the pointer, like the d-pad would.
+   * @returns Whether pointer input is currently allowed (the target is selected)
+   */
+  private selectTargetWithPointer(target: BattlerIndex): boolean {
+    if (!this.isPointerInputEnabled() || this.asking) {
+      return false;
+    }
+    // A move that hits several targets has no individual selection to move
+    if (!this.isMultipleTargets && this.cursor !== target) {
+      this.setCursor(target);
+      this.getUi().playSelect();
     }
     return true;
   }
@@ -312,6 +378,8 @@ export class TargetSelectUiHandler extends UiHandler {
 
   clear() {
     super.clear();
+    this.outsidePointerHitAreas.clear();
+    this.targetPointerHitAreas.clear();
     this.eraseCursor();
   }
 }

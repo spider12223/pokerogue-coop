@@ -46,6 +46,23 @@ export abstract class UiHandler {
   }
 
   /**
+   * Whether a tap / left click on EMPTY space (not on any hit area) should press ACTION for this handler, like the A
+   * button. Handlers whose screen is waiting for "press A to continue" override this.
+   */
+  public acceptsEmptySpaceTap(): boolean {
+    return false;
+  }
+
+  /**
+   * Whether pointer events should currently reach this handler: it is active AND it is the handler of the mode that is on
+   * top. `setModeWithoutClear` and overlays leave lower handlers `active`, so `active` alone is not enough.
+   * Every pointer callback should bail out when this is false.
+   */
+  protected isPointerInputEnabled(): boolean {
+    return this.active && globalScene.ui?.getHandler?.() === this;
+  }
+
+  /**
    * Changes the style of the mouse cursor.
    * @see {@link https://developer.mozilla.org/en-US/docs/Web/CSS/cursor}
    * @param cursorStyle cursor style to apply

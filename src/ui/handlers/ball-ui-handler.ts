@@ -5,6 +5,7 @@ import { Command } from "#enums/command";
 import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { CommandPhase } from "#phases/command-phase";
+import type { PointerHitAreaManager, PointerRowHitAreaConfig } from "#ui/pointer-hit-areas";
 import { addTextObject, getTextStyleOptions } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { addWindow } from "#ui/ui-theme";
@@ -21,6 +22,8 @@ export class BallUiHandler extends UiHandler {
 
   private cursorObj: Phaser.GameObjects.Image | null;
   private pokeballWiggleTween: Phaser.Tweens.TweenChain | null = null;
+  private pointerHitAreas: PointerHitAreaManager;
+  private outsidePointerHitAreas: PointerHitAreaManager;
 
   private scale = 0.1666666667;
 
@@ -75,6 +78,9 @@ export class BallUiHandler extends UiHandler {
     ]);
     this.updateLayout();
 
+    this.pointerHitAreas = this.createPointerHitAreas(this.pokeballSelectContainer);
+    this.outsidePointerHitAreas = this.createPointerHitAreas(ui);
+
     this.setCursor(0);
   }
 
@@ -84,8 +90,65 @@ export class BallUiHandler extends UiHandler {
     this.updateCounts();
     this.pokeballSelectContainer.setVisible(true);
     this.setCursor(this.cursor);
+    this.updatePointerHitAreas();
 
     return true;
+  }
+
+  /** Rebuild the invisible pointer hit areas over the ball rows, the cancel row and the outside-the-menu zone */
+  private updatePointerHitAreas(): void {
+    const rowCount = Object.keys(globalScene.pokeballCounts).length + 1; // the balls and the cancel row
+    const bg = this.pokeballSelectBg;
+    const bgTop = bg.y - bg.displayHeight * bg.originY;
+    const rowHeight = 96 * this.scale;
+    const x = 6;
+    const width = bg.displayWidth - 12;
+
+    const configs: PointerRowHitAreaConfig[] = [
+      // Swallows clicks on the window background so they do not count as "outside"
+      { x: 0, y: bgTop, width: bg.displayWidth, height: bg.displayHeight, onActivate: () => {} },
+    ];
+    for (let row = 0; row < rowCount; row++) {
+      configs.push({
+        x,
+        y: bgTop + 15 + (6 + 96 * row) * this.scale - rowHeight / 2,
+        width,
+        height: rowHeight,
+        onHover: () => this.selectRowWithPointer(row),
+        onActivate: () => {
+          if (this.isPointerInputEnabled()) {
+            this.selectRowWithPointer(row);
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    }
+    this.pointerHitAreas.setRows(configs);
+
+    const { width: canvasWidth, height: canvasHeight } = globalScene.scaledCanvas;
+    this.outsidePointerHitAreas.setOutsideCancel(
+      () => {
+        if (this.isPointerInputEnabled()) {
+          this.processInput(Button.CANCEL);
+        }
+      },
+      canvasWidth,
+      canvasHeight - 48,
+      0,
+      -canvasHeight,
+    );
+    this.getUi().bringToTop(this.pokeballSelectContainer);
+  }
+
+  /** Move the selection to the row under the pointer, like the d-pad would */
+  private selectRowWithPointer(row: number): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    if (this.cursor !== row) {
+      this.setCursor(row);
+      this.getUi().playSelect();
+    }
   }
 
   processInput(button: Button): boolean {
@@ -207,6 +270,8 @@ export class BallUiHandler extends UiHandler {
 
   clear() {
     super.clear();
+    this.pointerHitAreas.clear();
+    this.outsidePointerHitAreas.clear();
     this.stopPokeballWiggle();
     this.pokeballSelectContainer.setVisible(false);
     this.eraseCursor();

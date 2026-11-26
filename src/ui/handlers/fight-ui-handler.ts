@@ -16,6 +16,7 @@ import type { EnemyPokemon, Pokemon } from "#field/pokemon";
 import type { PokemonMove } from "#moves/pokemon-move";
 import type { CommandPhase } from "#phases/command-phase";
 import { MoveInfoOverlay } from "#ui/move-info-overlay";
+import type { PointerHitAreaManager, PointerRowHitAreaConfig } from "#ui/pointer-hit-areas";
 import { addTextObject, getTextColor } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { fixedInt, getLocalizedSpriteKey, padInt } from "#utils/common";
@@ -36,6 +37,8 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
   private cursorObj: Phaser.GameObjects.Image | null;
   private moveCategoryIcon: Phaser.GameObjects.Sprite;
   private moveInfoOverlay: MoveInfoOverlay;
+  private movePointerHitAreas: PointerHitAreaManager;
+  private outsidePointerHitAreas: PointerHitAreaManager;
 
   protected fieldIndex = 0;
   protected fromCommand: Command = Command.FIGHT;
@@ -117,6 +120,9 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     ui.add(this.moveInfoOverlay);
     // register the overlay to receive toggle events
     globalScene.addInfoToggle(this.moveInfoOverlay, this);
+
+    this.movePointerHitAreas = this.createPointerHitAreas(this.movesContainer);
+    this.outsidePointerHitAreas = this.createPointerHitAreas(ui);
   }
 
   override show(args: [number?, Command?]): boolean {
@@ -138,7 +144,56 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
     this.displayMoves();
     this.toggleInfo(false); // in case cancel was pressed while info toggle is active
     this.active = true;
+    this.updatePointerHitAreas();
     return true;
+  }
+
+  /** Rebuild the invisible pointer hit areas over the moves, and the outside-the-menu cancel zone */
+  private updatePointerHitAreas(): void {
+    const moveCount = (globalScene.phaseManager.getCurrentPhase() as CommandPhase).getPokemon().getMoveset().length;
+    const configs: PointerRowHitAreaConfig[] = [];
+    for (let moveIndex = 0; moveIndex < Math.min(moveCount, 4); moveIndex++) {
+      configs.push({
+        x: (moveIndex % 2 === 1 ? 114 : 0) - 8,
+        y: (moveIndex >= 2 ? 16 : 0) - 1,
+        width: 112,
+        height: 16,
+        onHover: () => this.selectMoveWithPointer(moveIndex),
+        onActivate: () => {
+          if (this.isPointerInputEnabled()) {
+            this.selectMoveWithPointer(moveIndex);
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    }
+    this.movePointerHitAreas.setRows(configs);
+
+    // Anything above the 48px command window is "outside" the menu and goes back to the command menu
+    const { width, height } = globalScene.scaledCanvas;
+    this.outsidePointerHitAreas.setOutsideCancel(
+      () => {
+        if (this.isPointerInputEnabled()) {
+          this.processInput(Button.CANCEL);
+        }
+      },
+      width,
+      height - 48,
+      0,
+      -height,
+    );
+  }
+
+  /** Move the selection to the move under the pointer, like the d-pad would */
+  private selectMoveWithPointer(moveIndex: number): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    const changed = this.getCursor() !== moveIndex;
+    this.setCursor(moveIndex);
+    if (changed) {
+      this.getUi().playSelect();
+    }
   }
 
   /**
@@ -415,6 +470,8 @@ export class FightUiHandler extends UiHandler implements InfoToggle {
 
   clear() {
     super.clear();
+    this.movePointerHitAreas.clear();
+    this.outsidePointerHitAreas.clear();
     const messageHandler = this.getUi().getMessageHandler();
     this.clearMoves();
     this.setInfoVis(false);

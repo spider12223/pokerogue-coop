@@ -149,6 +149,10 @@ export class MockSprite implements MockGameObject {
     return this;
   }
 
+  getBounds() {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+
   on(event, callback, source): this {
     this.phaserSprite.on(event, callback, source);
     return this;

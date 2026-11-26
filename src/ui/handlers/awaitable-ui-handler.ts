@@ -13,6 +13,15 @@ export abstract class AwaitableUiHandler extends UiHandler {
   public tutorialActive = false;
   public tutorialOverlay: Phaser.GameObjects.Rectangle;
 
+  /** Whether something (a message prompt, a tutorial) is waiting for an ACTION / CANCEL press */
+  public get isAwaitingActionInput(): boolean {
+    return !!this.awaitingActionInput && !!this.onActionInput;
+  }
+
+  override acceptsEmptySpaceTap(): boolean {
+    return this.isAwaitingActionInput || this.tutorialActive;
+  }
+
   processTutorialInput(button: Button): boolean {
     if ((button === Button.ACTION || button === Button.CANCEL) && this.onActionInput) {
       this.getUi().playSelect();

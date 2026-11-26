@@ -36,6 +36,7 @@ import { GameStatsUiHandler } from "#ui/game-stats-ui-handler";
 import { GamepadBindingUiHandler } from "#ui/gamepad-binding-ui-handler";
 import { SettingsGamepadUiHandler } from "#ui/gamepad-settings-ui-handler";
 import { GeneralSettingsUiHandler } from "#ui/general-settings-ui-handler";
+import { installGlobalPointerRouter } from "#ui/global-pointer-router";
 import { KeyboardBindingUiHandler } from "#ui/keyboard-binding-ui-handler";
 import { SettingsKeyboardUiHandler } from "#ui/keyboard-settings-ui-handler";
 import { LoadingModalUiHandler } from "#ui/loading-modal-ui-handler";
@@ -243,6 +244,8 @@ export class UI extends Phaser.GameObjects.Container {
     this.savingIcon.setup();
 
     globalScene.uiContainer.add(this.savingIcon);
+
+    installGlobalPointerRouter();
   }
 
   private setupTooltip() {

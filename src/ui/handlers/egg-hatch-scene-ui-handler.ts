@@ -37,6 +37,11 @@ export class EggHatchSceneUiHandler extends UiHandler {
     return true;
   }
 
+  /** A tap skips the hatch animation, like A */
+  override acceptsEmptySpaceTap(): boolean {
+    return true;
+  }
+
   processInput(button: Button): boolean {
     if (button === Button.ACTION || button === Button.CANCEL) {
       const phase = globalScene.phaseManager.getCurrentPhase();

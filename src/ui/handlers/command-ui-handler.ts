@@ -13,6 +13,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { CommandPhase } from "#phases/command-phase";
 import { PartyUiHandler } from "#ui/party-ui-handler";
+import type { PointerHitAreaManager, PointerRowHitAreaConfig } from "#ui/pointer-hit-areas";
 import { addTextObject } from "#ui/text";
 import { UiHandler } from "#ui/ui-handler";
 import { canTerastallize } from "#utils/pokemon-utils";
@@ -26,6 +27,8 @@ export class CommandUiHandler extends UiHandler {
 
   protected fieldIndex = 0;
   protected cursor2 = 0;
+
+  private pointerHitAreas: PointerHitAreaManager;
 
   setup() {
     const ui = this.getUi();
@@ -65,6 +68,8 @@ export class CommandUiHandler extends UiHandler {
       commandText.setName(commands[c]);
       this.commandsContainer.add(commandText);
     }
+
+    this.pointerHitAreas = this.createPointerHitAreas(this.commandsContainer);
   }
 
   show(args: any[]): boolean {
@@ -109,7 +114,57 @@ export class CommandUiHandler extends UiHandler {
       this.setCursor(this.getCursor());
     }
 
+    this.updatePointerHitAreas();
+
     return true;
+  }
+
+  /** Rebuild the invisible pointer hit areas over the four commands and (when usable) the Tera button */
+  private updatePointerHitAreas(): void {
+    const configs: PointerRowHitAreaConfig[] = [Command.FIGHT, Command.BALL, Command.POKEMON, Command.RUN].map(
+      command => ({
+        x: (command % 2 === 1 ? 55.8 : 0) - 8,
+        y: (command >= 2 ? 16 : 0) - 1,
+        width: 56,
+        height: 16,
+        onHover: () => this.selectCommandWithPointer(command),
+        onActivate: () => {
+          if (this.isPointerInputEnabled()) {
+            this.selectCommandWithPointer(command);
+            this.processInput(Button.ACTION);
+          }
+        },
+      }),
+    );
+
+    if (this.canTera()) {
+      configs.push({
+        x: this.teraButton.x - 12,
+        y: this.teraButton.y - 12,
+        width: 24,
+        height: 24,
+        onHover: () => this.selectCommandWithPointer(Command.TERA),
+        onActivate: () => {
+          if (this.isPointerInputEnabled()) {
+            this.selectCommandWithPointer(Command.TERA);
+            this.processInput(Button.ACTION);
+          }
+        },
+      });
+    }
+
+    this.pointerHitAreas.setRows(configs);
+  }
+
+  /** Move the selection to the command under the pointer, like the d-pad would */
+  private selectCommandWithPointer(command: Command): void {
+    if (!this.isPointerInputEnabled()) {
+      return;
+    }
+    if (this.setCursor(command)) {
+      this.getUi().playSelect();
+    }
+    this.toggleTeraButton();
   }
 
   processInput(button: Button): boolean {
@@ -258,6 +313,7 @@ export class CommandUiHandler extends UiHandler {
 
   clear(): void {
     super.clear();
+    this.pointerHitAreas.clear();
     this.getUi().getMessageHandler().commandWindow.setVisible(false);
     this.commandsContainer.setVisible(false);
     this.getUi().getMessageHandler().clearText();

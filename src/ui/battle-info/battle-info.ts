@@ -4,12 +4,15 @@ import { isCoop } from "#coop/session";
 import { HIDE_EYE_ROOM } from "#coop/ui/box-hide";
 import { Gender, getGenderColor, getGenderSymbol } from "#data/gender";
 import { getTypeRgb } from "#data/type";
+import { Button } from "#enums/buttons";
 import { PokemonType } from "#enums/pokemon-type";
 import { Stat } from "#enums/stat";
 import { StatusEffect } from "#enums/status-effect";
 import { TextStyle } from "#enums/text-style";
+import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import { getVariantTint } from "#sprites/variant";
+import { holdButton, pressButton } from "#ui/pointer-input";
 import { addTextObject } from "#ui/text";
 import { fixedInt, getLocalizedSpriteKey, getShinyDescriptor } from "#utils/common";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
@@ -86,6 +89,51 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
   get statOrder(): Stat[] {
     return [];
+  }
+
+  /**
+   * Helper method used by the constructor to make the box a press-and-hold area, the pointer's version of the Stats and
+   * Info keys: holding it shows the stats overlay, and holding an enemy's box also shows the move and arena flyouts.
+   * A quick tap on it while a message waits for a press advances the message, like a tap on empty space does.
+   */
+  private constructInfoHoldArea(): void {
+    const holdModes = [UiMode.CONFIRM, UiMode.COMMAND, UiMode.FIGHT, UiMode.MESSAGE, UiMode.TARGET_SELECT];
+    const tapMillis = 250;
+    let releases: (() => void)[] = [];
+    let pressedAt = 0;
+
+    const release = (): void => {
+      for (const releaseButton of releases) {
+        releaseButton();
+      }
+      releases = [];
+    };
+
+    this.box.setInteractive();
+    this.box.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+      if (pointer.rightButtonDown() || !holdModes.includes(globalScene.ui?.mode)) {
+        return;
+      }
+      release();
+      pressedAt = pointer.downTime;
+      releases.push(holdButton(Button.STATS, pointer.wasTouch));
+      if (!this.player) {
+        releases.push(holdButton(Button.CYCLE_TERA, pointer.wasTouch));
+      }
+    });
+    this.box.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+      const wasHolding = releases.length > 0;
+      release();
+      if (
+        wasHolding
+        && pointer.upTime - pressedAt < tapMillis
+        && globalScene.ui?.getHandler?.()?.acceptsEmptySpaceTap()
+      ) {
+        pressButton(Button.ACTION, pointer.wasTouch);
+      }
+    });
+    this.box.on("pointerout", release);
+    this.box.on("pointerupoutside", release);
   }
 
   /** Helper method used by the constructor to create the tera and shiny icons next to the name */
@@ -227,6 +275,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
     this.box = globalScene.add.sprite(0, 0, this.getTextureName()).setName("box").setOrigin(1, 0.5);
     this.add(this.box);
+    this.constructInfoHoldArea();
 
     this.nameText = addTextObject(posParams.nameTextX, posParams.nameTextY, "", TextStyle.BATTLE_INFO)
       .setName("text_name")
