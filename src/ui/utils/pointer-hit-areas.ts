@@ -53,6 +53,8 @@ export class PointerHitAreaManager {
   private readonly setCursorStyle: CursorStyleSetter;
   private readonly rowZones: Phaser.GameObjects.Rectangle[] = [];
   private outsideZone: Phaser.GameObjects.Rectangle | null = null;
+  private wheelListener: ((pointer: Phaser.Input.Pointer, over: unknown[], dx: number, dy: number) => void) | null =
+    null;
 
   constructor(parent: Phaser.GameObjects.Container, setCursorStyle: CursorStyleSetter) {
     this.parent = parent;
@@ -145,9 +147,32 @@ export class PointerHitAreaManager {
     }
   }
 
+  /**
+   * Route the mouse wheel to a scrolling list: `onWheel(-1)` for wheel up, `onWheel(1)` for wheel down.
+   * Replaces any previous wheel handler. Removed by {@linkcode clear}.
+   * @param onWheel - Called once per wheel notch with the scroll direction
+   */
+  public setWheelHandler(onWheel: (direction: -1 | 1) => void): void {
+    this.clearWheel();
+    this.wheelListener = (_pointer: Phaser.Input.Pointer, _over: unknown[], _dx: number, dy: number) => {
+      if (dy !== 0) {
+        onWheel(dy < 0 ? -1 : 1);
+      }
+    };
+    globalScene.input?.on?.("wheel", this.wheelListener);
+  }
+
+  public clearWheel(): void {
+    if (this.wheelListener) {
+      globalScene.input?.off?.("wheel", this.wheelListener);
+      this.wheelListener = null;
+    }
+  }
+
   public clear(): void {
     this.clearRows();
     this.clearOutside();
+    this.clearWheel();
     // Scene/input may already be torn down during handler clear in tests.
     try {
       this.setCursorStyle("default");

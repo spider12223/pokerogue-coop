@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { Button } from "#enums/buttons";
+import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
 
 /**
  * A basic abstract class to act as a holder and processor for UI elements.
@@ -33,6 +34,15 @@ export abstract class UiHandler {
     }
 
     return changed;
+  }
+
+  /**
+   * Create a {@linkcode PointerHitAreaManager} whose hit areas live inside `parent` and which restyles the mouse cursor
+   * over its rows. Call `.clear()` on it from this handler's `clear()`.
+   * @param parent - The container the invisible hit areas are added to
+   */
+  protected createPointerHitAreas(parent: Phaser.GameObjects.Container): PointerHitAreaManager {
+    return new PointerHitAreaManager(parent, style => this.setMouseCursorStyle(style));
   }
 
   /**
