@@ -561,7 +561,7 @@ export class SummaryUiHandler extends UiHandler {
   // #region Pointer input
 
   private canHandlePointer(): boolean {
-    return this.active && !!this.pokemon && !this.transitioning && globalScene.ui.getHandler() === this;
+    return this.isPointerInputEnabled() && !!this.pokemon && !this.transitioning;
   }
 
   /**

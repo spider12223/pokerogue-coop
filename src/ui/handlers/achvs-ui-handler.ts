@@ -209,7 +209,7 @@ export class AchvsUiHandler extends MessageUiHandler {
   }
 
   private canHandlePointer(): boolean {
-    return this.active;
+    return this.isPointerInputEnabled();
   }
 
   /**

@@ -12,7 +12,7 @@ import { TextStyle } from "#enums/text-style";
 import { UiMode } from "#enums/ui-mode";
 import type { Pokemon } from "#field/pokemon";
 import { getVariantTint } from "#sprites/variant";
-import { holdButton, pressButton } from "#ui/pointer-input";
+import { holdButton, pointerControlsOn, pressButton } from "#ui/pointer-input";
 import { addTextObject } from "#ui/text";
 import { fixedInt, getLocalizedSpriteKey, getShinyDescriptor } from "#utils/common";
 import { getPokemonTypeLocaleKey } from "#utils/i18n";
@@ -111,7 +111,7 @@ export abstract class BattleInfo extends Phaser.GameObjects.Container {
 
     this.box.setInteractive();
     this.box.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.rightButtonDown() || !holdModes.includes(globalScene.ui?.mode)) {
+      if (!pointerControlsOn() || pointer.rightButtonDown() || !holdModes.includes(globalScene.ui?.mode)) {
         return;
       }
       release();

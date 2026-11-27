@@ -198,6 +198,10 @@ server collects logs. It contains your display names and what you chose in the r
 
 The keys can be changed in **Menu > Settings > Keyboard**.
 
+**Mouse and touch:** turn on **Menu > Settings > General > Click & Tap Controls** to play by clicking or tapping
+the game itself: hover or tap to pick, click to choose, right click to go back, hold to open the menu or to see a
+Pokémon's stats on its HP box. The on-screen keypad is a separate setting and still works.
+
 **Menu > Settings > Co-op** chooses what you see of co-op: your partner's move tags and target pointers, ping and
 emote bubbles, their cursor on the reward screen, the hide buttons on the HP boxes, the chat pop-ups and button, the
 report button, the mouse wheel zoom and more. It only changes your screen, never your partner's.

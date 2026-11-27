@@ -42,6 +42,7 @@ const defaultGeneralSettings: GeneralSettings = {
   manualMessageClear: false,
   partyExpNotificationMode: ExpNotification.DEFAULT,
   playerGender: PlayerGender.UNSET,
+  pointerControls: false,
   preferBatonPass: false,
   skipSeenDialogues: false,
 };

@@ -1426,6 +1426,28 @@ option to turn on, in the Co-op tab.
 - Protocol 13 (`TRADE_DONE`'s payload). `src/coop/rules/trade.ts` (`TradeState.evolve`), `coop-trade-phase.ts`
   (`queueTradeEvolutions`, the `EvolutionItemModifier` of a Linking Cord), the setting as in D47.
 
+## D49. Click & Tap Controls
+
+Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 2026-11-26), taken in as an option (Sam,
+2026-11-27).
+
+- **Click & Tap Controls** (Settings > General), off by default. On, the game itself takes clicks and taps: a hover
+  selects a menu's row and a click activates it; the battle's command, move, target and ball menus; rewards, encounters,
+  the trade screen, the party, summaries, the starter select, eggs, saves, run history, the Pokédex, challenges and the
+  settings. A click on empty space is A where something waits for a press, a right click is B, a long press opens the
+  menu; holding a battle info box shows the stats; the wheel scrolls long lists.
+- **A click is a key press:** it moves the screen's own cursor and presses through `processInput` (or the input events a
+  key sends), so it meets the same co-op checks and decisions as the keyboard; nothing new is sequenced.
+- **Off is the game as it was:** every way in checks the setting (`pointerControlsOn`): the screens'
+  `isPointerInputEnabled`, the hit areas (rows, the outside of a menu, the wheel), the empty-space router, the info
+  box's hold, and the right click's browser menu (blocked only while it is on).
+- **The on-screen keypad stays,** with its own Touch Controls setting (the fork removed it: that part was not taken).
+- **The wheel:** while it is on, the wheel scrolls the menu that is up; the co-op field zoom (D44) takes the wheel only
+  on the battle's own screens (message, command, fight, target, ball), which scroll nothing.
+- The HP box hide buttons (D44) sit above the boxes' hold areas and keep their clicks.
+- `src/ui/utils/pointer-input.ts` (`pointerControlsOn`, `pressButton`), `pointer-hit-areas.ts`,
+  `pointer-hit-area-sync.ts`, `global-pointer-router.ts`; the screens' own code in `src/ui/handlers`.
+
 ## See also
 
 - [HOW-TO-PLAY.md](HOW-TO-PLAY.md): co-op for players.

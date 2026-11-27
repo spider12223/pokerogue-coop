@@ -7,6 +7,8 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { isCoop } from "#coop/session";
+import { UiMode } from "#enums/ui-mode";
+import { pointerControlsOn } from "#ui/pointer-input";
 
 /**
  * Each player's zoom of the battlefield (DECISIONS D44): out to 60% in steps of 10%, with the mouse wheel over the battle or
@@ -76,6 +78,15 @@ export function stepFieldZoom(out: boolean): boolean {
   return true;
 }
 
+/** The battle's own screens: no menu on them scrolls with the wheel (D49) */
+const FIELD_WHEEL_MODES: readonly UiMode[] = [
+  UiMode.MESSAGE,
+  UiMode.COMMAND,
+  UiMode.FIGHT,
+  UiMode.TARGET_SELECT,
+  UiMode.BALL,
+];
+
 /**
  * The wheel turned over the game: down zooms out, up zooms in.
  * @param deltaY - The wheel's vertical movement
@@ -84,6 +95,11 @@ export function stepFieldZoom(out: boolean): boolean {
  */
 export function onFieldWheel(deltaY: number, timeStamp: number): boolean {
   if (deltaY === 0 || !isCoop() || timeStamp - lastWheel < WHEEL_GAP_MS) {
+    return false;
+  }
+  // With Click & Tap Controls on, the wheel scrolls the menu that is up: the field zooms only on the battle's own
+  // screens, which scroll nothing (D49)
+  if (pointerControlsOn() && !FIELD_WHEEL_MODES.includes(globalScene.ui?.mode)) {
     return false;
   }
   if (!stepFieldZoom(deltaY > 0)) {

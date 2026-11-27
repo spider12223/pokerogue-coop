@@ -1,6 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import type { Button } from "#enums/buttons";
 import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
+import { pointerControlsOn } from "#ui/pointer-input";
 
 /**
  * A basic abstract class to act as a holder and processor for UI elements.
@@ -56,10 +57,10 @@ export abstract class UiHandler {
   /**
    * Whether pointer events should currently reach this handler: it is active AND it is the handler of the mode that is on
    * top. `setModeWithoutClear` and overlays leave lower handlers `active`, so `active` alone is not enough.
-   * Every pointer callback should bail out when this is false.
+   * Every pointer callback should bail out when this is false. Off with the Click & Tap Controls setting (D49).
    */
   protected isPointerInputEnabled(): boolean {
-    return this.active && globalScene.ui?.getHandler?.() === this;
+    return pointerControlsOn() && this.active && globalScene.ui?.getHandler?.() === this;
   }
 
   /**

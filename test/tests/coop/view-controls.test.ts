@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { settings } from "#app/global-settings-manager";
 import { battlerBox } from "#coop/cosmetic/cosmetic-tag";
 import {
   boxShiftOf,
@@ -19,6 +20,7 @@ import { Gender } from "#data/gender";
 import { Button } from "#enums/buttons";
 import { FieldPosition } from "#enums/field-position";
 import { SpeciesId } from "#enums/species-id";
+import { UiMode } from "#enums/ui-mode";
 import { CFG_KEYBOARD_QWERTY } from "#inputs/cfg-keyboard-qwerty";
 import { SettingKeyboard } from "#system/settings-keyboard";
 import { GameManager } from "#test/framework/game-manager";
@@ -380,6 +382,23 @@ describe("Co-op: each player's view of the battle (D44)", () => {
       expect(coopFieldZoom()).toBeCloseTo(0.9);
       expect(onFieldWheel(40, 1400)).toBe(true);
       expect(coopFieldZoom()).toBeCloseTo(0.8);
+    });
+
+    it("with Click & Tap Controls on, leaves the wheel to a menu that is up; the battle's own screens still zoom (D49)", async () => {
+      const r = await start();
+      const mode = vi.spyOn(r.ctx.game.scene.ui, "mode", "get");
+      settings.update("general", "pointerControls", true);
+      try {
+        mode.mockReturnValue(UiMode.OPTION_SELECT);
+        expect(onFieldWheel(100, 2000)).toBe(false);
+        expect(coopFieldZoom()).toBeCloseTo(1);
+        mode.mockReturnValue(UiMode.COMMAND);
+        expect(onFieldWheel(100, 2400)).toBe(true);
+        expect(coopFieldZoom()).toBeCloseTo(0.9);
+      } finally {
+        mode.mockRestore();
+        settings.update("general", "pointerControls", false);
+      }
     });
 
     it("has two keys, numpad minus and plus at first, that can be rebound", async () => {

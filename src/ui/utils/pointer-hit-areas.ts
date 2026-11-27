@@ -1,4 +1,5 @@
 import { globalScene } from "#app/global-scene";
+import { pointerControlsOn } from "#ui/pointer-input";
 import type Phaser from "phaser";
 
 export interface PointerRowHitAreaConfig {
@@ -29,7 +30,12 @@ export function ensureCanvasContextMenuDisabled(): void {
     return;
   }
   const canvas = globalScene.game.canvas;
-  canvas.addEventListener("contextmenu", event => event.preventDefault());
+  // (with Click & Tap Controls off, a right click is the browser's again, D49)
+  canvas.addEventListener("contextmenu", event => {
+    if (pointerControlsOn()) {
+      event.preventDefault();
+    }
+  });
   contextMenuDisabled = true;
 }
 
@@ -75,6 +81,9 @@ export class PointerHitAreaManager {
         .setInteractive();
 
       zone.on("pointerover", () => {
+        if (!pointerControlsOn()) {
+          return;
+        }
         this.setCursorStyle("pointer");
         config.onHover?.();
       });
@@ -84,6 +93,9 @@ export class PointerHitAreaManager {
       });
 
       zone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        if (!pointerControlsOn()) {
+          return;
+        }
         if (isRightPointer(pointer)) {
           config.onRightClick?.();
           return;
@@ -113,7 +125,11 @@ export class PointerHitAreaManager {
     this.clearOutside();
 
     const zone = globalScene.add.rectangle(x, y, width, height, 0xffffff, 0).setOrigin(0, 0).setInteractive();
-    zone.on("pointerdown", () => onCancel());
+    zone.on("pointerdown", () => {
+      if (pointerControlsOn()) {
+        onCancel();
+      }
+    });
 
     this.parent.add(zone);
     this.outsideZone = zone;
@@ -155,7 +171,7 @@ export class PointerHitAreaManager {
   public setWheelHandler(onWheel: (direction: -1 | 1) => void): void {
     this.clearWheel();
     this.wheelListener = (_pointer: Phaser.Input.Pointer, _over: unknown[], _dx: number, dy: number) => {
-      if (dy !== 0) {
+      if (dy !== 0 && pointerControlsOn()) {
         onWheel(dy < 0 ? -1 : 1);
       }
     };

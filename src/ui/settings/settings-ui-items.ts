@@ -218,6 +218,12 @@ export const generalSettingsUiItems: SettingsUiItem<GeneralSettingsKey>[] = [
     touchscreenOnly: true,
   },
   {
+    // D49: click or tap the game itself (any device); the on-screen keypad above is its own setting
+    key: "pointerControls",
+    label: coopText("pointerControlsSetting", "Click & Tap Controls"),
+    options: useOnOffOptions(),
+  },
+  {
     key: "preferBatonPass",
     label: t("settings:preferBatonPass"),
     options: useOnOffOptions(),

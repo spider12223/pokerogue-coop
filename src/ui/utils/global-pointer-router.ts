@@ -1,7 +1,7 @@
 import { globalScene } from "#app/global-scene";
 import { Button } from "#enums/buttons";
 import { ensureCanvasContextMenuDisabled } from "#ui/pointer-hit-areas";
-import { pressButton } from "#ui/pointer-input";
+import { pointerControlsOn, pressButton } from "#ui/pointer-input";
 
 /** How long a press on empty space is held before it counts as a long press (opens the main menu) */
 export const LONG_PRESS_MILLIS = 600;
@@ -41,7 +41,8 @@ export function installGlobalPointerRouter(): void {
     cancelLongPress();
     pressStartedOnEmpty = false;
     longPressFired = false;
-    if (over.length > 0) {
+    // (Click & Tap Controls off: a press on the game does nothing, as before, D49)
+    if (over.length > 0 || !pointerControlsOn()) {
       return;
     }
 

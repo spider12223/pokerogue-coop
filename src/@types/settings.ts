@@ -50,6 +50,8 @@ export interface GeneralSettings {
   manualMessageClear: boolean;
   partyExpNotificationMode: ExpNotification;
   playerGender: PlayerGender;
+  /** Clicks and taps on the game itself work (D49); off, only keys, a gamepad or the on-screen keypad */
+  pointerControls: boolean;
   preferBatonPass: boolean;
   skipSeenDialogues: boolean;
 }

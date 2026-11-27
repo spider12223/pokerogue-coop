@@ -1,0 +1,102 @@
+import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
+import { Button } from "#enums/buttons";
+import { GameManager } from "#test/framework/game-manager";
+import { installGlobalPointerRouter } from "#ui/global-pointer-router";
+import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
+import Phaser from "phaser";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+/** Click & Tap Controls (D49): off (the default), a click or a tap on the game does nothing; on, it does what a key does */
+describe("UI - Click & Tap Controls", () => {
+  let phaserGame: Phaser.Game;
+
+  beforeAll(() => {
+    phaserGame = new Phaser.Game({ type: Phaser.HEADLESS });
+  });
+
+  beforeEach(() => {
+    new GameManager(phaserGame);
+  });
+
+  afterEach(() => {
+    settings.update("general", "pointerControls", false);
+    vi.restoreAllMocks();
+  });
+
+  const leftClick = { wasTouch: false, button: 0, leftButtonDown: () => true, rightButtonDown: () => false };
+  const rightClick = { wasTouch: false, button: 2, isDown: true, rightButtonDown: () => true, getDistance: () => 0 };
+
+  /** A menu row whose zone keeps its listeners (the mock rectangle keeps none) */
+  function menuRow(onActivate: () => void, onHover: () => void): Phaser.Events.EventEmitter {
+    const zone = new Phaser.Events.EventEmitter();
+    Object.assign(zone, { setOrigin: () => zone, setInteractive: () => zone, scene: {}, destroy: () => undefined });
+    vi.spyOn(globalScene.add, "rectangle").mockReturnValue(zone as unknown as Phaser.GameObjects.Rectangle);
+    const parent = { add: vi.fn() } as unknown as Phaser.GameObjects.Container;
+    new PointerHitAreaManager(parent, () => undefined).setRows([
+      { x: 0, y: 0, width: 10, height: 10, onActivate, onHover },
+    ]);
+    return zone;
+  }
+
+  /** The empty-space router's listeners, as it registers them (the test scene has no input plugin) */
+  function routerListeners(): Record<string, (...args: unknown[]) => void> {
+    const listeners: Record<string, (...args: unknown[]) => void> = {};
+    const input = {
+      on: (event: string, listener: (...args: unknown[]) => void) => {
+        listeners[event] = listener;
+        return input;
+      },
+    };
+    const scene = globalScene as unknown as { input: unknown; game: { canvas: HTMLCanvasElement | null } };
+    const realInput = scene.input;
+    const realCanvas = scene.game.canvas;
+    scene.input = input;
+    scene.game.canvas ??= document.createElement("canvas");
+    try {
+      installGlobalPointerRouter();
+    } finally {
+      scene.input = realInput;
+      scene.game.canvas = realCanvas;
+    }
+    return listeners;
+  }
+
+  it("is off by default: a hover or a click on a menu row does nothing", () => {
+    expect(settings.general.pointerControls).toBe(false);
+    const onActivate = vi.fn();
+    const onHover = vi.fn();
+    const zone = menuRow(onActivate, onHover);
+
+    zone.emit("pointerover");
+    zone.emit("pointerdown", leftClick);
+
+    expect(onHover).not.toHaveBeenCalled();
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("on, a hover selects a menu row and a click activates it", () => {
+    settings.update("general", "pointerControls", true);
+    const onActivate = vi.fn();
+    const onHover = vi.fn();
+    const zone = menuRow(onActivate, onHover);
+
+    zone.emit("pointerover");
+    zone.emit("pointerdown", leftClick);
+
+    expect(onHover).toHaveBeenCalledOnce();
+    expect(onActivate).toHaveBeenCalledOnce();
+  });
+
+  it("makes a right click on empty space Back only when it is on", () => {
+    const listeners = routerListeners();
+    const emit = vi.spyOn(globalScene.game.events, "emit");
+
+    listeners["pointerdown"](rightClick, []);
+    expect(emit).not.toHaveBeenCalledWith("input_down", expect.anything());
+
+    settings.update("general", "pointerControls", true);
+    listeners["pointerdown"](rightClick, []);
+    expect(emit).toHaveBeenCalledWith("input_down", expect.objectContaining({ button: Button.CANCEL }));
+  });
+});

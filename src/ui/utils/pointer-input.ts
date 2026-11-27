@@ -1,5 +1,11 @@
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import type { Button } from "#enums/buttons";
+
+/** @returns Whether clicks and taps on the game itself work (the Click & Tap Controls setting, D49) */
+export function pointerControlsOn(): boolean {
+  return settings?.general?.pointerControls === true;
+}
 
 /**
  * Press and release a game {@linkcode Button} exactly as the keyboard would, through the global input event path
