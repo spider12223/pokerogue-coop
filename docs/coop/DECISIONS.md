@@ -1414,6 +1414,9 @@ option to turn on, in the Co-op tab.
   their conditions (Onix and Scyther with a Steel move, Clamperl holding the Deep Sea Tooth or Scale, Karrablast and
   Shelmet with the other caught by the new owner: the account read the same on every client, D4). A fusion evolves as
   with the item. A Pokémon whose evolutions are paused does not.
+- **Not the held-item trades of the main series** (Seadra, Porygon and Porygon2, Rhydon, Electabuzz, Magmar, Dusclops,
+  Feebas, Spritzee, Swirlix): PokéRogue evolves them with their own item (Dragon Scale, Up-Grade…), and a trade does not
+  stand in for it (Sam, 2026-11-27).
 - **The host's setting decides,** as the host has it when it presses Done: the host's `TRADE_DONE` carries
   `evolve: true`, a sequenced decision, so every client queues the same evolutions. A guest's flag is not read; a take
   over of the host's Done carries none (no evolutions then). A change takes effect at the next trade screen.
