@@ -1436,6 +1436,18 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
   the trade screen, the party, summaries, the starter select, eggs, saves, run history, the Pokédex, challenges and the
   settings. A click on empty space is A where something waits for a press, a right click is B, a long press opens the
   menu; holding a battle info box shows the stats; the wheel scrolls long lists.
+- **Mouse mode** (Sam: the arrow goes and the option under the mouse is marked; then "only a couple lines on the
+  corners", options in the manner of the Pokémon games and Nintendo, all in the settings): while the pointer is
+  used, a menu marks the option under it, the size of its hit area, and hides its arrow (the `cursorObj` of the
+  screen that is up, kept at alpha 0 each frame); a key or a gamepad button brings the arrow back as it was.
+  `src/ui/utils/pointer-mode.ts`.
+- **Mouse Highlight** (Settings > General): **Corners** (short lines at the four corners, the default), **Long**
+  (longer ones), **Pulse** (short ones stepping out and back), **Classic** (no mark: the menu's own arrow follows
+  the mouse, as in the Pokémon games up to the DS), **Glow** (a pulsing outline, after the Switch HOME menu),
+  **Bar** (a soft bar, after Sword and Shield). Drawn by the game, not taken from any.
+- **Mouse Cursor** (Settings > General): the game's own pointer over it while Click & Tap Controls is on:
+  **Arrow** (the default), **Poké Ball**, **Glove** (pixel art drawn at twice its size into a CSS cursor,
+  `src/ui/utils/mouse-cursors.ts`), or **System** (the computer's). Off, the computer's pointer, as before.
 - **A click is a key press:** it moves the screen's own cursor and presses through `processInput` (or the input events a
   key sends), so it meets the same co-op checks and decisions as the keyboard; nothing new is sequenced.
 - **Off is the game as it was:** every way in checks the setting (`pointerControlsOn`): the screens'

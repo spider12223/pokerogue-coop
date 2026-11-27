@@ -48,6 +48,7 @@ import { ModifierSelectUiHandler } from "#ui/modifier-select-ui-handler";
 import { MysteryEncounterUiHandler } from "#ui/mystery-encounter-ui-handler";
 import { OptionSelectUiHandler } from "#ui/option-select-ui-handler";
 import { PartyUiHandler } from "#ui/party-ui-handler";
+import { installPointerMode } from "#ui/pointer-mode";
 import { PokedexPageUiHandler } from "#ui/pokedex-page-ui-handler";
 import { PokedexScanUiHandler } from "#ui/pokedex-scan-ui-handler";
 import { PokedexUiHandler } from "#ui/pokedex-ui-handler";
@@ -246,6 +247,7 @@ export class UI extends Phaser.GameObjects.Container {
     globalScene.uiContainer.add(this.savingIcon);
 
     installGlobalPointerRouter();
+    installPointerMode();
   }
 
   private setupTooltip() {

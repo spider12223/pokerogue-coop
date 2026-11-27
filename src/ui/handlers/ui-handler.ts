@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import type { Button } from "#enums/buttons";
+import { cursorCss } from "#ui/mouse-cursors";
 import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
 import { pointerControlsOn } from "#ui/pointer-input";
 
@@ -71,7 +72,8 @@ export abstract class UiHandler {
   protected setMouseCursorStyle(cursorStyle: "pointer" | "default") {
     const canvas = globalScene.input?.manager?.canvas;
     if (canvas) {
-      canvas.style.cursor = cursorStyle;
+      // (the game's own pointer with Click & Tap Controls on, D49)
+      canvas.style.cursor = cursorCss(cursorStyle);
     }
   }
 

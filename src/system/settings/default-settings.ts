@@ -9,8 +9,10 @@ import { ExpNotification } from "#enums/exp-notification";
 import { GameSpeed } from "#enums/game-speed";
 import { HpBarSpeed } from "#enums/hp-bar-speed";
 import { MoneyFormat } from "#enums/money-format";
+import { MouseCursor } from "#enums/mouse-cursor";
 import { MusicPreference } from "#enums/music-preference";
 import { PlayerGender } from "#enums/player-gender";
+import { PointerHighlight } from "#enums/pointer-highlight";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { SpriteSet } from "#enums/sprite-set";
 import { TypeHints } from "#enums/type-hints";
@@ -40,9 +42,11 @@ const defaultGeneralSettings: GeneralSettings = {
   hpBarSpeed: HpBarSpeed.DEFAULT,
   levelMoveConfirmation: true,
   manualMessageClear: false,
+  mouseCursor: MouseCursor.PIXEL_ARROW,
   partyExpNotificationMode: ExpNotification.DEFAULT,
   playerGender: PlayerGender.UNSET,
   pointerControls: false,
+  pointerHighlight: PointerHighlight.CORNERS,
   preferBatonPass: false,
   skipSeenDialogues: false,
 };

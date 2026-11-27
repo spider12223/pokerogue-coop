@@ -1,5 +1,6 @@
 import { globalScene } from "#app/global-scene";
 import { pointerControlsOn } from "#ui/pointer-input";
+import { enterPointerMode, hideHoverBox, isHoverBoxOf, showHoverBox } from "#ui/pointer-mode";
 import type Phaser from "phaser";
 
 export interface PointerRowHitAreaConfig {
@@ -85,11 +86,23 @@ export class PointerHitAreaManager {
           return;
         }
         this.setCursorStyle("pointer");
+        // mouse mode: a box on the option instead of the menu's arrow (D49)
+        enterPointerMode();
+        showHoverBox(this.parent, config, zone);
         config.onHover?.();
+      });
+
+      // (back from a key press with the pointer still on the option: its box comes back as it moves)
+      zone.on("pointermove", () => {
+        if (pointerControlsOn() && !isHoverBoxOf(zone)) {
+          enterPointerMode();
+          showHoverBox(this.parent, config, zone);
+        }
       });
 
       zone.on("pointerout", () => {
         this.setCursorStyle("default");
+        hideHoverBox(zone);
       });
 
       zone.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
@@ -144,6 +157,7 @@ export class PointerHitAreaManager {
 
   public clearRows(): void {
     for (const zone of this.rowZones) {
+      hideHoverBox(zone);
       zone.removeAllListeners();
       // Parent may have already destroyed children via removeAll(true).
       if (zone.scene) {

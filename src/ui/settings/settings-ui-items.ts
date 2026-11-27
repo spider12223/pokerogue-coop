@@ -11,8 +11,10 @@ import { ExpNotification } from "#enums/exp-notification";
 import { GameSpeed } from "#enums/game-speed";
 import { HpBarSpeed } from "#enums/hp-bar-speed";
 import { MoneyFormat } from "#enums/money-format";
+import { MouseCursor } from "#enums/mouse-cursor";
 import { MusicPreference } from "#enums/music-preference";
 import { PlayerGender } from "#enums/player-gender";
+import { PointerHighlight } from "#enums/pointer-highlight";
 import { ShopCursorTarget } from "#enums/shop-cursor-target";
 import { SpriteSet } from "#enums/sprite-set";
 import { TypeHints } from "#enums/type-hints";
@@ -222,6 +224,30 @@ export const generalSettingsUiItems: SettingsUiItem<GeneralSettingsKey>[] = [
     key: "pointerControls",
     label: coopText("pointerControlsSetting", "Click & Tap Controls"),
     options: useOnOffOptions(),
+  },
+  {
+    // D49: how the option under the mouse is marked
+    key: "pointerHighlight",
+    label: coopText("pointerHighlightSetting", "Mouse Highlight"),
+    options: [
+      { value: PointerHighlight.CORNERS, label: coopText("highlightCorners", "Corners") },
+      { value: PointerHighlight.CORNERS_LONG, label: coopText("highlightCornersLong", "Long") },
+      { value: PointerHighlight.CORNERS_PULSE, label: coopText("highlightCornersPulse", "Pulse") },
+      { value: PointerHighlight.CLASSIC, label: coopText("highlightClassic", "Classic") },
+      { value: PointerHighlight.GLOW, label: coopText("highlightGlow", "Glow") },
+      { value: PointerHighlight.BAR, label: coopText("highlightBar", "Bar") },
+    ],
+  },
+  {
+    // D49: the game's own mouse pointer
+    key: "mouseCursor",
+    label: coopText("mouseCursorSetting", "Mouse Cursor"),
+    options: [
+      { value: MouseCursor.PIXEL_ARROW, label: coopText("cursorPixelArrow", "Arrow") },
+      { value: MouseCursor.POKE_BALL, label: coopText("cursorPokeBall", "Poké Ball") },
+      { value: MouseCursor.GLOVE, label: coopText("cursorGlove", "Glove") },
+      { value: MouseCursor.SYSTEM, label: coopText("cursorSystem", "System") },
+    ],
   },
   {
     key: "preferBatonPass",

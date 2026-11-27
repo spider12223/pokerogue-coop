@@ -125,7 +125,8 @@ export class CommandUiHandler extends UiHandler {
       command => ({
         x: (command % 2 === 1 ? 55.8 : 0) - 8,
         y: (command >= 2 ? 16 : 0) - 1,
-        width: 56,
+        // (the right column's stays inside the window: its hover box frames it, D49)
+        width: command % 2 === 1 ? 52 : 56,
         height: 16,
         onHover: () => this.selectCommandWithPointer(command),
         onActivate: () => {

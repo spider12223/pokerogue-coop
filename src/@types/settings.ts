@@ -9,8 +9,10 @@ import type { ExpNotification } from "#enums/exp-notification";
 import type { GameSpeed } from "#enums/game-speed";
 import type { HpBarSpeed } from "#enums/hp-bar-speed";
 import type { MoneyFormat } from "#enums/money-format";
+import type { MouseCursor } from "#enums/mouse-cursor";
 import type { MusicPreference } from "#enums/music-preference";
 import type { PlayerGender } from "#enums/player-gender";
+import type { PointerHighlight } from "#enums/pointer-highlight";
 import type { ShopCursorTarget } from "#enums/shop-cursor-target";
 import type { SpriteSet } from "#enums/sprite-set";
 import type { TypeHints } from "#enums/type-hints";
@@ -48,10 +50,14 @@ export interface GeneralSettings {
   hpBarSpeed: HpBarSpeed;
   levelMoveConfirmation: boolean;
   manualMessageClear: boolean;
+  /** The mouse pointer over the game, with Click & Tap Controls on (D49) */
+  mouseCursor: MouseCursor;
   partyExpNotificationMode: ExpNotification;
   playerGender: PlayerGender;
   /** Clicks and taps on the game itself work (D49); off, only keys, a gamepad or the on-screen keypad */
   pointerControls: boolean;
+  /** How a menu marks the option under the mouse (D49) */
+  pointerHighlight: PointerHighlight;
   preferBatonPass: boolean;
   skipSeenDialogues: boolean;
 }

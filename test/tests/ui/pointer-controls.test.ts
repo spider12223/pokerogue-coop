@@ -1,9 +1,13 @@
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { Button } from "#enums/buttons";
+import { MouseCursor } from "#enums/mouse-cursor";
+import { PointerHighlight } from "#enums/pointer-highlight";
 import { GameManager } from "#test/framework/game-manager";
 import { installGlobalPointerRouter } from "#ui/global-pointer-router";
+import { cursorCss } from "#ui/mouse-cursors";
 import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
+import { enterKeyMode, enterPointerMode, hasHoverBox, syncMenuArrow } from "#ui/pointer-mode";
 import Phaser from "phaser";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,7 +25,21 @@ describe("UI - Click & Tap Controls", () => {
 
   afterEach(() => {
     settings.update("general", "pointerControls", false);
+    settings.update("general", "pointerHighlight", PointerHighlight.CORNERS);
+    settings.update("general", "mouseCursor", MouseCursor.PIXEL_ARROW);
     vi.restoreAllMocks();
+  });
+
+  it("uses the game's own mouse pointer only with it on, and the computer's with System", () => {
+    expect(cursorCss("default")).toBe("default");
+
+    settings.update("general", "pointerControls", true);
+    const own = cursorCss("pointer");
+    // (where nothing can be drawn, the computer's pointer stands in)
+    expect(own === "pointer" || (own.startsWith('url("data:image/png') && own.endsWith(", pointer"))).toBe(true);
+
+    settings.update("general", "mouseCursor", MouseCursor.SYSTEM);
+    expect(cursorCss("pointer")).toBe("pointer");
   });
 
   const leftClick = { wasTouch: false, button: 0, leftButtonDown: () => true, rightButtonDown: () => false };
@@ -86,6 +104,91 @@ describe("UI - Click & Tap Controls", () => {
 
     expect(onHover).toHaveBeenCalledOnce();
     expect(onActivate).toHaveBeenCalledOnce();
+  });
+
+  describe("mouse mode: a box on the hovered option instead of the arrow", () => {
+    afterEach(() => {
+      enterKeyMode();
+    });
+
+    /** A menu whose arrow is a plain object with an alpha */
+    function menuWithArrow(alpha: number): { alpha: number; setAlpha(value: number): unknown } {
+      const arrow = {
+        alpha,
+        setAlpha(value: number) {
+          arrow.alpha = value;
+          return arrow;
+        },
+      };
+      vi.spyOn(globalScene.ui, "getHandler").mockReturnValue({ cursorObj: arrow } as never);
+      return arrow;
+    }
+
+    it("puts a box over the hovered option, and takes it away when the pointer leaves", () => {
+      settings.update("general", "pointerControls", true);
+      const zone = menuRow(vi.fn(), vi.fn());
+
+      zone.emit("pointerover");
+      expect(hasHoverBox()).toBe(true);
+      zone.emit("pointerout");
+      expect(hasHoverBox()).toBe(false);
+    });
+
+    it("hides the arrow of the menu that is up while the pointer is used; a key brings it back as it was", () => {
+      settings.update("general", "pointerControls", true);
+      const arrow = menuWithArrow(0.8);
+
+      enterPointerMode();
+      syncMenuArrow();
+      expect(arrow.alpha).toBe(0);
+
+      enterKeyMode();
+      expect(arrow.alpha).toBe(0.8);
+      expect(hasHoverBox()).toBe(false);
+    });
+
+    it("with the Classic highlight marks nothing: the menu's own arrow stays and follows the pointer", () => {
+      settings.update("general", "pointerControls", true);
+      settings.update("general", "pointerHighlight", PointerHighlight.CLASSIC);
+      const zone = menuRow(vi.fn(), vi.fn());
+      const arrow = menuWithArrow(1);
+
+      zone.emit("pointerover");
+      syncMenuArrow();
+
+      expect(hasHoverBox()).toBe(false);
+      expect(arrow.alpha).toBe(1);
+    });
+
+    it("marks the option with each other highlight", () => {
+      settings.update("general", "pointerControls", true);
+      for (const style of [
+        PointerHighlight.CORNERS,
+        PointerHighlight.CORNERS_LONG,
+        PointerHighlight.CORNERS_PULSE,
+        PointerHighlight.GLOW,
+        PointerHighlight.BAR,
+      ]) {
+        settings.update("general", "pointerHighlight", style);
+        const zone = menuRow(vi.fn(), vi.fn());
+        zone.emit("pointerover");
+        expect(hasHoverBox(), PointerHighlight[style]).toBe(true);
+        zone.emit("pointerout");
+        expect(hasHoverBox(), PointerHighlight[style]).toBe(false);
+      }
+    });
+
+    it("with the setting off: no box, and the arrow stays", () => {
+      const zone = menuRow(vi.fn(), vi.fn());
+      const arrow = menuWithArrow(1);
+
+      zone.emit("pointerover");
+      enterPointerMode();
+      syncMenuArrow();
+
+      expect(hasHoverBox()).toBe(false);
+      expect(arrow.alpha).toBe(1);
+    });
   });
 
   it("makes a right click on empty space Back only when it is on", () => {
