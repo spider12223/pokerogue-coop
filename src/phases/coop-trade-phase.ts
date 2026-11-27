@@ -5,7 +5,9 @@
  */
 
 import { globalScene } from "#app/global-scene";
+import { settings } from "#app/global-settings-manager";
 import { Phase } from "#app/phase";
+import { EvolutionItem } from "#balance/pokemon-evolutions";
 import { coopGate, coopText, isLinked, mySeat, reportBridgeError } from "#coop/decisions/bridge";
 import { type Decision, ProposalRejectedError } from "#coop/decisions/sequencer";
 import { type DecisionKey, otherSeat, type Seat, seatsFor } from "#coop/protocol";
@@ -26,6 +28,8 @@ import { requireCoopSession } from "#coop/session";
 import { AfkWatcher } from "#coop/ui/afk";
 import { UiMode } from "#enums/ui-mode";
 import type { PlayerPokemon } from "#field/pokemon";
+import { EvolutionItemModifier } from "#modifiers/modifier";
+import { EvolutionItemModifierType } from "#modifiers/modifier-type";
 import type { CoopTradeUiHandler, TradeScreenActions, TradeScreenModel } from "#ui/coop-trade-ui-handler";
 
 /**
@@ -110,8 +114,28 @@ export class CoopTradePhase extends Phase {
     const session = requireCoopSession();
     session.tradeRequested = false;
     session.tradeQueued = false;
+    if (this.state.evolve) {
+      this.queueTradeEvolutions();
+    }
     globalScene.ui.clearText();
     void globalScene.ui.setMode(UiMode.MESSAGE).then(() => this.end());
+  }
+
+  /**
+   * Trade Evolutions (D48): each Pokémon that changed hands on this screen evolves as a Linking Cord makes it (PokéRogue's
+   * trade evolutions, with their conditions), unless its evolutions are paused. Its new owner may cancel it (D10). Every
+   * client queues the same, from the same decisions, in party order.
+   */
+  private queueTradeEvolutions(): void {
+    const traded = new Set(
+      this.state.accepted.flatMap(trade => (trade.want === null ? [trade.give] : [trade.give, trade.want])),
+    );
+    const linkingCord = new EvolutionItemModifierType(EvolutionItem.LINKING_CORD);
+    for (const pokemon of globalScene.getPlayerParty()) {
+      if (traded.has(pokemon.id) && !pokemon.pauseEvolutions) {
+        new EvolutionItemModifier(linkingCord, pokemon.id).apply(pokemon);
+      }
+    }
   }
 
   // #region What the players do
@@ -151,7 +175,9 @@ export class CoopTradePhase extends Phase {
       },
       done: done => {
         if (!this.awaiting && this.state.pending === null) {
-          this.send(tradeDoneKey(this.wave(), this.state.step, me), { done });
+          // The host's done says whether what changed hands evolves (D48): its setting as it is now
+          const evolve = done && me === "host" && settings.coop.tradeEvolutions;
+          this.send(tradeDoneKey(this.wave(), this.state.step, me), evolve ? { done, evolve } : { done });
         }
       },
     };

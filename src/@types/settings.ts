@@ -55,7 +55,7 @@ export interface GeneralSettings {
 }
 
 /**
- * Co-op: the Co-op tab (DECISIONS D47). The two switches decide what a game offers; every other entry only changes
+ * Co-op: the Co-op tab (DECISIONS D47). The host's switches decide what a game offers; every other entry only changes
  * what this player sees, never the run or the partner's screen.
  */
 export interface CoopSettings {
@@ -83,6 +83,8 @@ export interface CoopSettings {
   rewardCursor: boolean;
   /** The pointer over the Pokémon the partner aims at (D16) */
   targetPointers: boolean;
+  /** A traded Pokémon that evolves by trade evolves; the host's decides for the game (D48) */
+  tradeEvolutions: boolean;
   /** The bars over a teammate's Pokémon in a game of three (D40) */
   teammateBars: boolean;
   /** Host a game offers 3 players (Beta, D40) */

@@ -383,7 +383,8 @@ In a game of three each player owns 2 of the 6 (D40).
 - `UiMode.COOP_TRADE`: two panels, yours on the left and the partner's on the right.
 - **Propose** (`TRADE_PROPOSE`, either seat): one of yours to give, and optionally one of theirs to want. **Answer**
   (the other seat only): `TRADE_ACCEPT` or `TRADE_DECLINE`. The proposer can withdraw with `TRADE_CANCEL`. **Done**
-  (`TRADE_DONE {done}`, each seat, toggles): the phase ends when both are done; any new proposal clears both.
+  (`TRADE_DONE {done}`, each seat, toggles): the phase ends when both are done; any new proposal clears both. The
+  host's also says whether what changed hands evolves (D48).
 - **Accept:** the sequenced apply swaps the owners in the owner map (the party array does not change). Held items stay
   on their Pokémon, so they follow it.
 - **Gift** (no "want"): free, whatever the counts, as long as the giver keeps one of their own (a player with none would
@@ -877,8 +878,15 @@ step; the screens would not.
   - `EggLapsePhase` runs on both clients (the same phases). It counts down this client's eggs and hatches the ones that
     are due without the animation (`eggSkipPreference` is not asked in co-op), then shows this client's hatches in the
     summary screen, inside the same phase.
-  - The host's summary waits for the host's press (at least 1 s). The guest's closes on a press, or once the host is
-    past it (D27), so the run never waits on it.
+  - The host's summary waits for the host's press (at least 1 s).
+  - **A guest's summary (amended):** it waits for that guest's press too, and the run waits for it. The close is a
+    sequenced decision (`EGG_SUMMARY`, `ref` = the guest's seat), one for each guest each time the summary comes; a
+    guest with nothing hatched answers at once. Every client awaits the guests' in seat order, so the sequence is
+    the same on all; a later guest's close that comes first waits at the host. A client whose own summary is closed
+    (or that had none) shows "{guest} is looking at their eggs…" after 1 s, so that it does not flash every wave. A
+    guest away from the keys is taken over for (D17): the taker closes their summary. The host's summary holds only
+    the host: the guests go on and wait at the next decision. (Was: the guest's closed once the host was past it,
+    D27; a player's report: it was often gone before they could read it.)
   - A client with nothing hatched shows nothing.
 - **Eggs from an encounter** (A Trainer's Test, The Expert Pokémon Breeder) go to both accounts: each client adds one of
   the same tier to its own. An egg never touches the run: its draws are unseeded (`Math.random`), outside the
@@ -1380,9 +1388,10 @@ for a partner. Co-op players only, not everyone with the game open (that would n
 
 A **Co-op** tab after Keyboard (2026-11-13, Sam: "a category named coop in the settings, a lot of visual options").
 
-- **The two switches** moved there from General: **3-Player Co-op (Beta)** (D40) and **Co-op Debug Menu (Host)**
-  (D42). A player's saved choice comes along once (`general.coopThreePlayers` → `coop.threePlayers`,
-  `general.coopDebugMenu` → `coop.debugMenu`); a Co-op tab saved since wins.
+- **The host's switches** moved there from General: **3-Player Co-op (Beta)** (D40) and **Co-op Debug Menu (Host)**
+  (D42); **Trade Evolutions (Host)** (D48) came later. A player's saved choice comes along once
+  (`general.coopThreePlayers` → `coop.threePlayers`, `general.coopDebugMenu` → `coop.debugMenu`); a Co-op tab saved
+  since wins.
 - **What this player sees**, all on by default (as before the tab): the partner's move tags (D16), target pointers,
   ping and emote bubbles, the partner's cursor on the reward screen, the encounter cursor that follows the chooser's
   (D29), the HP box hide buttons (D44; off, every box is shown), the teammate bars and the who's-in line of a game of
@@ -1393,6 +1402,26 @@ A **Co-op** tab after Keyboard (2026-11-13, Sam: "a category named coop in the s
   bars that are up follow it); teammate bars turned back on come with the next switch or wave.
 - `src/@types/settings.ts` (`CoopSettings`), `default-settings.ts`, `settings-manager.ts` (the category and the
   move), `settings-ui-items.ts` (`coopSettingsUiItems`), `coop-settings-ui-handler.ts` (`UiMode.SETTINGS_COOP`).
+
+## D48. Trade evolutions
+
+A player's suggestion (2026-11-27): trading a Pokémon that evolves by trade to the partner should evolve it. Sam: an
+option to turn on, in the Co-op tab.
+
+- **Trade Evolutions (Host)**, a switch of the Co-op tab (D47), off by default. On, each Pokémon that changed hands on a
+  trade screen (D11) evolves after it, as a **Linking Cord** would make it: PokéRogue's trade evolutions (Kadabra,
+  Machoke, Graveler and Alolan Graveler, Haunter, Poliwhirl, Slowpoke, Boldore, Gurdurr, Phantump, Pumpkaboo), with
+  their conditions (Onix and Scyther with a Steel move, Clamperl holding the Deep Sea Tooth or Scale, Karrablast and
+  Shelmet with the other caught by the new owner: the account read the same on every client, D4). A fusion evolves as
+  with the item. A Pokémon whose evolutions are paused does not.
+- **The host's setting decides,** as the host has it when it presses Done: the host's `TRADE_DONE` carries
+  `evolve: true`, a sequenced decision, so every client queues the same evolutions. A guest's flag is not read; a take
+  over of the host's Done carries none (no evolutions then). A change takes effect at the next trade screen.
+- **When:** right after the trade screen, before the biome (where D11's phases go), in party order. The new owner may
+  cancel it, as any evolution (`EVOLUTION_CANCEL`, D10). A Pokémon traded and traded back on the same screen was
+  traded: it evolves.
+- Protocol 13 (`TRADE_DONE`'s payload). `src/coop/rules/trade.ts` (`TradeState.evolve`), `coop-trade-phase.ts`
+  (`queueTradeEvolutions`, the `EvolutionItemModifier` of a Linking Cord), the setting as in D47.
 
 ## See also
 

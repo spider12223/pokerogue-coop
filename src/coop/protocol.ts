@@ -23,7 +23,7 @@ import {
 import { filterChat } from "#coop/ui/chat-text";
 
 /** Bumped whenever a message shape changes incompatibly. Peers with different versions refuse to connect. */
-export const COOP_PROTOCOL_VERSION = 12;
+export const COOP_PROTOCOL_VERSION = 13;
 
 /** The players. The host is the sequencer (D2); a game of three has a second guest (D40). */
 export type Seat = "host" | "guest" | "guest2";

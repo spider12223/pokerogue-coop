@@ -461,7 +461,7 @@ export const audioSettingsUiItems: SettingsUiItem<AudioSettingsKey>[] = [
 // #endregion Audio Settings
 
 /**
- * Co-op (D47): the Co-op tab. The two switches first (what a game offers), then what this player sees: none of it reaches
+ * Co-op (D47): the Co-op tab. The host's switches first (what a game offers), then what this player sees: none of it reaches
  * the partner or the run.
  */
 export const coopSettingsUiItems: SettingsUiItem<CoopSettingsKey>[] = [
@@ -475,6 +475,12 @@ export const coopSettingsUiItems: SettingsUiItem<CoopSettingsKey>[] = [
     // D42: the host's debug menu (F8 by default)
     key: "debugMenu",
     label: coopText("debugMenuSetting", "Co-op Debug Menu (Host)"),
+    options: useOnOffOptions(),
+  },
+  {
+    // D48: a Pokémon that evolves by trade evolves when it is traded; the host's setting decides
+    key: "tradeEvolutions",
+    label: coopText("tradeEvolutionsSetting", "Trade Evolutions (Host)"),
     options: useOnOffOptions(),
   },
   { key: "moveTags", label: coopText("moveTagsSetting", "Partner's Move Tags"), options: useOnOffOptions() },

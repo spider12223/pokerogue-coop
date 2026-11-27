@@ -61,6 +61,8 @@ The host's Pokémon fight on the left, the guest's on the right.
 - **Trading:** press **Trade** on the reward screen; the trade screen opens after it and says each step at the bottom.
   Pick one of yours and one of your friend's, then **Propose**; your friend accepts or declines. Pick only one of yours to **Give** it away for free (you always
   keep at least one). Both press **Done** to go on.
+  With **Trade Evolutions** on (Settings > Co-op, the host's), a traded Pokémon that evolves by trade (Kadabra,
+  Machoke, Haunter…) evolves right after the trade screen; its new trainer can still cancel it.
 - **DNA Splicers** fuse two of your own Pokémon only: your friend's are dimmed on that screen.
 
 ## Three players (Beta)

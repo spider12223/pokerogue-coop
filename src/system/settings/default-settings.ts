@@ -101,6 +101,7 @@ const defaultCoopSettings: CoopSettings = {
   targetPointers: true,
   teammateBars: true,
   threePlayers: false,
+  tradeEvolutions: false,
   wheelZoom: true,
 };
 

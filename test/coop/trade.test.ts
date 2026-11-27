@@ -73,6 +73,26 @@ describe("what may be proposed", () => {
     expect(isTradeProposePayload(null)).toBe(false);
     expect(isTradeDonePayload({ done: true })).toBe(true);
     expect(isTradeDonePayload({ done: "yes" })).toBe(false);
+    expect(isTradeDonePayload({ done: true, evolve: true })).toBe(true);
+    expect(isTradeDonePayload({ done: true, evolve: "yes" })).toBe(false);
+  });
+});
+
+describe("trade evolutions (D48)", () => {
+  const WAVE = 12;
+
+  it("are on only when the host's last done says so: not a guest's, not a take over's", () => {
+    const state = new TradeState();
+    state.apply({ key: tradeDoneKey(WAVE, 0, "guest"), author: "guest", payload: { done: true, evolve: true } });
+    expect(state.evolve).toBe(false);
+    state.apply({ key: tradeDoneKey(WAVE, 1, "host"), author: "host", payload: { done: true, evolve: true } });
+    expect(state.evolve).toBe(true);
+    // the host takes the done back: its next one decides
+    state.apply({ key: tradeDoneKey(WAVE, 2, "host"), author: "host", payload: { done: false } });
+    expect(state.evolve).toBe(false);
+    // the guest takes over for an away host: a take over carries no setting (D17)
+    state.apply({ key: tradeDoneKey(WAVE, 3, "host"), author: "guest", payload: { done: true } });
+    expect(state.evolve).toBe(false);
   });
 });
 

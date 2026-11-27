@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-only
  */
 
+import { settings } from "#app/global-settings-manager";
 import { controllerOf, ownerOf } from "#coop/decisions/control";
 import type { RejectReason } from "#coop/decisions/sequencer";
 import { validateProposal } from "#coop/decisions/validate";
@@ -14,6 +15,7 @@ import { Button } from "#enums/buttons";
 import { MoveId } from "#enums/move-id";
 import { SpeciesId } from "#enums/species-id";
 import { UiMode } from "#enums/ui-mode";
+import type { PlayerPokemon } from "#field/pokemon";
 import { PokemonHeldItemModifier } from "#modifiers/modifier";
 import { ModifierTypeOption, TmModifierType } from "#modifiers/modifier-type";
 import type { CoopTradePhase } from "#phases/coop-trade-phase";
@@ -427,6 +429,66 @@ describe("Co-op: trading (D11)", () => {
         expect(screen(r).describe().notice).toMatch(/at least one/i);
         expect(phase.state.pending).toBeNull();
       });
+    });
+  });
+
+  describe("trade evolutions (D48)", () => {
+    // The host's first is a Kadabra: it evolves by trade (with a Linking Cord in PokéRogue)
+    const withKadabra: Partial<LinkedScenario> = { species: [SpeciesId.KADABRA, ...SIX.slice(1)] };
+    const kadabraOf = (r: LinkedRun) => party(r).find(p => p.species.speciesId === SpeciesId.KADABRA)!;
+
+    afterEach(() => {
+      settings.update("coop", "tradeEvolutions", false);
+    });
+
+    /** The host's Kadabra for the partner's first, accepted; then both are done (the host first) */
+    async function tradeKadabraAway(r: LinkedRun): Promise<PlayerPokemon> {
+      const phase = await toTradeScreen(r);
+      const kadabra = kadabraOf(r);
+      expect(phase.actions().propose(kadabra.id, theirs(r)[0].id)).toBe(true);
+      await vi.waitUntil(() => phase.state.pending !== null, { timeout: 3000 });
+      r.partner.propose(tradeKey(wave(r), "TRADE_ACCEPT", phase.state.step), null);
+      await vi.waitUntil(() => ownerOf(kadabra) === "guest", { timeout: 3000 });
+      await bothDone(r, phase);
+      return kadabra;
+    }
+
+    it("with the host's Trade Evolutions on, a Kadabra traded to the partner evolves into Alakazam", async () => {
+      settings.update("coop", "tradeEvolutions", true);
+      const r = await start(withKadabra);
+      const kadabra = await tradeKadabraAway(r);
+
+      expect(kadabra.species.speciesId).toBe(SpeciesId.ALAKAZAM);
+      expect(ownerOf(kadabra)).toBe("guest");
+      expect(started(r)).toContain("EvolutionPhase");
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
+    it("with it off (the default), a traded Kadabra stays one", async () => {
+      const r = await start(withKadabra);
+      const kadabra = await tradeKadabraAway(r);
+
+      expect(kadabra.species.speciesId).toBe(SpeciesId.KADABRA);
+      expect(r.session.desyncMessage).toBeNull();
+    });
+
+    it("on a guest's client too, from the host's done: the Kadabra the guest got evolves", async () => {
+      const r = await start({ ...withKadabra, seat: "guest" });
+      const phase = await toTradeScreen(r);
+      const kadabra = kadabraOf(r);
+      const give = party(r).find(p => ownerOf(p) === "guest")!;
+      expect(phase.actions().propose(give.id, kadabra.id)).toBe(true);
+      await vi.waitUntil(() => phase.state.pending !== null, { timeout: 3000 });
+      r.partner.propose(tradeKey(wave(r), "TRADE_ACCEPT", phase.state.step), null);
+      await vi.waitUntil(() => ownerOf(kadabra) === "guest", { timeout: 3000 });
+      // the guest's own setting is off; the host's done says on
+      phase.actions().done(true);
+      await vi.waitUntil(() => phase.state.done.guest, { timeout: 3000 });
+      r.partner.propose(tradeDoneKey(wave(r), phase.state.step, "host"), { done: true, evolve: true });
+      await advanceTo(r.ctx, ["CommandPhase"]);
+
+      expect(kadabra.species.speciesId).toBe(SpeciesId.ALAKAZAM);
+      expect(r.session.desyncMessage).toBeNull();
     });
   });
 

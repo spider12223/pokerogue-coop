@@ -44,6 +44,8 @@ export interface TradeProposePayload {
 /** `TRADE_DONE`: whether this player is done trading */
 export interface TradeDonePayload {
   done: boolean;
+  /** The host's Trade Evolutions setting when it was done (D48); a guest's is not read */
+  evolve?: boolean;
 }
 
 export function isTradeProposePayload(value: unknown): value is TradeProposePayload {
@@ -71,7 +73,13 @@ export function counterpartOf(proposer: Seat, proposal: TradeProposePayload, pla
 }
 
 export function isTradeDonePayload(value: unknown): value is TradeDonePayload {
-  return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)["done"] === "boolean";
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const payload = value as Record<string, unknown>;
+  return (
+    typeof payload["done"] === "boolean" && (payload["evolve"] === undefined || typeof payload["evolve"] === "boolean")
+  );
 }
 
 /** Why a proposal is not allowed */
@@ -144,6 +152,8 @@ export class TradeState {
   public readonly done: SeatRecord<boolean>;
   /** The trades that were accepted, in order */
   public readonly accepted: PendingTrade[] = [];
+  /** The host's last done said Trade Evolutions is on (D48): what changed hands evolves after the screen */
+  public evolve = false;
 
   /** @param seats - The game's seats (three in a game of three, D40) */
   constructor(private readonly seats: readonly Seat[] = ["host", "guest"]) {
@@ -173,6 +183,16 @@ export class TradeState {
       { key: tradeKey(wave, "TRADE_PROPOSE", step) },
       ...this.seats.map(seat => ({ key: tradeDoneKey(wave, step, seat), authors: [seat] })),
     ];
+  }
+
+  /**
+   * Only the host's done says whether what changed hands evolves (D48): the last one counts. A take over's carries no
+   * setting (it is exactly `{ done: true }`, D17), so it is off then
+   */
+  private noteDone(seat: Seat, done: boolean, payload: unknown): void {
+    if (seat === "host") {
+      this.evolve = done && isTradeDonePayload(payload) && payload.evolve === true;
+    }
   }
 
   /**
@@ -213,6 +233,7 @@ export class TradeState {
         const named = String(decision.key.ref).split(":")[1];
         const seat: Seat = isSeat(named) ? named : decision.author;
         this.done[seat] = done;
+        this.noteDone(seat, done, decision.payload);
         return { t: "done", seat, done };
       }
       default:
