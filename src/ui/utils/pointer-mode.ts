@@ -41,7 +41,6 @@ const hiddenArrows = new Map<Arrow, number>();
 let listening = false;
 
 const WHITE = 0xffffff;
-const SHADOW = 0x101010;
 const GLOW = 0x7fd8ff;
 const SHORT_CORNER = 3;
 const LONG_CORNER = 6;
@@ -98,55 +97,62 @@ function frame(box: Phaser.GameObjects.Graphics, x: number, y: number, w: number
   box.fillRect(x + w - 1, y + 1, 1, h - 2);
 }
 
-/** Lines `length` long at the four corners of the area, grown by `out` on each side, each over a dark line */
-function corners(box: Phaser.GameObjects.Graphics, area: Area, length: number, out: number): void {
-  box.clear();
-  const x = area.x - out;
-  const y = area.y - out;
-  const w = area.width + 2 * out;
-  const h = area.height + 2 * out;
-  const l = Math.max(1, Math.min(length, Math.floor(w / 2), Math.floor(h / 2)));
-  for (const [color, alpha, d] of [
-    [SHADOW, 0.5, 1],
-    [WHITE, 1, 0],
-  ] as const) {
-    box.fillStyle(color, alpha);
-    box.fillRect(x + d, y + d, l, 1);
-    box.fillRect(x + d, y + d, 1, l);
-    box.fillRect(x + w - l + d, y + d, l, 1);
-    box.fillRect(x + w - 1 + d, y + d, 1, l);
-    box.fillRect(x + d, y + h - 1 + d, l, 1);
-    box.fillRect(x + d, y + h - l + d, 1, l);
-    box.fillRect(x + w - l + d, y + h - 1 + d, l, 1);
-    box.fillRect(x + w - 1 + d, y + h - l + d, 1, l);
-  }
+/**
+ * Where a mark goes: the option's hit area, 2 pixels in at the sides and 1 at the top and bottom, so that no mark reaches
+ * the window's border (a hit area runs to it, to be easy to press); a small one is used whole
+ */
+function cleanArea(area: Area): Area {
+  const dx = area.width >= 16 ? 2 : 0;
+  const dy = area.height >= 10 ? 1 : 0;
+  return { x: area.x + dx, y: area.y + dy, width: area.width - 2 * dx, height: area.height - 2 * dy };
 }
 
-/** Draw the chosen mark into the box (and start its motion, for the pulsing ones) */
-function drawMark(box: Phaser.GameObjects.Graphics, area: Area, style: PointerHighlight): void {
+/** Lines `length` long at the four corners of the area, drawn `inward` pixels in */
+function corners(box: Phaser.GameObjects.Graphics, area: Area, length: number, inward: number): void {
+  box.clear();
+  const x = area.x + inward;
+  const y = area.y + inward;
+  const w = area.width - 2 * inward;
+  const h = area.height - 2 * inward;
+  const l = Math.max(1, Math.min(length, Math.floor(w / 2), Math.floor(h / 2)));
+  box.fillStyle(WHITE, 1);
+  box.fillRect(x, y, l, 1);
+  box.fillRect(x, y, 1, l);
+  box.fillRect(x + w - l, y, l, 1);
+  box.fillRect(x + w - 1, y, 1, l);
+  box.fillRect(x, y + h - 1, l, 1);
+  box.fillRect(x, y + h - l, 1, l);
+  box.fillRect(x + w - l, y + h - 1, l, 1);
+  box.fillRect(x + w - 1, y + h - l, 1, l);
+}
+
+/** Draw the chosen mark into the box, inside the option's clean area (and start its motion, for the moving ones) */
+function drawMark(box: Phaser.GameObjects.Graphics, hitArea: Area, style: PointerHighlight): void {
+  const area = cleanArea(hitArea);
   const { x, y, width: w, height: h } = area;
   switch (style) {
     case PointerHighlight.CORNERS_LONG:
       corners(box, area, LONG_CORNER, 0);
       break;
     case PointerHighlight.CORNERS_PULSE: {
-      let out = 0;
-      corners(box, area, SHORT_CORNER, out);
+      // (it steps in and back, never out of the clean area)
+      let inward = 0;
+      corners(box, area, SHORT_CORNER, inward);
       hoverTimer = globalScene.time.addEvent({
         delay: 400,
         loop: true,
         callback: () => {
-          out = 1 - out;
-          corners(box, area, SHORT_CORNER, out);
+          inward = 1 - inward;
+          corners(box, area, SHORT_CORNER, inward);
         },
       });
       break;
     }
     case PointerHighlight.GLOW:
-      box.fillStyle(GLOW, 0.35);
-      frame(box, x - 1, y - 1, w + 2, h + 2);
       box.fillStyle(GLOW, 1);
       frame(box, x, y, w, h);
+      box.fillStyle(GLOW, 0.3);
+      frame(box, x + 1, y + 1, w - 2, h - 2);
       globalScene.tweens.add({
         targets: box,
         alpha: { from: 1, to: 0.45 },

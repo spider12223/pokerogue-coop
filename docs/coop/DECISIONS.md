@@ -1438,8 +1438,10 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
   menu; holding a battle info box shows the stats; the wheel scrolls long lists.
 - **Mouse mode** (Sam: the arrow goes and the option under the mouse is marked; then "only a couple lines on the
   corners", options in the manner of the Pokémon games and Nintendo, all in the settings): while the pointer is
-  used, a menu marks the option under it, the size of its hit area, and hides its arrow (the `cursorObj` of the
-  screen that is up, kept at alpha 0 each frame); a key or a gamepad button brings the arrow back as it was.
+  used, a menu marks the option under it and hides its arrow (the `cursorObj` of the screen that is up, kept at
+  alpha 0 each frame); a key or a gamepad button brings the arrow back as it was. A mark is drawn inside the
+  option's hit area, 2 pixels in at the sides and 1 at the top and bottom, in plain one-pixel lines, so that none
+  reaches a window's border (Sam: "they seep out slightly to the red box").
   `src/ui/utils/pointer-mode.ts`.
 - **Mouse Highlight** (Settings > General): **Corners** (short lines at the four corners, the default), **Long**
   (longer ones), **Pulse** (short ones stepping out and back), **Classic** (no mark: the menu's own arrow follows
