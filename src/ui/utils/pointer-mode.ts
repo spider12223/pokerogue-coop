@@ -3,7 +3,7 @@ import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { PointerHighlight } from "#enums/pointer-highlight";
 import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
-import { cursorCss } from "#ui/mouse-cursors";
+import { applySiteCursor, cursorCss } from "#ui/mouse-cursors";
 import { pointerControlsOn } from "#ui/pointer-input";
 import type Phaser from "phaser";
 
@@ -231,8 +231,9 @@ export function syncMenuArrow(): void {
   }
 }
 
-/** Give the canvas the chosen mouse pointer (the computer's with Click & Tap Controls off, or System) */
+/** Give the page and the canvas the chosen mouse pointer (the computer's with System) */
 export function applyMouseCursor(): void {
+  applySiteCursor();
   const css = cursorCss("default");
   globalScene.input?.setDefaultCursor?.(css);
   const canvas = globalScene.game?.canvas;
@@ -253,7 +254,7 @@ export function installPointerMode(): void {
       if (key === "pointerControls" || key === "pointerHighlight") {
         hideHoverBox();
       }
-      if (key === "pointerControls" || key === "mouseCursor") {
+      if (key === "mouseCursor") {
         applyMouseCursor();
       }
     });

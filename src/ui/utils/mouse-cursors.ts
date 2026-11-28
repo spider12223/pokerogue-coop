@@ -1,9 +1,9 @@
 import { settings } from "#app/global-settings-manager";
 import { MouseCursor } from "#enums/mouse-cursor";
-import { pointerControlsOn } from "#ui/pointer-input";
 
 /**
- * The game's own mouse pointers (D49): pixel art drawn here, at twice their size, and given to the canvas as a CSS cursor.
+ * The game's own mouse pointers (D49): pixel art drawn here, at twice their size, and given to the whole page as a CSS
+ * cursor (Settings > General > Mouse Cursor; System is the computer's own).
  * @module
  */
 
@@ -84,7 +84,9 @@ const ART: Readonly<Record<Exclude<MouseCursor, MouseCursor.SYSTEM>, CursorArt>>
 };
 
 /** Each pointer's CSS value, drawn once */
-const drawn = new Map<MouseCursor, string | null>();
+const drawn = new Map<MouseCursor, string>();
+/** The style element that puts the pointer on the whole page */
+const SITE_STYLE_ID = "coop-mouse-cursor";
 
 /** @returns The pointer's CSS image (`url(...) x y`), or `null` where nothing can be drawn (no 2D canvas) */
 function cursorImage(choice: Exclude<MouseCursor, MouseCursor.SYSTEM>): string | null {
@@ -115,20 +117,40 @@ function cursorImage(choice: Exclude<MouseCursor, MouseCursor.SYSTEM>): string |
   } catch {
     css = null;
   }
-  drawn.set(choice, css);
+  // (one that could not be drawn is tried again next time)
+  if (css !== null) {
+    drawn.set(choice, css);
+  }
   return css;
+}
+
+/** @returns The chosen pointer's CSS image, or `null` for the computer's own (System, or nothing drawn) */
+function chosenImage(): string | null {
+  const choice: MouseCursor | undefined = settings?.general?.mouseCursor;
+  return choice === undefined || choice === MouseCursor.SYSTEM ? null : cursorImage(choice);
 }
 
 /**
  * @param state - What the pointer is over: an option it can press (`pointer`) or anything else (`default`)
- * @returns The canvas's CSS cursor: the game's own pointer with Click & Tap Controls on (the computer's as the fallback),
- * else the computer's
+ * @returns The canvas's CSS cursor: the chosen pointer (the computer's as the fallback), or the computer's with System
  */
 export function cursorCss(state: "default" | "pointer"): string {
-  const choice: MouseCursor | undefined = settings?.general?.mouseCursor;
-  if (!pointerControlsOn() || choice === undefined || choice === MouseCursor.SYSTEM) {
-    return state;
-  }
-  const image = cursorImage(choice);
+  const image = chosenImage();
   return image === null ? state : `${image}, ${state}`;
+}
+
+/** Put the chosen pointer on everything on the page (buttons, the chat, the margins), or take it off for System */
+export function applySiteCursor(): void {
+  const image = chosenImage();
+  let style = document.getElementById(SITE_STYLE_ID);
+  if (image === null) {
+    style?.remove();
+    return;
+  }
+  if (style === null) {
+    style = document.createElement("style");
+    style.id = SITE_STYLE_ID;
+    document.head.append(style);
+  }
+  style.textContent = `html, body, body * { cursor: ${image}, auto !important; }`;
 }

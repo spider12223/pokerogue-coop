@@ -23,6 +23,8 @@ async function startGame(): Promise<void> {
   const { initGlobalAudioManager } = await import("#app/global-audio-manager");
 
   await initSettingsManager();
+  // (the chosen mouse pointer on the whole page from the start, the loading screen too: D49)
+  (await import("#ui/mouse-cursors")).applySiteCursor();
   const audioManager = await initGlobalAudioManager();
   // `window.__coop` for the end-to-end test and debugging. `import.meta.env.DEV` is replaced by `false` in every build,
   // and so is `VITE_COOP_E2E` unless the image for the browser tests asks for it (D22), so the module is not even emitted

@@ -201,9 +201,9 @@ The keys can be changed in **Menu > Settings > Keyboard**.
 **Mouse and touch:** turn on **Menu > Settings > General > Click & Tap Controls** to play by clicking or tapping
 the game itself: hover or tap to pick, click to choose, right click to go back, hold to open the menu or to see a
 Pokémon's stats on its HP box. The option under the mouse is marked instead of the arrow (**Mouse Highlight**:
-corners, a glow, a bar, or the classic arrow), and the game has its own pointer (**Mouse Cursor**: an arrow, a
-Poké Ball, a glove, or your computer's). Press any key and the arrow is back. The on-screen keypad is a separate
-setting and still works.
+corners, short, long or pulsing, a glow, a bar, or the classic arrow). Press any key and the arrow is back. The
+on-screen keypad is a separate setting and still works. The mouse pointer is the game's own on the whole page,
+with Click & Tap Controls or without (**Mouse Cursor**: an arrow, a Poké Ball, a glove, or your computer's).
 
 **Menu > Settings > Co-op** chooses what you see of co-op: your partner's move tags and target pointers, ping and
 emote bubbles, their cursor on the reward screen, the hide buttons on the HP boxes, the chat pop-ups and button, the

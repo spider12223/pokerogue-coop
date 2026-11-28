@@ -1447,12 +1447,15 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
   (longer ones), **Pulse** (short ones stepping out and back), **Classic** (no mark: the menu's own arrow follows
   the mouse, as in the Pokémon games up to the DS), **Glow** (a pulsing outline, after the Switch HOME menu),
   **Bar** (a soft bar, after Sword and Shield). Drawn by the game, not taken from any.
-- **Mouse Cursor** (Settings > General): the game's own pointer over it while Click & Tap Controls is on:
-  **Arrow** (the default), **Poké Ball**, **Glove** (pixel art drawn at twice its size into a CSS cursor,
-  `src/ui/utils/mouse-cursors.ts`), or **System** (the computer's). Off, the computer's pointer, as before.
+- **Mouse Cursor** (Settings > General): the game's own pointer on the whole page (the game, the buttons, the
+  chat, from the loading screen on), whatever Click & Tap Controls is (Sam: "make the mouse appear everywhere in
+  the website"): **Arrow** (the default), **Poké Ball**, **Glove** (pixel art drawn at twice its size into a CSS
+  cursor and given to every element by one style element, `src/ui/utils/mouse-cursors.ts`), or **System** (the
+  computer's, as before).
 - **A click is a key press:** it moves the screen's own cursor and presses through `processInput` (or the input events a
   key sends), so it meets the same co-op checks and decisions as the keyboard; nothing new is sequenced.
-- **Off is the game as it was:** every way in checks the setting (`pointerControlsOn`): the screens'
+- **Off is the game as it was** (but for the pointer, which is Mouse Cursor's): every way in checks the setting
+  (`pointerControlsOn`): the screens'
   `isPointerInputEnabled`, the hit areas (rows, the outside of a menu, the wheel), the empty-space router, the info
   box's hold, and the right click's browser menu (blocked only while it is on).
 - **The on-screen keypad stays,** with its own Touch Controls setting (the fork removed it: that part was not taken).

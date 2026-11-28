@@ -5,7 +5,7 @@ import { MouseCursor } from "#enums/mouse-cursor";
 import { PointerHighlight } from "#enums/pointer-highlight";
 import { GameManager } from "#test/framework/game-manager";
 import { installGlobalPointerRouter } from "#ui/global-pointer-router";
-import { cursorCss } from "#ui/mouse-cursors";
+import { applySiteCursor, cursorCss } from "#ui/mouse-cursors";
 import { PointerHitAreaManager } from "#ui/pointer-hit-areas";
 import { enterKeyMode, enterPointerMode, hasHoverBox, syncMenuArrow } from "#ui/pointer-mode";
 import Phaser from "phaser";
@@ -30,16 +30,36 @@ describe("UI - Click & Tap Controls", () => {
     vi.restoreAllMocks();
   });
 
-  it("uses the game's own mouse pointer only with it on, and the computer's with System", () => {
-    expect(cursorCss("default")).toBe("default");
+  /** A 2D canvas that draws (the test page's draws nothing) */
+  function canvasThatDraws(): void {
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      fillStyle: "",
+      fillRect: () => undefined,
+    } as never);
+    vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue("data:image/png;base64,AAAA");
+  }
 
-    settings.update("general", "pointerControls", true);
-    const own = cursorCss("pointer");
-    // (where nothing can be drawn, the computer's pointer stands in)
-    expect(own === "pointer" || (own.startsWith('url("data:image/png') && own.endsWith(", pointer"))).toBe(true);
+  it("uses the chosen mouse pointer whatever Click & Tap Controls is, and the computer's with System", () => {
+    canvasThatDraws();
+    settings.update("general", "mouseCursor", MouseCursor.GLOVE);
+    // (the glove points with its finger: 2 pixels in, drawn at twice the size)
+    expect(cursorCss("pointer")).toMatch(/^url\("data:image\/png[^"]*"\) 4 0, pointer$/);
 
     settings.update("general", "mouseCursor", MouseCursor.SYSTEM);
     expect(cursorCss("pointer")).toBe("pointer");
+  });
+
+  it("puts the chosen pointer on the whole page, and takes it off with System", () => {
+    canvasThatDraws();
+    settings.update("general", "mouseCursor", MouseCursor.POKE_BALL);
+    applySiteCursor();
+    expect(document.getElementById("coop-mouse-cursor")?.textContent).toMatch(
+      /^html, body, body \* \{ cursor: url\("data:image\/png[^"]*"\) 12 12, auto !important; \}$/,
+    );
+
+    settings.update("general", "mouseCursor", MouseCursor.SYSTEM);
+    applySiteCursor();
+    expect(document.getElementById("coop-mouse-cursor")).toBeNull();
   });
 
   const leftClick = { wasTouch: false, button: 0, leftButtonDown: () => true, rightButtonDown: () => false };
