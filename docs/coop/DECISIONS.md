@@ -1478,17 +1478,19 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
 Sam (2026-11-28): "add the button near the bottom that says patch notes so players can click on it and see what's new.
 This will be consistent now with every new update. and also future bugs."
 
-- **The button:** **Patch Notes**, a button of the page (`#coopPatchNotes` in `index.html`, `src/coop/ui/patch-notes.ts`)
-  at the bottom left of the title screen's picture, shown while the title menu is up (`#touchControls[data-ui-mode="TITLE"]`),
-  in the game's font and window colors and as big as the game's small text. Yellow while this browser has not opened the
-  newest update (the newest entry's text is kept in `localStorage`, so lines added to it on the same day make it new
-  again).
+- **The link:** **Patch Notes**, a line of the title screen just above **Source** (D25), in its style and size
+  (`addPatchNotesLink` in `src/coop/ui/patch-notes.ts`, called by the title screen). Pale gold (the version's color)
+  while this browser has not opened the newest update, white after (the newest entry's text is kept in
+  `localStorage`, so lines added to it on the same day make it new again). It started as a framed button of the page
+  at the same corner, which covered Source on the website and looked too big (Sam, 2026-11-28: "make it smaller and
+  above the source button").
 - **The list** opens over the page: an entry per update, newest first, with its date and its lines under **New**,
   **Changed** and **Fixed**. **Close**, Escape or a click beside it closes it; while it is open the game hears no key.
 - **Every update adds its entry** at the top of `src/coop/ui/patch-notes-list.ts` before it ships, in words a player
   reads: what is new, what works differently, and every bug fixed. The date is the day it ships. A test checks the
   list's form (dates, newest first, no empty entry). The first entries go back to 2026-11-13.
-- On the page, not in the game's menus: a page button takes a click with or without Click & Tap Controls (D49).
+- A click or a tap opens it with Click & Tap Controls or without (D49), as Source does; it is not in the game's
+  menus, so keys alone do not reach it.
 
 ## See also
 

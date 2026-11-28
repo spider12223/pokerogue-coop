@@ -6,19 +6,20 @@
 
 import { PATCH_NOTES, type PatchNote } from "#coop/ui/patch-notes-list";
 import { coopText } from "#coop/ui/text";
+import { TextStyle } from "#enums/text-style";
+import { addTextObject, getTextColor } from "#ui/text";
+import type Phaser from "phaser";
 
 /**
- * Patch Notes (D50): a button of the page (`#coopPatchNotes` in `index.html`), at the bottom left of the title screen,
- * that opens what each update brought, newest first. It is yellow while this browser has not opened the newest update.
- * While the list is open the game hears no key.
+ * Patch Notes (D50): a line of the title screen, just above its Source link and in its style, that opens what each update
+ * brought, newest first, over the page. It is pale gold while this browser has not opened the newest update. While the
+ * list is open the game hears no key.
  * @module
  */
 
-const BUTTON_ID = "coopPatchNotes";
 const PANEL_ID = "coopPatchNotesPanel";
 /** The newest update as this browser last opened it (its text: lines added to it on the same day make it new again) */
 const SEEN_KEY = "coopPatchNotesSeen";
-const UNSEEN_CLASS = "coop-patch-notes-unseen";
 const KEY_EVENTS = ["keydown", "keyup", "keypress"] as const;
 
 const SECTIONS = [
@@ -50,20 +51,37 @@ function markSeen(): void {
   } catch {
     // (no storage: nothing to remember)
   }
-  document.getElementById(BUTTON_ID)?.classList.remove(UNSEEN_CLASS);
 }
 
-/** Wire the page's button (once, at start) */
-export function installPatchNotes(): void {
-  const button = document.getElementById(BUTTON_ID);
-  if (button === null || button.dataset.ready === "1") {
-    return;
-  }
-  button.dataset.ready = "1";
-  button.textContent = coopText("patchNotes", "Patch Notes");
-  button.classList.toggle(UNSEEN_CLASS, hasUnseenPatchNotes());
-  button.addEventListener("click", openPatchNotes);
-  button.hidden = false;
+/**
+ * Put the Patch Notes link on the title screen, in the style of its Source link (D25): pale gold (the version's color)
+ * while the newest update is unread, white after. A click or a tap opens the list, with Click & Tap Controls or without,
+ * as Source does.
+ * @param container - The title screen's container
+ * @param x - Where the line starts, in the screen's units
+ * @param y - Its top
+ * @returns The line
+ */
+export function addPatchNotesLink(
+  container: Phaser.GameObjects.Container,
+  x: number,
+  y: number,
+): Phaser.GameObjects.Text {
+  const link = addTextObject(x, y, coopText("patchNotes", "Patch Notes"), TextStyle.MESSAGE, { fontSize: "54px" })
+    .setOrigin(0, 0)
+    .setName("patch-notes-link")
+    .setInteractive({ useHandCursor: true });
+  const paint = (): void => {
+    const style = hasUnseenPatchNotes() ? TextStyle.MONEY : TextStyle.MESSAGE;
+    link.setColor(getTextColor(style)).setShadowColor(getTextColor(style, true));
+  };
+  paint();
+  link.on("pointerup", () => {
+    openPatchNotes();
+    paint();
+  });
+  container.add(link);
+  return link;
 }
 
 /** Open the list; a second call does nothing */

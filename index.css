@@ -601,55 +601,9 @@ a {
 }
 
 /*
-  co-op: Patch Notes (src/coop/ui/patch-notes.ts, DECISIONS D50): a button at the bottom left of the title screen's
-  picture (placed as the chat box is, below), in the game's font and window colors, yellow while the newest update has
-  not been opened; the list opens over the page.
+  co-op: the Patch Notes list (src/coop/ui/patch-notes.ts, DECISIONS D50), opened from the title screen's line above
+  Source: over the page, in the game's font and window colors.
 */
-#coopPatchNotes {
-  --game-w: min(100vw, 100vh * 16 / 9);
-  --game-h: calc(var(--game-w) * 9 / 16);
-  --game-top: calc((100vh - var(--game-h)) / 2);
-  --game-side: calc((100vw - var(--game-w)) / 2);
-  display: none;
-  position: fixed;
-  left: calc(var(--game-side) + 6px);
-  top: calc(var(--game-top) + var(--game-h) - 6px);
-  transform: translateY(-100%);
-  z-index: 5;
-  padding: 0.15em 0.5em 0.05em;
-  /* as big as the game's own small text, whatever the size of the page */
-  font: max(16px, calc(var(--game-h) * 0.045)) / 1.25 "emerald", sans-serif;
-  color: #f8f8f8;
-  text-shadow: 1px 1px 0 #6b6b7b;
-  background: rgba(58, 48, 72, 0.94);
-  border: 2px solid var(--color-light, #dd5748);
-  border-radius: 4px;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
-  opacity: 0.85;
-  cursor: pointer;
-}
-
-#touchControls[data-ui-mode="TITLE"] ~ #coopPatchNotes:not([hidden]) {
-  display: block;
-}
-
-#coopPatchNotes:hover,
-#coopPatchNotes:focus-visible,
-#coopPatchNotes.coop-patch-notes-unseen {
-  opacity: 1;
-}
-
-#coopPatchNotes.coop-patch-notes-unseen {
-  color: #f8d030;
-}
-
-/* a touch screen that shows its controls puts the game's picture at the top */
-@media (pointer: coarse) {
-  body:has(> #touchControls.visible) #coopPatchNotes {
-    --game-top: 0px;
-  }
-}
-
 #coopPatchNotesPanel {
   position: fixed;
   inset: 0;

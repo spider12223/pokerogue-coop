@@ -13,8 +13,8 @@ the background runs slowly. Trying it alone in two tabs or windows of one browse
 progress (candies, catches) overwrites the other's, and the game says so in the chat: open the second player in a
 private window or another browser instead.
 
-**What's new:** the **Patch Notes** button at the bottom left of the title screen lists what each update brought
-and what got fixed. It is yellow when there is an update you have not read yet.
+**What's new:** click **Patch Notes** at the bottom left of the title screen (above **Source**) to see what each
+update brought and what got fixed. It is gold when there is an update you have not read yet.
 
 ## Starting a game
 

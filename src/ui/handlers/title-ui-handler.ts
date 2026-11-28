@@ -8,6 +8,7 @@ import { settings } from "#app/global-settings-manager";
 import { speciesDataRegistry } from "#app/global-species-data-registry";
 import { bypassLogin, isBeta, isDev } from "#constants/app-constants";
 import { fetchPlayersOnline, playersOnlineRelay } from "#coop/link/players-online";
+import { addPatchNotesLink } from "#coop/ui/patch-notes";
 import { sourceUrlOf } from "#coop/ui/source-link";
 import { coopText } from "#coop/ui/text";
 import { getSplashMessages } from "#data/splash-messages";
@@ -132,6 +133,8 @@ export class TitleUiHandler extends OptionSelectUiHandler {
       link.on("pointerup", () => window.open(source, "_blank", "noopener")?.focus());
       this.titleContainer.add(link);
     }
+    // What each update brought, just above the source link (D50)
+    addPatchNotesLink(this.titleContainer, 2, height - 22);
 
     eventBus.on("settings/update/success", ({ key }: SettingsUpdateEventArgs) => {
       if (key === "hideUsername" || key === "playerGender") {
