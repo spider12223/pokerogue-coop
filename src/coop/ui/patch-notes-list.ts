@@ -31,6 +31,7 @@ export const PATCH_NOTES: readonly PatchNote[] = [
       "Mouse Cursor: the game's own pointer, on the whole page: an arrow, a Poké Ball or a glove. System brings back your computer's.",
       "Patch Notes: this list. Every update adds what is new and what got fixed.",
     ],
+    fixed: ["Patch Notes no longer covers the Source link at the bottom left of the title screen."],
   },
   {
     date: "2026-11-27",
