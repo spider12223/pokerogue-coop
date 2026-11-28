@@ -3,6 +3,7 @@ import { settings } from "#app/global-settings-manager";
 import { Button } from "#enums/buttons";
 import { MouseCursor } from "#enums/mouse-cursor";
 import { PointerHighlight } from "#enums/pointer-highlight";
+import { UiMode } from "#enums/ui-mode";
 import { GameManager } from "#test/framework/game-manager";
 import { installGlobalPointerRouter } from "#ui/global-pointer-router";
 import { applySiteCursor, cursorCss } from "#ui/mouse-cursors";
@@ -196,6 +197,47 @@ describe("UI - Click & Tap Controls", () => {
         zone.emit("pointerout");
         expect(hasHoverBox(), PointerHighlight[style]).toBe(false);
       }
+    });
+
+    it("hides the arrow of the party's options list too, and brings it back with a key", () => {
+      settings.update("general", "pointerControls", true);
+      const arrow = { alpha: 1, setAlpha: (value: number) => (arrow.alpha = value) };
+      vi.spyOn(globalScene.ui, "getHandler").mockReturnValue({ optionsCursorObj: arrow } as never);
+
+      enterPointerMode();
+      syncMenuArrow();
+      expect(arrow.alpha).toBe(0);
+
+      enterKeyMode();
+      expect(arrow.alpha).toBe(1);
+    });
+
+    it("keeps the cursor of a screen where a click picks (the rewards): it shows the pick, the mark only the pointer", () => {
+      settings.update("general", "pointerControls", true);
+      vi.spyOn(globalScene.ui, "mode", "get").mockReturnValue(UiMode.MODIFIER_SELECT);
+      const arrow = menuWithArrow(1);
+
+      enterPointerMode();
+      syncMenuArrow();
+
+      expect(arrow.alpha).toBe(1);
+    });
+
+    it("plays a tap like a key: the arrow stays and nothing is marked; a mouse after it is mouse mode again", () => {
+      settings.update("general", "pointerControls", true);
+      const zone = menuRow(vi.fn(), vi.fn());
+      const arrow = menuWithArrow(1);
+
+      zone.emit("pointerover", { wasTouch: true });
+      syncMenuArrow();
+      expect(hasHoverBox()).toBe(false);
+      expect(arrow.alpha).toBe(1);
+
+      zone.emit("pointerout");
+      zone.emit("pointerover", { wasTouch: false });
+      syncMenuArrow();
+      expect(hasHoverBox()).toBe(true);
+      expect(arrow.alpha).toBe(0);
     });
 
     it("with the setting off: no box, and the arrow stays", () => {

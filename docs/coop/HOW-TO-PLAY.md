@@ -13,6 +13,9 @@ the background runs slowly. Trying it alone in two tabs or windows of one browse
 progress (candies, catches) overwrites the other's, and the game says so in the chat: open the second player in a
 private window or another browser instead.
 
+**What's new:** the **Patch Notes** button at the bottom left of the title screen lists what each update brought
+and what got fixed. It is yellow when there is an update you have not read yet.
+
 ## Starting a game
 
 1. **Both:** on the title screen choose **Co-op**, then **Your name** and type the name your friend will see.
@@ -201,8 +204,10 @@ The keys can be changed in **Menu > Settings > Keyboard**.
 **Mouse and touch:** turn on **Menu > Settings > General > Click & Tap Controls** to play by clicking or tapping
 the game itself: hover or tap to pick, click to choose, right click to go back, hold to open the menu or to see a
 Pokémon's stats on its HP box. The option under the mouse is marked instead of the arrow (**Mouse Highlight**:
-corners, short, long or pulsing, a glow, a bar, or the classic arrow). Press any key and the arrow is back. The
-on-screen keypad is a separate setting and still works. The mouse pointer is the game's own on the whole page,
+corners, short, long or pulsing, a glow, a bar, or the classic arrow). Where a click picks something (the rewards,
+the starters, the Pokédex, eggs, saves) the arrow or frame stays to show your pick, and a second click on it
+chooses it. Press any key, or tap, and the arrow is back. The on-screen keypad is a separate setting and still
+works. The mouse pointer is the game's own on the whole page,
 with Click & Tap Controls or without (**Mouse Cursor**: an arrow, a Poké Ball, a glove, or your computer's).
 
 **Menu > Settings > Co-op** chooses what you see of co-op: your partner's move tags and target pointers, ping and

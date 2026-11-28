@@ -81,21 +81,21 @@ export class PointerHitAreaManager {
         .setOrigin(0, 0)
         .setInteractive();
 
-      zone.on("pointerover", () => {
+      zone.on("pointerover", (pointer?: Phaser.Input.Pointer) => {
         if (!pointerControlsOn()) {
           return;
         }
         this.setCursorStyle("pointer");
-        // mouse mode: a box on the option instead of the menu's arrow (D49)
-        enterPointerMode();
+        // mouse mode: a box on the option instead of the menu's arrow (D49; not for a finger)
+        enterPointerMode(pointer);
         showHoverBox(this.parent, config, zone);
         config.onHover?.();
       });
 
       // (back from a key press with the pointer still on the option: its box comes back as it moves)
-      zone.on("pointermove", () => {
+      zone.on("pointermove", (pointer?: Phaser.Input.Pointer) => {
         if (pointerControlsOn() && !isHoverBoxOf(zone)) {
-          enterPointerMode();
+          enterPointerMode(pointer);
           showHoverBox(this.parent, config, zone);
         }
       });

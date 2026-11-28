@@ -1443,6 +1443,14 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
   option's hit area, 2 pixels in at the sides and 1 at the top and bottom, in plain one-pixel lines, so that none
   reaches a window's border (Sam: "they seep out slightly to the red box").
   `src/ui/utils/pointer-mode.ts`.
+  - **The screens where a click picks keep their cursor:** the rewards, the starter select, the Pokédex, the egg
+    list and the egg summary, the run history and the save slots. There the first click picks and a second one
+    acts, while a hover only points, so the cursor (an arrow or a frame) shows the pick and the mark shows the
+    pointer (2026-11-28, before shipping: hidden, a pick could not be seen once the mouse moved away). The
+    other cursors of a screen that show a pick (the trade's, the summary's moves, the starter select's
+    party) were never hidden; the party's options list hides its arrow (`optionsCursorObj`) as the menus do.
+  - **A tap is played like a key:** a finger has no hover to mark, so a tap brings no mouse mode (the arrow stays
+    and follows the taps; `wasTouch`), and a tap after the mouse brings the arrows back.
 - **Mouse Highlight** (Settings > General): **Corners** (short lines at the four corners, the default), **Long**
   (longer ones), **Pulse** (short ones stepping out and back), **Classic** (no mark: the menu's own arrow follows
   the mouse, as in the Pokémon games up to the DS), **Glow** (a pulsing outline, after the Switch HOME menu),
@@ -1464,6 +1472,23 @@ Mouse and touch support by Adam Charron (the fork charrondev/pokerogue-coop, 202
 - The HP box hide buttons (D44) sit above the boxes' hold areas and keep their clicks.
 - `src/ui/utils/pointer-input.ts` (`pointerControlsOn`, `pressButton`), `pointer-hit-areas.ts`,
   `pointer-hit-area-sync.ts`, `global-pointer-router.ts`; the screens' own code in `src/ui/handlers`.
+
+## D50. Patch Notes
+
+Sam (2026-11-28): "add the button near the bottom that says patch notes so players can click on it and see what's new.
+This will be consistent now with every new update. and also future bugs."
+
+- **The button:** **Patch Notes**, a button of the page (`#coopPatchNotes` in `index.html`, `src/coop/ui/patch-notes.ts`)
+  at the bottom left of the title screen's picture, shown while the title menu is up (`#touchControls[data-ui-mode="TITLE"]`),
+  in the game's font and window colors and as big as the game's small text. Yellow while this browser has not opened the
+  newest update (the newest entry's text is kept in `localStorage`, so lines added to it on the same day make it new
+  again).
+- **The list** opens over the page: an entry per update, newest first, with its date and its lines under **New**,
+  **Changed** and **Fixed**. **Close**, Escape or a click beside it closes it; while it is open the game hears no key.
+- **Every update adds its entry** at the top of `src/coop/ui/patch-notes-list.ts` before it ships, in words a player
+  reads: what is new, what works differently, and every bug fixed. The date is the day it ships. A test checks the
+  list's form (dates, newest first, no empty entry). The first entries go back to 2026-11-13.
+- On the page, not in the game's menus: a page button takes a click with or without Click & Tap Controls (D49).
 
 ## See also
 

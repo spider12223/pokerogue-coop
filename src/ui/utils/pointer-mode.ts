@@ -2,6 +2,7 @@ import { eventBus } from "#app/event-bus";
 import { globalScene } from "#app/global-scene";
 import { settings } from "#app/global-settings-manager";
 import { PointerHighlight } from "#enums/pointer-highlight";
+import { UiMode } from "#enums/ui-mode";
 import type { SettingsUpdateEventArgs } from "#types/event-bus-types";
 import { applySiteCursor, cursorCss } from "#ui/mouse-cursors";
 import { pointerControlsOn } from "#ui/pointer-input";
@@ -9,8 +10,9 @@ import type Phaser from "phaser";
 
 /**
  * Mouse mode (D49): with Click & Tap Controls on, a player who moves the pointer plays by pointer. The menus then mark the
- * option under it in the chosen style (Settings > General > Mouse Highlight) instead of with their arrow; a key or a
- * gamepad button brings the arrow back. The game's own mouse pointer is set here too (Mouse Cursor).
+ * option under it in the chosen style (Settings > General > Mouse Highlight) instead of with their arrow; a key, a
+ * gamepad button or a tap brings the arrow back. The screens where a click picks keep theirs. The game's own mouse
+ * pointer is set here too (Mouse Cursor).
  * @module
  */
 
@@ -40,6 +42,20 @@ const hiddenArrows = new Map<Arrow, number>();
 /** The settings are listened to (once: the event bus outlives a game's scene) */
 let listening = false;
 
+/**
+ * The screens where the first click picks and a second one acts, while a hover only points: their cursor shows the pick
+ * (which the mark under the pointer does not), so mouse mode keeps it
+ */
+const CLICK_TO_PICK_MODES: ReadonlySet<UiMode> = new Set([
+  UiMode.MODIFIER_SELECT,
+  UiMode.STARTER_SELECT,
+  UiMode.POKEDEX,
+  UiMode.EGG_LIST,
+  UiMode.EGG_HATCH_SUMMARY,
+  UiMode.RUN_HISTORY,
+  UiMode.SAVE_SLOT,
+]);
+
 const WHITE = 0xffffff;
 const GLOW = 0x7fd8ff;
 const SHORT_CORNER = 3;
@@ -63,9 +79,14 @@ export function isPointerMode(): boolean {
   return pointerUsed && pointerControlsOn();
 }
 
-/** The pointer moved or pressed: mouse mode, if Click & Tap Controls is on */
-export function enterPointerMode(): void {
-  if (pointerControlsOn()) {
+/**
+ * The pointer moved or pressed: a mouse means mouse mode, if Click & Tap Controls is on; a finger is played like the keys
+ * (a tap has no hover, so the arrow is what shows the option between taps)
+ */
+export function enterPointerMode(pointer?: { wasTouch?: boolean }): void {
+  if (pointer?.wasTouch) {
+    enterKeyMode();
+  } else if (pointerControlsOn()) {
     pointerUsed = true;
   }
 }
@@ -215,19 +236,28 @@ export function isHoverBoxOf(owner: unknown): boolean {
 
 /**
  * Each frame: in mouse mode the arrow of the menu that is up is hidden (its own alpha is kept for when a key brings it
- * back, also if the menu changed it meanwhile), except with the Classic style; otherwise the hidden arrows come back.
+ * back, also if the menu changed it meanwhile), except with the Classic style and on a screen where a click picks;
+ * otherwise the hidden arrows come back.
  */
 export function syncMenuArrow(): void {
-  if (!isPointerMode() || highlight() === PointerHighlight.CLASSIC) {
+  const mode = globalScene.ui?.mode;
+  if (
+    !isPointerMode()
+    || highlight() === PointerHighlight.CLASSIC
+    || (mode !== undefined && CLICK_TO_PICK_MODES.has(mode))
+  ) {
     if (hiddenArrows.size > 0) {
       restoreArrows();
     }
     return;
   }
-  const arrow = (globalScene.ui?.getHandler?.() as { cursorObj?: unknown } | undefined)?.cursorObj;
-  if (isArrow(arrow) && arrow.alpha !== 0) {
-    hiddenArrows.set(arrow, arrow.alpha);
-    arrow.setAlpha(0);
+  // (the party's options list has its own arrow, with a name of its own)
+  const handler = globalScene.ui?.getHandler?.() as { cursorObj?: unknown; optionsCursorObj?: unknown } | undefined;
+  for (const arrow of [handler?.cursorObj, handler?.optionsCursorObj]) {
+    if (isArrow(arrow) && arrow.alpha !== 0) {
+      hiddenArrows.set(arrow, arrow.alpha);
+      arrow.setAlpha(0);
+    }
   }
 }
 
