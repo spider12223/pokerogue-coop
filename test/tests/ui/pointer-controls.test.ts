@@ -255,7 +255,8 @@ describe("UI - Click & Tap Controls", () => {
 
   it("makes a right click on empty space Back only when it is on", () => {
     const listeners = routerListeners();
-    const emit = vi.spyOn(globalScene.game.events, "emit");
+    // (what the router sends, not what the screen that is up does with it: that depends on the test run before)
+    const emit = vi.spyOn(globalScene.game.events, "emit").mockReturnValue(true);
 
     listeners["pointerdown"](rightClick, []);
     expect(emit).not.toHaveBeenCalledWith("input_down", expect.anything());
